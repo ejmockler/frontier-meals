@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import Stripe from 'stripe';
 import { STRIPE_SECRET_KEY } from '$env/static/private';
-import { PUBLIC_APP_NAME, PUBLIC_SITE_URL } from '$env/static/public';
+import { PUBLIC_SITE_URL } from '$env/static/public';
 import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
@@ -55,7 +55,7 @@ export const POST: RequestHandler = async ({ url }) => {
       },
       custom_text: {
         terms_of_service_acceptance: {
-          message: `By subscribing to ${PUBLIC_APP_NAME}, you agree to receive daily QR codes via email and manage your subscription through our Telegram bot.`
+          message: `By subscribing to Frontier Meals, you agree to receive daily QR codes via email and manage your subscription through our Telegram bot.`
         }
       },
       metadata: {
