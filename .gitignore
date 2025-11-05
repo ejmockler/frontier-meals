@@ -1,0 +1,56 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Production builds
+dist
+build
+.svelte-kit
+.vercel
+.output
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Testing
+coverage
+*.lcov
+.nyc_output
+test-results
+playwright-report
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Turbo
+.turbo
+
+# Database
+*.db
+*.db-journal
+drizzle/**/*.sql
+
+# Misc
+.cache
+.temp

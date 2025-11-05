@@ -1,0 +1,180 @@
+import { createClient } from '@supabase/supabase-js';
+import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
+import type { PageServerLoad, Actions } from './$types';
+import { fail } from '@sveltejs/kit';
+import * as jose from 'jose';
+import * as crypto from 'crypto';
+import QRCode from 'qrcode';
+import { sendEmail } from '$lib/email/send';
+import { getQRDailyEmail } from '$lib/email/templates/qr-daily';
+import { validateCSRFFromFormData } from '$lib/auth/csrf';
+import { getAdminSession } from '$lib/auth/session';
+import { IS_DEMO_MODE, getMockCustomerList, logDemoAction } from '$lib/demo';
+
+const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+export const load: PageServerLoad = async ({ url }) => {
+  const search = url.searchParams.get('search') || '';
+  const status = url.searchParams.get('status') || 'all';
+
+  // Demo mode: return mock customer list
+  if (IS_DEMO_MODE) {
+    logDemoAction('Loading customer list (demo)');
+    const mockCustomers = getMockCustomerList();
+
+    // Apply search filter if specified
+    let filteredCustomers = mockCustomers;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredCustomers = mockCustomers.filter(c =>
+        c.email.toLowerCase().includes(searchLower) ||
+        c.name.toLowerCase().includes(searchLower)
+      );
+    }
+
+    return { customers: filteredCustomers, search, status };
+  }
+
+  let query = supabase
+    .from('customers')
+    .select('*, subscriptions(*), telegram_link_status(*)')
+    .order('created_at', { ascending: false });
+
+  if (search) {
+    query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%,telegram_handle.ilike.%${search}%`);
+  }
+
+  const { data: customers, error } = await query;
+
+  if (error) {
+    console.error('[Admin] Error fetching customers:', error);
+    return { customers: [] };
+  }
+
+  // Filter by subscription status if specified
+  let filteredCustomers = customers || [];
+  if (status !== 'all') {
+    filteredCustomers = filteredCustomers.filter(c => {
+      const sub = Array.isArray(c.subscriptions) ? c.subscriptions[0] : c.subscriptions;
+      return sub?.status === status;
+    });
+  }
+
+  return { customers: filteredCustomers, search, status };
+};
+
+export const actions: Actions = {
+  regenerateQR: async ({ request, cookies }) => {
+    const formData = await request.formData();
+
+    // Demo mode: simulate success without database writes
+    if (IS_DEMO_MODE) {
+      const customerId = formData.get('customerId') as string;
+      logDemoAction('Regenerate QR code (demo)', { customerId });
+      return { success: true };
+    }
+
+    // Validate CSRF
+    const session = await getAdminSession(cookies);
+    if (!session || !validateCSRFFromFormData(formData, session.sessionId)) {
+      return fail(403, { error: 'Invalid CSRF token' });
+    }
+
+    const customerId = formData.get('customerId') as string;
+    const qrPrivateKey = formData.get('qrPrivateKey') as string;
+
+    if (!customerId || !qrPrivateKey) {
+      return fail(400, { error: 'Missing required fields' });
+    }
+
+    try {
+      // Get customer
+      const { data: customer } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('id', customerId)
+        .single();
+
+      if (!customer) {
+        return fail(404, { error: 'Customer not found' });
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const jti = crypto.randomUUID();
+      const expiresAt = new Date(today + 'T23:59:59-07:00');
+
+      // Generate JWT
+      const privateKey = await jose.importPKCS8(qrPrivateKey, 'ES256');
+      const jwt = await new jose.SignJWT({ service_date: today })
+        .setProtectedHeader({ alg: 'ES256' })
+        .setIssuer('frontier-meals-kiosk')
+        .setSubject(customer.id)
+        .setJti(jti)
+        .setIssuedAt()
+        .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
+        .sign(privateKey);
+
+      // Generate QR code
+      const qrCodeDataUrl = await QRCode.toDataURL(jwt, {
+        width: 280,
+        margin: 2,
+        color: { dark: '#000000', light: '#FFFFFF' }
+      });
+
+      // Upsert entitlement
+      await supabase
+        .from('entitlements')
+        .upsert({
+          customer_id: customer.id,
+          service_date: today,
+          meals_allowed: 1,
+          meals_redeemed: 0
+        }, { onConflict: 'customer_id,service_date' });
+
+      // Upsert QR token
+      await supabase
+        .from('qr_tokens')
+        .upsert({
+          customer_id: customer.id,
+          service_date: today,
+          jti,
+          issued_at: new Date().toISOString(),
+          expires_at: expiresAt.toISOString(),
+          used_at: null
+        }, { onConflict: 'customer_id,service_date' });
+
+      // Send email
+      const emailTemplate = getQRDailyEmail({
+        customer_name: customer.name,
+        service_date: today,
+        qr_code_data_url: qrCodeDataUrl
+      });
+
+      await sendEmail({
+        to: customer.email,
+        subject: emailTemplate.subject,
+        html: emailTemplate.html,
+        tags: [
+          { name: 'category', value: 'qr_regenerated' },
+          { name: 'service_date', value: today },
+          { name: 'customer_id', value: customer.id }
+        ],
+        idempotencyKey: `qr_regenerated/${today}/${customer.id}/${Date.now()}`
+      });
+
+      // Log audit event
+      await supabase.from('audit_log').insert({
+        actor: 'admin',
+        action: 'qr_regenerated',
+        subject: `customer:${customer.id}`,
+        metadata: { service_date: today }
+      });
+
+      return { success: true };
+    } catch (error) {
+      console.error('[Admin] Error regenerating QR:', error);
+      return fail(500, { error: 'Failed to regenerate QR code' });
+    }
+  }
+};

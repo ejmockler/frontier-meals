@@ -1,0 +1,29 @@
+name = "frontier-meals"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = ".svelte-kit/cloudflare"
+
+[vars]
+PUBLIC_APP_NAME = "Frontier Meals"
+
+# Environment variables are loaded from .env.local or GitHub Secrets
+# The following are required for production:
+# - PUBLIC_SITE_URL
+# - PUBLIC_SUPABASE_URL
+# - PUBLIC_SUPABASE_ANON_KEY
+# - PUBLIC_STRIPE_PUBLISHABLE_KEY
+# - SUPABASE_SERVICE_ROLE_KEY
+# - STRIPE_SECRET_KEY
+# - STRIPE_WEBHOOK_SECRET
+# - STRIPE_PRICE_ID
+# - TELEGRAM_BOT_TOKEN
+# - TELEGRAM_SECRET_TOKEN
+# - RESEND_API_KEY
+# - RESEND_WEBHOOK_SECRET
+# - SESSION_SECRET
+# - CSRF_SECRET
+# - CRON_SECRET
+# - QR_PRIVATE_KEY
+# - QR_PUBLIC_KEY
+# - KIOSK_PRIVATE_KEY
+# - KIOSK_PUBLIC_KEY
+# - DEMO_MODE
