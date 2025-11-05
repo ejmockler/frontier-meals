@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '$lib/email/send';
-import * as crypto from 'crypto';
+import { randomUUID, sha256 } from '$lib/utils/crypto';
 
 /**
  * Check for customers who haven't linked Telegram within 60 minutes
@@ -54,8 +54,8 @@ export async function checkTelegramLinks(config: {
 
     try {
       // Generate handle update token (passwordless correction flow)
-      const handleToken = crypto.randomUUID();
-      const handleTokenHash = crypto.createHash('sha256').update(handleToken).digest('hex');
+      const handleToken = randomUUID();
+      const handleTokenHash = await sha256(handleToken);
       const handleTokenExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
 
       // Store hashed handle update token
@@ -66,8 +66,8 @@ export async function checkTelegramLinks(config: {
       });
 
       // Generate new deep link token (backup flow)
-      const deepLinkToken = crypto.randomUUID();
-      const deepLinkTokenHash = crypto.createHash('sha256').update(deepLinkToken).digest('hex');
+      const deepLinkToken = randomUUID();
+      const deepLinkTokenHash = await sha256(deepLinkToken);
       const deepLinkExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
       const newDeepLink = `https://t.me/frontier_meals_bot?start=${deepLinkToken}`;
 

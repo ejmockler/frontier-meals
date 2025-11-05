@@ -1,7 +1,7 @@
 import type { PageServerLoad, Actions } from './$types';
 import { fail } from '@sveltejs/kit';
 import * as jose from 'jose';
-import * as crypto from 'crypto';
+import { randomUUID, sha256 } from '$lib/utils/crypto';
 import { KIOSK_PRIVATE_KEY } from '$env/static/private';
 import { validateCSRFFromFormData } from '$lib/auth/csrf';
 import { getAdminSession } from '$lib/auth/session';
@@ -48,7 +48,7 @@ export const actions: Actions = {
         .setProtectedHeader({ alg: 'ES256' })
         .setIssuer('frontier-meals-admin')
         .setSubject('kiosk')
-        .setJti(crypto.randomUUID())
+        .setJti(randomUUID())
         .setIssuedAt()
         .setExpirationTime('8h') // 8 hour session
         .sign(privateKey);

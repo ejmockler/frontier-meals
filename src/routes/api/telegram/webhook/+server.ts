@@ -4,7 +4,7 @@ import { TELEGRAM_SECRET_TOKEN, SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY } f
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { createClient } from '@supabase/supabase-js';
 import { todayInPT, isSkipEligibleForReimbursement } from '$lib/utils/timezone';
-import * as crypto from 'crypto';
+import { randomUUID, sha256, timingSafeEqual } from '$lib/utils/crypto';
 import Stripe from 'stripe';
 import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
@@ -55,10 +55,7 @@ export const POST: RequestHandler = async ({ request }) => {
   // Verify secret token using constant-time comparison to prevent timing attacks
   const secretToken = request.headers.get('x-telegram-bot-api-secret-token');
 
-  if (!secretToken || !crypto.timingSafeEqual(
-    Buffer.from(secretToken),
-    Buffer.from(TELEGRAM_SECRET_TOKEN)
-  )) {
+  if (!secretToken || !timingSafeEqual(secretToken, TELEGRAM_SECRET_TOKEN)) {
     console.error('Invalid Telegram secret token');
     return json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -156,7 +153,7 @@ async function handleStartCommand(message: TelegramMessage) {
   }
 
   // Verify deep link token (hash incoming token for comparison)
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const tokenHash = await sha256(token);
 
   const { data: deepLinkToken } = await supabase
     .from('telegram_deep_link_tokens')

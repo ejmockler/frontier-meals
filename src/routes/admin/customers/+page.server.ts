@@ -4,7 +4,7 @@ import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 import type { PageServerLoad, Actions } from './$types';
 import { fail } from '@sveltejs/kit';
 import * as jose from 'jose';
-import * as crypto from 'crypto';
+import { randomUUID, sha256 } from '$lib/utils/crypto';
 import QRCode from 'qrcode';
 import { sendEmail } from '$lib/email/send';
 import { getQRDailyEmail } from '$lib/email/templates/qr-daily';
@@ -101,7 +101,7 @@ export const actions: Actions = {
       }
 
       const today = new Date().toISOString().split('T')[0];
-      const jti = crypto.randomUUID();
+      const jti = randomUUID();
       const expiresAt = new Date(today + 'T23:59:59-07:00');
 
       // Generate JWT

@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
-import * as crypto from 'crypto';
+import { randomUUID, sha256 } from '$lib/utils/crypto';
 import {
 	IS_DEMO_MODE,
 	bypassAdminEmailCheck,
@@ -50,8 +50,8 @@ export async function generateMagicLinkToken(email: string): Promise<string> {
     return bypassMagicLinkGeneration(email);
   }
 
-  const token = crypto.randomUUID();
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const token = randomUUID();
+  const tokenHash = await sha256(token);
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
   await supabase.from('admin_magic_links').insert({
@@ -75,7 +75,7 @@ export async function verifyMagicLinkToken(token: string): Promise<{ valid: bool
   }
 
   // Hash the incoming token to compare with stored hash
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const tokenHash = await sha256(token);
 
   const { data: link, error } = await supabase
     .from('admin_magic_links')
@@ -122,7 +122,7 @@ export function createAdminSession(email: string): AdminSession {
   }
 
   return {
-    sessionId: crypto.randomUUID(),
+    sessionId: randomUUID(),
     email,
     role: 'admin',
     createdAt: new Date().toISOString(),

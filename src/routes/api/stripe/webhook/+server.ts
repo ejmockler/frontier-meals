@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '$lib/email/send';
 import { getTelegramLinkEmail } from '$lib/email/templates/telegram-link';
 import { getDunningSoftEmail, getDunningRetryEmail, getDunningFinalEmail, getCanceledNoticeEmail } from '$lib/email/templates/dunning';
-import * as crypto from 'crypto';
+import { randomUUID, sha256 } from '$lib/utils/crypto';
 import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
@@ -159,8 +159,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   });
 
   // Generate Telegram deep link (one-time token)
-  const deepLinkToken = crypto.randomUUID();
-  const tokenHash = crypto.createHash('sha256').update(deepLinkToken).digest('hex');
+  const deepLinkToken = randomUUID();
+  const tokenHash = await sha256(deepLinkToken);
   const deepLink = `https://t.me/frontier_meals_bot?start=${deepLinkToken}`;
 
   // Store HASHED deep link token (60-minute expiry)

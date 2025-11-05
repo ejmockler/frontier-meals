@@ -4,7 +4,7 @@ import QRCode from 'qrcode';
 import { sendEmail } from '$lib/email/send';
 import { getQRDailyEmail } from '$lib/email/templates/qr-daily';
 import { todayInPT, endOfDayPT } from '$lib/utils/timezone';
-import * as crypto from 'crypto';
+import { randomUUID, sha256 } from '$lib/utils/crypto';
 
 export async function issueDailyQRCodes(config: {
   supabaseUrl: string;
@@ -82,7 +82,7 @@ export async function issueDailyQRCodes(config: {
       }
 
       // Generate QR code JWT
-      const jti = crypto.randomUUID();
+      const jti = randomUUID();
       const expiresAt = endOfDayPT(today); // 11:59:59.999 PM PT (handles PST/PDT automatically)
 
       const privateKey = await jose.importPKCS8(config.qrPrivateKey, 'ES256');

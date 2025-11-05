@@ -1,38 +1,32 @@
 import { SESSION_SECRET } from '$env/static/private';
-import * as crypto from 'crypto';
+import { createHmac, timingSafeEqual } from '$lib/utils/crypto';
 
 /**
  * Generate CSRF token bound to session
  * Uses HMAC-SHA256 to prevent forgery
  */
-export function generateCSRFToken(sessionId: string): string {
+export async function generateCSRFToken(sessionId: string): Promise<string> {
 	if (!sessionId) {
 		throw new Error('Session ID required for CSRF token generation');
 	}
 
-	return crypto
-		.createHmac('sha256', SESSION_SECRET)
-		.update(sessionId)
-		.digest('hex');
+	return await createHmac('sha256', SESSION_SECRET, sessionId);
 }
 
 /**
  * Validate CSRF token against session
  * Uses timing-safe comparison to prevent timing attacks
  */
-export function validateCSRFToken(sessionId: string, token: string | null): boolean {
+export async function validateCSRFToken(sessionId: string, token: string | null): Promise<boolean> {
 	if (!sessionId || !token) {
 		return false;
 	}
 
 	try {
-		const expected = generateCSRFToken(sessionId);
-		return crypto.timingSafeEqual(
-			Buffer.from(expected, 'hex'),
-			Buffer.from(token, 'hex')
-		);
+		const expected = await generateCSRFToken(sessionId);
+		return timingSafeEqual(expected, token);
 	} catch {
-		// Buffer creation or comparison failed (likely invalid hex string)
+		// Comparison failed (likely invalid hex string)
 		return false;
 	}
 }
@@ -58,7 +52,7 @@ export function extractCSRFToken(request: Request): string | null {
  * @param sessionId Session ID to validate against
  * @returns true if valid, false if invalid
  */
-export function validateCSRFFromFormData(formData: FormData, sessionId: string): boolean {
+export async function validateCSRFFromFormData(formData: FormData, sessionId: string): Promise<boolean> {
 	const csrfToken = formData.get('csrf_token') as string;
-	return validateCSRFToken(sessionId, csrfToken);
+	return await validateCSRFToken(sessionId, csrfToken);
 }
