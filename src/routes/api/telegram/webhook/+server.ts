@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { TELEGRAM_SECRET_TOKEN, SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY } from '$env/static/private';
+import { TELEGRAM_SECRET_TOKEN, TELEGRAM_BOT_TOKEN, SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY } from '$env/static/private';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { createClient } from '@supabase/supabase-js';
 import { todayInPT, isSkipEligibleForReimbursement } from '$lib/utils/timezone';
@@ -652,8 +652,6 @@ async function sendMessage(
   text: string,
   replyMarkup?: { inline_keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>> }
 ) {
-  const { TELEGRAM_BOT_TOKEN } = await import('$env/static/private');
-
   const payload: any = {
     chat_id: chatId,
     text
@@ -679,8 +677,6 @@ async function sendMessage(
 }
 
 async function answerCallbackQuery(queryId: string, text?: string) {
-  const { TELEGRAM_BOT_TOKEN } = await import('$env/static/private');
-
   const payload: any = { callback_query_id: queryId };
   if (text) payload.text = text;
 
