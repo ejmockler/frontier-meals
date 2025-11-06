@@ -3,12 +3,14 @@ compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".svelte-kit/cloudflare"
 
-# Environment variables are loaded from .env.local or GitHub Secrets
-# The following are required for production:
-# - PUBLIC_SITE_URL
-# - PUBLIC_SUPABASE_URL
-# - PUBLIC_SUPABASE_ANON_KEY
-# - PUBLIC_STRIPE_PUBLISHABLE_KEY
+# Build-time environment variables (PUBLIC_*)
+[vars]
+PUBLIC_SITE_URL = "https://ca63ec87.frontier-meals.pages.dev"
+PUBLIC_SUPABASE_URL = "https://xqipyhdxsztsneqxpfsz.supabase.co"
+PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxaXB5aGR4c3p0c25lcXhwZnN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2MTg0MDAsImV4cCI6MjA3NzE5NDQwMH0.idMSMtJMBoeJ6UTgrB2Mox3CbwmrYI048JFy93J41u8"
+PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_51SMiPY4YmLzzuEydJ24OPjIBEhVbwPZXZrMKwbP6HvS8K0d8H6SMqJfxBwqD9YmwAyz1JwUbt5SgDn2Ia1ZfTJpF00jnYVUe24"
+
+# Runtime secrets (set via: npx wrangler pages secret put <NAME> --project-name frontier-meals)
 # - SUPABASE_SERVICE_ROLE_KEY
 # - STRIPE_SECRET_KEY
 # - STRIPE_WEBHOOK_SECRET
