@@ -11,7 +11,8 @@ import { randomUUID, sha256 } from '$lib/utils/crypto';
 import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: '2025-02-24.acacia'
+  apiVersion: '2024-11-20.acacia',
+  typescript: true
 });
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);

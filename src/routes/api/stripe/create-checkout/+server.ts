@@ -6,7 +6,8 @@ import { PUBLIC_SITE_URL } from '$env/static/public';
 import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: '2025-02-24.acacia'
+  apiVersion: '2024-11-20.acacia',
+  typescript: true
 });
 
 export const POST: RequestHandler = async ({ url }) => {
