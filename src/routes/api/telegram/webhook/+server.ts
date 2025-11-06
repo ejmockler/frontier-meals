@@ -47,19 +47,28 @@ interface TelegramChat {
 }
 
 export const POST: RequestHandler = async ({ request }) => {
+  // LOG: Webhook received
+  console.log('[Telegram Webhook] Request received at', new Date().toISOString());
+  console.log('[Telegram Webhook] Headers:', Object.fromEntries(request.headers.entries()));
+
   // Demo mode: ignore Telegram webhooks (safety check)
   if (IS_DEMO_MODE) {
+    console.log('[Telegram Webhook] Demo mode - ignoring');
     logDemoAction('Telegram webhook received (demo) - ignoring');
     return json({ ok: true });
   }
 
   // Verify secret token using constant-time comparison to prevent timing attacks
   const secretToken = request.headers.get('x-telegram-bot-api-secret-token');
+  console.log('[Telegram Webhook] Secret token present:', !!secretToken);
+  console.log('[Telegram Webhook] Secret token matches:', secretToken === TELEGRAM_SECRET_TOKEN);
 
   if (!secretToken || !timingSafeEqual(secretToken, TELEGRAM_SECRET_TOKEN)) {
-    console.error('Invalid Telegram secret token');
+    console.error('[Telegram Webhook] Invalid secret token - REJECTED');
     return json({ error: 'Forbidden' }, { status: 403 });
   }
+
+  console.log('[Telegram Webhook] Secret token verified - processing update');
 
   const update: TelegramUpdate = await request.json();
 
