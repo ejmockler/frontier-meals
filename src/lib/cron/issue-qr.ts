@@ -141,6 +141,44 @@ export async function issueDailyQRCodes(config: {
         idempotencyKey: `qr_daily/${today}/${customer.id}`
       });
 
+      // Send QR code to Telegram if linked
+      if (customer.telegram_user_id) {
+        try {
+          // Convert base64 data URL to Uint8Array for Telegram photo upload
+          const base64Data = qrCodeDataUrl.replace(/^data:image\/png;base64,/, '');
+          const binaryString = atob(base64Data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+
+          // Send QR code via Telegram Bot API
+          const formData = new FormData();
+          formData.append('chat_id', customer.telegram_user_id.toString());
+          formData.append('photo', new Blob([bytes], { type: 'image/png' }), 'qr-code.png');
+          formData.append('caption', `🍽️ Your Frontier Meals QR Code\n📅 ${new Date(today).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n\nShow this at the kiosk to get your meal!`);
+
+          const { TELEGRAM_BOT_TOKEN } = await import('$env/static/private');
+
+          const telegramResponse = await fetch(
+            `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
+            {
+              method: 'POST',
+              body: formData
+            }
+          );
+
+          if (!telegramResponse.ok) {
+            console.error(`[QR Job] Failed to send Telegram QR to customer ${customer.id}:`, await telegramResponse.text());
+          } else {
+            console.log(`[QR Job] Sent QR to Telegram for customer ${customer.id}`);
+          }
+        } catch (telegramError) {
+          console.error(`[QR Job] Error sending QR to Telegram for customer ${customer.id}:`, telegramError);
+          // Don't fail the whole job if Telegram delivery fails
+        }
+      }
+
       results.issued++;
       console.log(`[QR Job] Issued QR for customer ${customer.id} (${customer.email})`);
 
