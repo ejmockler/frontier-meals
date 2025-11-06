@@ -10,7 +10,8 @@ import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: '2025-02-24.acacia'
+  apiVersion: '2025-10-29.clover',
+  typescript: true
 });
 
 interface TelegramUpdate {

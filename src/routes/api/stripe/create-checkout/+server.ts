@@ -6,7 +6,7 @@ import { PUBLIC_SITE_URL } from '$env/static/public';
 import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: '2024-11-20.acacia',
+  apiVersion: '2025-10-29.clover',
   typescript: true
 });
 
