@@ -155,7 +155,14 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   console.log('[DB SUCCESS] Customer created:', { customer_id: customer.id, email: customer.email });
 
   // Fetch subscription details
+  console.log('[Stripe API] Fetching subscription:', stripeSubscriptionId);
   const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+  console.log('[Stripe API] Subscription retrieved:', {
+    id: subscription.id,
+    status: subscription.status,
+    current_period_start: subscription.current_period_start,
+    current_period_end: subscription.current_period_end
+  });
 
   // Create subscription record
   console.log('[DB] Creating subscription record:', { customer_id: customer.id, stripe_subscription_id: stripeSubscriptionId });
@@ -163,8 +170,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     customer_id: customer.id,
     stripe_subscription_id: stripeSubscriptionId,
     status: subscription.status,
-    current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-    current_period_end: new Date(subscription.current_period_end * 1000).toISOString()
+    current_period_start: subscription.current_period_start
+      ? new Date(subscription.current_period_start * 1000).toISOString()
+      : null,
+    current_period_end: subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000).toISOString()
+      : null
   });
 
   if (subscriptionError) {
