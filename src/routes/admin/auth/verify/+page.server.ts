@@ -69,8 +69,9 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
       throw error;
     }
 
-    // Log actual errors
-    console.error('[Admin Auth] Verification error:', error);
+    // This should only run for actual errors, not redirects
+    console.error('[Admin Auth] ACTUAL ERROR - not a redirect:', error);
+    console.error('[Admin Auth] Error type:', typeof error, 'instanceof Response:', error instanceof Response);
     console.error('[Admin Auth] Error details:', {
       name: error?.name,
       message: error?.message,
