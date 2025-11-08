@@ -58,13 +58,20 @@ export async function generateMagicLinkToken(email: string): Promise<string> {
   const tokenHash = await sha256(token);
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
-  await supabase.from('admin_magic_links').insert({
+  console.log('[generateMagicLinkToken] Inserting token for:', email);
+  const { error } = await supabase.from('admin_magic_links').insert({
     email: email.toLowerCase(),
     token_hash: tokenHash,
     expires_at: expiresAt.toISOString(),
     used: false
   });
 
+  if (error) {
+    console.error('[generateMagicLinkToken] Database insert failed:', error);
+    throw new Error(`Failed to create magic link: ${error.message}`);
+  }
+
+  console.log('[generateMagicLinkToken] Token inserted successfully');
   return token; // Return unhashed token to send in email
 }
 
