@@ -47,8 +47,11 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
     // Redirect to admin dashboard
     throw redirect(302, '/admin');
   } catch (error) {
-    // Re-throw redirects immediately
-    if (error instanceof Response) {
+    // SvelteKit redirects: check for redirect-like objects
+    if (
+      error instanceof Response ||
+      (error && typeof error === 'object' && 'status' in error && 'location' in error)
+    ) {
       throw error;
     }
 
