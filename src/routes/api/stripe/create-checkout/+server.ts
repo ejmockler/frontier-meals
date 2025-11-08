@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 import { STRIPE_SECRET_KEY, STRIPE_PRICE_ID } from '$env/static/private';
 import { PUBLIC_SITE_URL } from '$env/static/public';
 import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
+import { randomUUID, sha256 } from '$lib/utils/crypto';
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: '2025-10-29.clover',
@@ -18,6 +19,11 @@ export const POST: RequestHandler = async ({ url }) => {
   }
 
   try {
+    // Generate deep link token BEFORE checkout
+    // This allows us to pass it in the success URL without an API call
+    const deepLinkToken = randomUUID();
+    const deepLinkTokenHash = await sha256(deepLinkToken);
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [
@@ -36,7 +42,7 @@ export const POST: RequestHandler = async ({ url }) => {
           type: 'text'
         }
       ],
-      success_url: `${url.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${url.origin}/success?session_id={CHECKOUT_SESSION_ID}&t=${deepLinkToken}`,
       cancel_url: `${url.origin}`,
       allow_promotion_codes: true,
       billing_address_collection: 'auto',
@@ -49,7 +55,9 @@ export const POST: RequestHandler = async ({ url }) => {
         }
       },
       metadata: {
-        source: 'web_landing'
+        source: 'web_landing',
+        deep_link_token: deepLinkToken,
+        deep_link_token_hash: deepLinkTokenHash
       }
     });
 

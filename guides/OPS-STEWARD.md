@@ -176,7 +176,7 @@ Steps taken: [what you've tried]
 | Vercel Logs | https://vercel.com/frontier-meals/logs | Cron jobs, webhook logs |
 | Stripe Dashboard | https://dashboard.stripe.com | Subscriptions, payments |
 | Resend Dashboard | https://resend.com/emails | Email delivery status |
-| Telegram Bot | https://t.me/frontier_meals_bot | Customer support, ops alerts |
+| Telegram Bot | https://t.me/frontiermealsbot | Customer support, ops alerts |
 | Supabase | https://supabase.com/dashboard | Direct DB access (read-only for ops) |
 
 **Credentials:** Stored in 1Password (Ops Steward vault)

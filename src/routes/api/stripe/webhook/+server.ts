@@ -216,17 +216,24 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   console.log('[DB SUCCESS] Telegram link status created');
 
-  // Generate Telegram deep link (one-time token)
-  const deepLinkToken = randomUUID();
-  const tokenHash = await sha256(deepLinkToken);
-  const deepLink = `https://t.me/frontier_meals_bot?start=${deepLinkToken}`;
+  // Get deep link token from Stripe session metadata
+  // Token was pre-generated in create-checkout and included in success URL
+  const deepLinkToken = session.metadata?.deep_link_token;
+  const deepLinkTokenHash = session.metadata?.deep_link_token_hash;
 
-  // Store HASHED deep link token (60-minute expiry)
-  const tokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000); // 60 minutes
+  if (!deepLinkToken || !deepLinkTokenHash) {
+    console.error('[ERROR] Missing deep link token in session metadata');
+    throw new Error('Missing deep link token');
+  }
+
+  const deepLink = `https://t.me/frontiermealsbot?start=${deepLinkToken}`;
+
+  // Store HASHED deep link token (7-day expiry)
+  const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
   console.log('[DB] Creating telegram_deep_link_token:', { customer_id: customer.id, expires_at: tokenExpiresAt.toISOString() });
   const { error: tokenError } = await supabase.from('telegram_deep_link_tokens').insert({
     customer_id: customer.id,
-    token_hash: tokenHash,
+    token_hash: deepLinkTokenHash,
     expires_at: tokenExpiresAt.toISOString()
   });
 

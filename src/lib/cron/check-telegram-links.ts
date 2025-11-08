@@ -68,8 +68,8 @@ export async function checkTelegramLinks(config: {
       // Generate new deep link token (backup flow)
       const deepLinkToken = randomUUID();
       const deepLinkTokenHash = await sha256(deepLinkToken);
-      const deepLinkExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-      const newDeepLink = `https://t.me/frontier_meals_bot?start=${deepLinkToken}`;
+      const deepLinkExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      const newDeepLink = `https://t.me/frontiermealsbot?start=${deepLinkToken}`;
 
       // Store hashed deep link token
       await supabase.from('telegram_deep_link_tokens').insert({

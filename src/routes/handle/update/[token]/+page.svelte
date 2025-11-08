@@ -153,14 +153,14 @@
 							<strong>Next steps:</strong>
 						</p>
 						<ol class="text-sm text-blue-800 space-y-1 list-decimal list-inside text-left">
-							<li>Open Telegram and search for <strong>@frontier_meals_bot</strong></li>
+							<li>Open Telegram and search for <strong>@frontiermealsbot</strong></li>
 							<li>Click "Start" to connect your account</li>
 							<li>You'll receive your meal QR codes daily</li>
 						</ol>
 					</div>
 
 					<a
-						href="https://t.me/frontier_meals_bot"
+						href="https://t.me/frontiermealsbot"
 						target="_blank"
 						rel="noopener noreferrer"
 						class="inline-flex items-center justify-center w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold py-3 px-4 rounded-lg hover:from-blue-700 hover:to-cyan-700 focus:ring-4 focus:ring-blue-200 transition-all"

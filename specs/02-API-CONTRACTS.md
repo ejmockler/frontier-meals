@@ -332,7 +332,7 @@ if (receivedToken !== process.env.TELEGRAM_SECRET_TOKEN) {
 
 **Deep Link Format:**
 ```
-https://t.me/frontier_meals_bot?start=<onetime_token>
+https://t.me/frontiermealsbot?start=<onetime_token>
 ```
 
 **Incoming Update (user presses "Start"):**
