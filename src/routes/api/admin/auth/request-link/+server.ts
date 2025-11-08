@@ -45,8 +45,7 @@ export const POST: RequestHandler = async ({ request }) => {
       subject: emailTemplate.subject,
       html: emailTemplate.html,
       tags: [
-        { name: 'category', value: 'admin_magic_link' },
-        { name: 'admin_email', value: normalizedEmail }
+        { name: 'category', value: 'admin_magic_link' }
       ],
       idempotencyKey: `admin_magic_link/${token}`
     });
