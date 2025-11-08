@@ -22,6 +22,7 @@
       }
 
       isSuccess = true;
+      isLoading = false;
     } catch (err) {
       error = 'Something went wrong. Please try again.';
       isLoading = false;
@@ -128,7 +129,7 @@
           </p>
 
           <button
-            on:click={() => { isSuccess = false; email = ''; }}
+            on:click={() => { isSuccess = false; email = ''; isLoading = false; }}
             class="mt-6 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
           >
             ← Send another link
