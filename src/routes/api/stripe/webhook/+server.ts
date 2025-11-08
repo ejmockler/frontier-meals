@@ -34,11 +34,14 @@ export const POST: RequestHandler = async ({ request }) => {
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);
+    // Use async version for Cloudflare Workers (SubtleCrypto is async-only)
+    event = await stripe.webhooks.constructEventAsync(body, signature, STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    console.error('Webhook signature verification failed:', err);
+    console.error('[Stripe Webhook] Signature verification failed:', err);
     return json({ error: 'Invalid signature' }, { status: 400 });
   }
+
+  console.log('[Stripe Webhook] Event verified:', { event_id: event.id, event_type: event.type });
 
   // Check for duplicate events (idempotency)
   // Try to insert event record. If it fails due to unique constraint, it's a duplicate.
