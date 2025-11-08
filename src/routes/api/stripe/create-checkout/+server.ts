@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import Stripe from 'stripe';
-import { STRIPE_SECRET_KEY } from '$env/static/private';
+import { STRIPE_SECRET_KEY, STRIPE_PRICE_ID } from '$env/static/private';
 import { PUBLIC_SITE_URL } from '$env/static/public';
 import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
@@ -22,17 +22,7 @@ export const POST: RequestHandler = async ({ url }) => {
       mode: 'subscription',
       line_items: [
         {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: 'Frontier Meals Daily Subscription',
-              description: 'Fresh chef-prepared meal delivered daily'
-            },
-            recurring: {
-              interval: 'month'
-            },
-            unit_amount: 36000 // $360/month (30 days × $12/day)
-          },
+          price: STRIPE_PRICE_ID, // Use the configured Price ID
           quantity: 1
         }
       ],
