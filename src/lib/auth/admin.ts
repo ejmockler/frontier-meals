@@ -13,7 +13,27 @@ import {
 // Helper to get authenticated Supabase client with service role
 async function getSupabaseAdmin() {
 	const { SUPABASE_SERVICE_ROLE_KEY } = await import('$env/static/private');
-	return createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+	console.log('[getSupabaseAdmin] URL:', PUBLIC_SUPABASE_URL);
+	console.log('[getSupabaseAdmin] Service role key defined:', !!SUPABASE_SERVICE_ROLE_KEY);
+	console.log('[getSupabaseAdmin] Service role key length:', SUPABASE_SERVICE_ROLE_KEY?.length || 0);
+
+	if (!SUPABASE_SERVICE_ROLE_KEY) {
+		throw new Error('SUPABASE_SERVICE_ROLE_KEY is not defined');
+	}
+
+	// Create client with explicit service role configuration
+	// In Cloudflare Workers/Pages, we need to ensure proper headers are set
+	const client = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+		auth: {
+			autoRefreshToken: false,
+			persistSession: false,
+			detectSessionInUrl: false
+		}
+	});
+
+	console.log('[getSupabaseAdmin] Client created successfully');
+	return client;
 }
 
 /**
