@@ -19,7 +19,7 @@ export interface EmailOptions {
 
 export async function sendEmail(options: EmailOptions) {
   const payload: any = {
-    from: options.from || 'Frontier Meals <noreply@frontiermeals.com>',
+    from: options.from || 'Frontier Meals <meals@frontiermeals.com>',
     to: Array.isArray(options.to) ? options.to : [options.to],
     subject: options.subject,
     html: options.html
@@ -49,7 +49,7 @@ export async function sendEmail(options: EmailOptions) {
 
 export async function sendBatchEmails(emails: EmailOptions[]) {
   const payload = emails.map(email => ({
-    from: email.from || 'Frontier Meals <noreply@frontiermeals.com>',
+    from: email.from || 'Frontier Meals <meals@frontiermeals.com>',
     to: Array.isArray(email.to) ? email.to : [email.to],
     subject: email.subject,
     html: email.html,
