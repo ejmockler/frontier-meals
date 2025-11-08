@@ -57,8 +57,8 @@
       <Card variant="concrete" class="p-8">
         <div class="space-y-6">
           <div class="text-center">
-            <p class="text-3xl font-extrabold tracking-tight text-[#1A1816]">$12/day</p>
-            <p class="text-[#5C5A56]">Billed monthly • Cancel anytime</p>
+            <p class="text-3xl font-extrabold tracking-tight text-[#1A1816]">$13.33/day</p>
+            <p class="text-[#5C5A56]">$400/month • Cancel anytime</p>
           </div>
 
           <div class="space-y-3">
