@@ -99,7 +99,7 @@ export async function generateMagicLinkToken(email: string): Promise<string> {
  * Verify a magic link token and mark it as used
  * Hashes incoming token before database lookup
  */
-export async function verifyMagicLinkToken(token: string): Promise<{ valid: boolean; email?: string }> {
+export async function verifyMagicLinkToken(token: string): Promise<{ valid: boolean; email?: string; expired?: boolean }> {
   // Demo mode: accept any token
   if (IS_DEMO_MODE) {
     return bypassMagicLinkVerification(token);
@@ -122,7 +122,7 @@ export async function verifyMagicLinkToken(token: string): Promise<{ valid: bool
 
   if (error || !link) {
     console.error('[verifyMagicLinkToken] Token not found or already used:', error);
-    return { valid: false };
+    return { valid: false, expired: false };
   }
 
   // Check expiry
@@ -132,7 +132,7 @@ export async function verifyMagicLinkToken(token: string): Promise<{ valid: bool
 
   if (expiresAt < now) {
     console.error('[verifyMagicLinkToken] Token expired');
-    return { valid: false };
+    return { valid: false, expired: true };
   }
 
   console.log('[verifyMagicLinkToken] Token valid, marking as used');

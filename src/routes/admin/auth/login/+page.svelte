@@ -1,10 +1,28 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { page } from '$app/stores';
+  import { onMount } from 'svelte';
 
   let email = '';
   let isLoading = false;
   let isSuccess = false;
   let error = '';
+
+  // Map error codes to user-friendly messages
+  const errorMessages: Record<string, string> = {
+    missing_token: 'No verification token provided. Please request a new magic link.',
+    invalid_token: 'This link is invalid or has already been used. Please request a new magic link.',
+    verification_failed: 'Verification failed. Please try again or request a new magic link.',
+    expired_token: 'This link has expired. Links are valid for 15 minutes. Please request a new one.'
+  };
+
+  onMount(() => {
+    // Check for error in URL params
+    const errorParam = $page.url.searchParams.get('error');
+    if (errorParam) {
+      error = errorMessages[errorParam] || 'An error occurred. Please try again.';
+    }
+  });
 
   async function handleSubmit() {
     isLoading = true;

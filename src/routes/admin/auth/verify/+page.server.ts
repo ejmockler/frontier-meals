@@ -23,8 +23,14 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
     const result = await verifyMagicLinkToken(token);
     console.log('[Admin Auth] Verification result:', result);
 
-    if (!result.valid || !result.email) {
+    if (!result.valid) {
       console.error('[Admin Auth] Invalid token - result:', result);
+      // Check if it's an expired token by trying to find it
+      const errorCode = result.expired ? 'expired_token' : 'invalid_token';
+      throw redirect(302, `/admin/auth/login?error=${errorCode}`);
+    }
+
+    if (!result.email) {
       throw redirect(302, '/admin/auth/login?error=invalid_token');
     }
 
