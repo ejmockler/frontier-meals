@@ -76,6 +76,7 @@ export async function verifyMagicLinkToken(token: string): Promise<{ valid: bool
 
   // Hash the incoming token to compare with stored hash
   const tokenHash = await sha256(token);
+  console.log('[verifyMagicLinkToken] Token hash:', tokenHash);
 
   const { data: link, error } = await supabase
     .from('admin_magic_links')
@@ -84,15 +85,24 @@ export async function verifyMagicLinkToken(token: string): Promise<{ valid: bool
     .eq('used', false)
     .single();
 
+  console.log('[verifyMagicLinkToken] Database query result:', { link, error });
+
   if (error || !link) {
+    console.error('[verifyMagicLinkToken] Token not found or already used:', error);
     return { valid: false };
   }
 
   // Check expiry
   const expiresAt = new Date(link.expires_at);
-  if (expiresAt < new Date()) {
+  const now = new Date();
+  console.log('[verifyMagicLinkToken] Expiry check:', { expiresAt: expiresAt.toISOString(), now: now.toISOString(), expired: expiresAt < now });
+
+  if (expiresAt < now) {
+    console.error('[verifyMagicLinkToken] Token expired');
     return { valid: false };
   }
+
+  console.log('[verifyMagicLinkToken] Token valid, marking as used');
 
   // Mark as used
   await supabase
