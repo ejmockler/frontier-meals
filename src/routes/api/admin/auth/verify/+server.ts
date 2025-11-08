@@ -47,10 +47,18 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
     // Redirect to admin dashboard
     throw redirect(302, '/admin');
   } catch (error) {
+    // Re-throw redirects immediately
     if (error instanceof Response) {
-      throw error; // Re-throw redirects
+      throw error;
     }
+
+    // Log actual errors
     console.error('[Admin Auth] Verification error:', error);
+    console.error('[Admin Auth] Error details:', {
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack
+    });
     return json({ error: 'Verification failed' }, { status: 500 });
   }
 };

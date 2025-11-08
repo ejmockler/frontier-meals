@@ -58,13 +58,18 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
     // Redirect to admin dashboard
     throw redirect(302, '/admin');
   } catch (error) {
+    // Re-throw redirects immediately without logging them as errors
     if (error instanceof Response) {
-      throw error; // Re-throw redirects
+      throw error;
     }
+
+    // Log actual errors
     console.error('[Admin Auth] Verification error:', error);
-    console.error('[Admin Auth] Error name:', error?.name);
-    console.error('[Admin Auth] Error message:', error?.message);
-    console.error('[Admin Auth] Error stack:', error?.stack);
+    console.error('[Admin Auth] Error details:', {
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack
+    });
     throw redirect(302, '/admin/auth/login?error=verification_failed');
   }
 };
