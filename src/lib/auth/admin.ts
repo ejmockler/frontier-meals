@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
-import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
 import {
 	IS_DEMO_MODE,
@@ -11,7 +10,11 @@ import {
 	bypassAdminSessionValidation
 } from '$lib/demo';
 
-const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+// Helper to get authenticated Supabase client with service role
+async function getSupabaseAdmin() {
+	const { SUPABASE_SERVICE_ROLE_KEY } = await import('$env/static/private');
+	return createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+}
 
 /**
  * Hardcoded list of admin emails
@@ -50,6 +53,7 @@ export async function generateMagicLinkToken(email: string): Promise<string> {
     return bypassMagicLinkGeneration(email);
   }
 
+  const supabase = await getSupabaseAdmin();
   const token = randomUUID();
   const tokenHash = await sha256(token);
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
@@ -73,6 +77,8 @@ export async function verifyMagicLinkToken(token: string): Promise<{ valid: bool
   if (IS_DEMO_MODE) {
     return bypassMagicLinkVerification(token);
   }
+
+  const supabase = await getSupabaseAdmin();
 
   // Hash the incoming token to compare with stored hash
   const tokenHash = await sha256(token);
