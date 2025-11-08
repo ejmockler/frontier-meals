@@ -27,11 +27,14 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   try {
+    console.log('[Admin Auth] Generating magic link token for:', normalizedEmail);
+
     // Generate magic link token
     const token = await generateMagicLinkToken(normalizedEmail);
-    const magicLink = `${PUBLIC_SITE_URL}/admin/auth/verify?token=${token}`;
 
-    console.log('[Admin Auth] Generated magic link:', magicLink);
+    console.log('[Admin Auth] Token generated successfully:', token);
+    const magicLink = `${PUBLIC_SITE_URL}/admin/auth/verify?token=${token}`;
+    console.log('[Admin Auth] Magic link URL:', magicLink);
 
     // Send email
     const emailTemplate = getAdminMagicLinkEmail({
@@ -60,6 +63,11 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ success: true });
   } catch (error) {
     console.error('[Admin Auth] Error generating magic link:', error);
+    console.error('[Admin Auth] Error details:', {
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack
+    });
     return json({ error: 'Failed to send magic link' }, { status: 500 });
   }
 };
