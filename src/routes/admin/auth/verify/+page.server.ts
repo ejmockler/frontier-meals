@@ -17,15 +17,22 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
   }
 
   try {
+    console.log('[Admin Auth] Verifying token:', token);
+
     // Verify token
     const result = await verifyMagicLinkToken(token);
+    console.log('[Admin Auth] Verification result:', result);
 
     if (!result.valid || !result.email) {
+      console.error('[Admin Auth] Invalid token - result:', result);
       throw redirect(302, '/admin/auth/login?error=invalid_token');
     }
 
+    console.log('[Admin Auth] Creating session for:', result.email);
+
     // Create session
     const session = createAdminSession(result.email);
+    console.log('[Admin Auth] Session created:', { sessionId: session.sessionId, email: session.email });
 
     // Encrypt session as JWT
     const secret = new TextEncoder().encode(SESSION_SECRET);
@@ -34,6 +41,8 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
       .setIssuedAt()
       .setExpirationTime('7d')
       .sign(secret);
+
+    console.log('[Admin Auth] JWT created, setting cookie');
 
     // Set cookie
     cookies.set('admin_session', sessionToken, {
@@ -44,6 +53,8 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
       maxAge: 7 * 24 * 60 * 60 // 7 days
     });
 
+    console.log('[Admin Auth] Cookie set, redirecting to /admin');
+
     // Redirect to admin dashboard
     throw redirect(302, '/admin');
   } catch (error) {
@@ -51,6 +62,9 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
       throw error; // Re-throw redirects
     }
     console.error('[Admin Auth] Verification error:', error);
+    console.error('[Admin Auth] Error name:', error?.name);
+    console.error('[Admin Auth] Error message:', error?.message);
+    console.error('[Admin Auth] Error stack:', error?.stack);
     throw redirect(302, '/admin/auth/login?error=verification_failed');
   }
 };
