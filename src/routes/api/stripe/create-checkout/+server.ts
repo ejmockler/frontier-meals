@@ -50,7 +50,6 @@ export const POST: RequestHandler = async ({ url }) => {
       cancel_url: `${url.origin}`,
       allow_promotion_codes: true,
       billing_address_collection: 'auto',
-      customer_creation: 'always',
       consent_collection: {
         terms_of_service: 'required'
       },
