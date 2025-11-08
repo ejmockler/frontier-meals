@@ -125,6 +125,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 
   // Create customer record
+  console.log('[DB] Creating customer record:', { stripeCustomerId, email, name, telegram_handle: telegramHandle });
   const { data: customer, error: customerError } = await supabase
     .from('customers')
     .insert({
@@ -137,15 +138,25 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     .single();
 
   if (customerError) {
-    console.error('Error creating customer:', customerError);
+    console.error('[DB ERROR] Error creating customer:', {
+      code: customerError.code,
+      message: customerError.message,
+      details: customerError.details,
+      hint: customerError.hint,
+      stripeCustomerId,
+      email
+    });
     throw customerError;
   }
+
+  console.log('[DB SUCCESS] Customer created:', { customer_id: customer.id, email: customer.email });
 
   // Fetch subscription details
   const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
 
   // Create subscription record
-  await supabase.from('subscriptions').insert({
+  console.log('[DB] Creating subscription record:', { customer_id: customer.id, stripe_subscription_id: stripeSubscriptionId });
+  const { error: subscriptionError } = await supabase.from('subscriptions').insert({
     customer_id: customer.id,
     stripe_subscription_id: stripeSubscriptionId,
     status: subscription.status,
@@ -153,11 +164,39 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     current_period_end: new Date(subscription.current_period_end * 1000).toISOString()
   });
 
+  if (subscriptionError) {
+    console.error('[DB ERROR] Error creating subscription:', {
+      code: subscriptionError.code,
+      message: subscriptionError.message,
+      details: subscriptionError.details,
+      hint: subscriptionError.hint,
+      customer_id: customer.id,
+      stripe_subscription_id: stripeSubscriptionId
+    });
+    throw subscriptionError;
+  }
+
+  console.log('[DB SUCCESS] Subscription created');
+
   // Initialize telegram_link_status
-  await supabase.from('telegram_link_status').insert({
+  console.log('[DB] Creating telegram_link_status record:', { customer_id: customer.id });
+  const { error: linkStatusError } = await supabase.from('telegram_link_status').insert({
     customer_id: customer.id,
     is_linked: false
   });
+
+  if (linkStatusError) {
+    console.error('[DB ERROR] Error creating telegram_link_status:', {
+      code: linkStatusError.code,
+      message: linkStatusError.message,
+      details: linkStatusError.details,
+      hint: linkStatusError.hint,
+      customer_id: customer.id
+    });
+    throw linkStatusError;
+  }
+
+  console.log('[DB SUCCESS] Telegram link status created');
 
   // Generate Telegram deep link (one-time token)
   const deepLinkToken = randomUUID();
@@ -166,11 +205,25 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   // Store HASHED deep link token (60-minute expiry)
   const tokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000); // 60 minutes
-  await supabase.from('telegram_deep_link_tokens').insert({
+  console.log('[DB] Creating telegram_deep_link_token:', { customer_id: customer.id, expires_at: tokenExpiresAt.toISOString() });
+  const { error: tokenError } = await supabase.from('telegram_deep_link_tokens').insert({
     customer_id: customer.id,
     token_hash: tokenHash,
     expires_at: tokenExpiresAt.toISOString()
   });
+
+  if (tokenError) {
+    console.error('[DB ERROR] Error creating telegram_deep_link_token:', {
+      code: tokenError.code,
+      message: tokenError.message,
+      details: tokenError.details,
+      hint: tokenError.hint,
+      customer_id: customer.id
+    });
+    throw tokenError;
+  }
+
+  console.log('[DB SUCCESS] Telegram deep link token created');
 
   // Send Telegram link email
   const emailTemplate = getTelegramLinkEmail({
@@ -179,19 +232,31 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     deep_link: deepLink
   });
 
-  await sendEmail({
-    to: email,
-    subject: emailTemplate.subject,
-    html: emailTemplate.html,
-    tags: [
-      { name: 'category', value: 'telegram_link' },
-      { name: 'customer_id', value: customer.id }
-    ],
-    idempotencyKey: `telegram_link/${customer.id}`
-  });
+  console.log('[EMAIL] Sending telegram link email:', { to: email, customer_id: customer.id });
+  try {
+    await sendEmail({
+      to: email,
+      subject: emailTemplate.subject,
+      html: emailTemplate.html,
+      tags: [
+        { name: 'category', value: 'telegram_link' },
+        { name: 'customer_id', value: customer.id }
+      ],
+      idempotencyKey: `telegram_link/${customer.id}`
+    });
+    console.log('[EMAIL SUCCESS] Telegram link email sent');
+  } catch (emailError) {
+    console.error('[EMAIL ERROR] Failed to send telegram link email:', {
+      error: emailError,
+      to: email,
+      customer_id: customer.id
+    });
+    // Don't throw - email failure shouldn't fail the entire webhook
+  }
 
   // Log audit event
-  await supabase.from('audit_log').insert({
+  console.log('[DB] Creating audit_log entry for subscription_created');
+  const { error: auditError } = await supabase.from('audit_log').insert({
     actor: 'system',
     action: 'subscription_created',
     subject: `customer:${customer.id}`,
@@ -200,31 +265,55 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       email
     }
   });
+
+  if (auditError) {
+    console.error('[DB ERROR] Error creating audit_log:', {
+      code: auditError.code,
+      message: auditError.message,
+      details: auditError.details,
+      hint: auditError.hint
+    });
+    // Don't throw - audit log failure shouldn't fail the webhook
+  } else {
+    console.log('[DB SUCCESS] Audit log created');
+  }
 }
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
   const stripeCustomerId = invoice.customer as string;
   const stripeSubscriptionId = invoice.subscription as string;
 
+  console.log('[handleInvoicePaid] Processing invoice:', { invoice_id: invoice.id, stripe_customer_id: stripeCustomerId });
+
   if (!stripeSubscriptionId) {
+    console.log('[handleInvoicePaid] Not a subscription invoice, skipping');
     // Not a subscription invoice (e.g., one-time payment)
     return;
   }
 
   // Find customer
-  const { data: customer } = await supabase
+  console.log('[DB] Finding customer by stripe_customer_id:', stripeCustomerId);
+  const { data: customer, error: customerError } = await supabase
     .from('customers')
     .select('*')
     .eq('stripe_customer_id', stripeCustomerId)
     .single();
 
-  if (!customer) {
+  if (customerError || !customer) {
+    console.error('[DB ERROR] Customer not found:', {
+      code: customerError?.code,
+      message: customerError?.message,
+      stripe_customer_id: stripeCustomerId
+    });
     throw new Error('Customer not found');
   }
 
+  console.log('[DB SUCCESS] Customer found:', { customer_id: customer.id });
+
   // Update subscription with PAID period dates and active status
   // This is critical: only when invoice.paid fires do we grant access to the new period
-  await supabase
+  console.log('[DB] Updating subscription to active:', { stripe_subscription_id: stripeSubscriptionId });
+  const { error: updateError } = await supabase
     .from('subscriptions')
     .update({
       status: 'active',
@@ -233,8 +322,22 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
     })
     .eq('stripe_subscription_id', stripeSubscriptionId);
 
+  if (updateError) {
+    console.error('[DB ERROR] Error updating subscription:', {
+      code: updateError.code,
+      message: updateError.message,
+      details: updateError.details,
+      hint: updateError.hint,
+      stripe_subscription_id: stripeSubscriptionId
+    });
+    throw updateError;
+  }
+
+  console.log('[DB SUCCESS] Subscription updated to active');
+
   // Log audit event
-  await supabase.from('audit_log').insert({
+  console.log('[DB] Creating audit_log entry for invoice_paid');
+  const { error: auditError } = await supabase.from('audit_log').insert({
     actor: 'system',
     action: 'invoice_paid',
     subject: `customer:${customer.id}`,
@@ -246,7 +349,16 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
     }
   });
 
-  console.log(`[Webhook] Invoice paid for customer ${customer.id}, period ${new Date(invoice.period_start * 1000).toISOString()} to ${new Date(invoice.period_end * 1000).toISOString()}`);
+  if (auditError) {
+    console.error('[DB ERROR] Error creating audit_log:', {
+      code: auditError.code,
+      message: auditError.message
+    });
+  } else {
+    console.log('[DB SUCCESS] Audit log created');
+  }
+
+  console.log(`[handleInvoicePaid] Invoice paid for customer ${customer.id}, period ${new Date(invoice.period_start * 1000).toISOString()} to ${new Date(invoice.period_end * 1000).toISOString()}`);
 }
 
 async function handlePaymentFailed(invoice: Stripe.Invoice) {

@@ -191,19 +191,44 @@ async function handleStartCommand(message: TelegramMessage) {
   }
 
   // Link the account
-  await supabase
+  console.log('[DB] Linking telegram account:', { customer_id: deepLinkToken.customer_id, telegram_user_id: telegramUserId });
+  const { error: linkError } = await supabase
     .from('customers')
     .update({ telegram_user_id: telegramUserId })
     .eq('id', deepLinkToken.customer_id);
 
+  if (linkError) {
+    console.error('[DB ERROR] Error linking telegram account:', {
+      code: linkError.code,
+      message: linkError.message,
+      details: linkError.details,
+      hint: linkError.hint,
+      customer_id: deepLinkToken.customer_id
+    });
+    await sendMessage(chatId, '❌ Error linking your account. Please contact @noahchonlee for help.');
+    return;
+  }
+
+  console.log('[DB SUCCESS] Telegram account linked');
+
   // Mark token as used
-  await supabase
+  console.log('[DB] Marking token as used');
+  const { error: tokenError } = await supabase
     .from('telegram_deep_link_tokens')
     .update({ used: true, used_at: new Date().toISOString() })
     .eq('token_hash', tokenHash);
 
+  if (tokenError) {
+    console.error('[DB ERROR] Error marking token as used:', {
+      code: tokenError.code,
+      message: tokenError.message
+    });
+    // Don't fail - account is already linked
+  }
+
   // Update telegram_link_status
-  await supabase
+  console.log('[DB] Updating telegram_link_status');
+  const { error: statusError } = await supabase
     .from('telegram_link_status')
     .upsert({
       customer_id: deepLinkToken.customer_id,
@@ -212,13 +237,35 @@ async function handleStartCommand(message: TelegramMessage) {
       last_seen_at: new Date().toISOString()
     });
 
+  if (statusError) {
+    console.error('[DB ERROR] Error updating telegram_link_status:', {
+      code: statusError.code,
+      message: statusError.message,
+      details: statusError.details,
+      hint: statusError.hint
+    });
+    // Don't fail - account is already linked
+  }
+
+  console.log('[DB SUCCESS] Telegram link status updated');
+
   // Log audit event
-  await supabase.from('audit_log').insert({
+  console.log('[DB] Creating audit_log entry for telegram_linked');
+  const { error: auditError } = await supabase.from('audit_log').insert({
     actor: `customer:${deepLinkToken.customer_id}`,
     action: 'telegram_linked',
     subject: `customer:${deepLinkToken.customer_id}`,
     metadata: { telegram_user_id: telegramUserId, telegram_username: telegramUsername }
   });
+
+  if (auditError) {
+    console.error('[DB ERROR] Error creating audit_log:', {
+      code: auditError.code,
+      message: auditError.message
+    });
+  } else {
+    console.log('[DB SUCCESS] Audit log created');
+  }
 
   // Send onboarding - diet selection
   await sendDietSelectionKeyboard(chatId);
@@ -428,11 +475,25 @@ async function handleSkipSelection(chatId: number, telegramUserId: number, dateS
 
   if (existingSkip) {
     // Unskip (delete the skip record)
-    await supabase
+    console.log('[DB] Deleting skip:', { customer_id: customer.id, skip_date: dateStr });
+    const { error: deleteError } = await supabase
       .from('skips')
       .delete()
       .eq('customer_id', customer.id)
       .eq('skip_date', dateStr);
+
+    if (deleteError) {
+      console.error('[DB ERROR] Error deleting skip:', {
+        code: deleteError.code,
+        message: deleteError.message,
+        customer_id: customer.id,
+        skip_date: dateStr
+      });
+      await sendMessage(chatId, '❌ Error removing skip. Please try again or contact @noahchonlee.');
+      return;
+    }
+
+    console.log('[DB SUCCESS] Skip deleted');
 
     const date = new Date(dateStr);
     const formattedDate = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -440,17 +501,22 @@ async function handleSkipSelection(chatId: number, telegramUserId: number, dateS
     await sendMessage(chatId, `✅ ${formattedDate} is back on your schedule!`);
 
     // Log audit event
-    await supabase.from('audit_log').insert({
+    const { error: auditError } = await supabase.from('audit_log').insert({
       actor: `customer:${customer.id}`,
       action: 'skip_removed',
       subject: `customer:${customer.id}`,
       metadata: { skip_date: dateStr }
     });
+
+    if (auditError) {
+      console.error('[DB ERROR] Error creating audit_log:', { code: auditError.code, message: auditError.message });
+    }
   } else {
     // Add skip with reimbursement eligibility based on Friday 09:00 PT boundary
     const eligible = isSkipEligibleForReimbursement(dateStr);
 
-    await supabase
+    console.log('[DB] Creating skip:', { customer_id: customer.id, skip_date: dateStr, eligible_for_reimbursement: eligible });
+    const { error: insertError } = await supabase
       .from('skips')
       .insert({
         customer_id: customer.id,
@@ -458,18 +524,37 @@ async function handleSkipSelection(chatId: number, telegramUserId: number, dateS
         eligible_for_reimbursement: eligible
       });
 
+    if (insertError) {
+      console.error('[DB ERROR] Error creating skip:', {
+        code: insertError.code,
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+        customer_id: customer.id,
+        skip_date: dateStr
+      });
+      await sendMessage(chatId, '❌ Error adding skip. Please try again or contact @noahchonlee.');
+      return;
+    }
+
+    console.log('[DB SUCCESS] Skip created');
+
     const date = new Date(dateStr);
     const formattedDate = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
     await sendMessage(chatId, `✅ Skipped ${formattedDate}. You won't receive a QR code for this date.`);
 
     // Log audit event
-    await supabase.from('audit_log').insert({
+    const { error: auditError } = await supabase.from('audit_log').insert({
       actor: `customer:${customer.id}`,
       action: 'skip_added',
       subject: `customer:${customer.id}`,
       metadata: { skip_date: dateStr }
     });
+
+    if (auditError) {
+      console.error('[DB ERROR] Error creating audit_log:', { code: auditError.code, message: auditError.message });
+    }
   }
 }
 

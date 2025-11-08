@@ -148,23 +148,37 @@ export const POST: RequestHandler = async ({ request }) => {
 async function handleEmailDelivered(data: any) {
 	console.log('[Resend] Email delivered:', data.email_id);
 
-	await supabase.from('audit_log').insert({
+	const { error } = await supabase.from('audit_log').insert({
 		actor: 'system',
 		action: 'email_delivered',
 		subject: `email:${data.email_id}`,
 		metadata: { to: data.to, subject: data.subject }
 	});
+
+	if (error) {
+		console.error('[DB ERROR] Error creating audit_log for email_delivered:', {
+			code: error.code,
+			message: error.message
+		});
+	}
 }
 
 async function handleEmailBounced(data: any) {
 	console.log('[Resend] Email bounced:', data.email_id);
 
-	await supabase.from('audit_log').insert({
+	const { error } = await supabase.from('audit_log').insert({
 		actor: 'system',
 		action: 'email_bounced',
 		subject: `email:${data.email_id}`,
 		metadata: { to: data.to, bounce_type: data.bounce_type }
 	});
+
+	if (error) {
+		console.error('[DB ERROR] Error creating audit_log for email_bounced:', {
+			code: error.code,
+			message: error.message
+		});
+	}
 
 	// TODO: Mark customer email as bounced in database if it's a permanent bounce
 }
@@ -172,12 +186,19 @@ async function handleEmailBounced(data: any) {
 async function handleEmailComplained(data: any) {
 	console.log('[Resend] Email complained (spam report):', data.email_id);
 
-	await supabase.from('audit_log').insert({
+	const { error } = await supabase.from('audit_log').insert({
 		actor: 'system',
 		action: 'email_complained',
 		subject: `email:${data.email_id}`,
 		metadata: { to: data.to }
 	});
+
+	if (error) {
+		console.error('[DB ERROR] Error creating audit_log for email_complained:', {
+			code: error.code,
+			message: error.message
+		});
+	}
 
 	// TODO: Add customer to suppression list to avoid future emails
 }
@@ -185,21 +206,35 @@ async function handleEmailComplained(data: any) {
 async function handleEmailOpened(data: any) {
 	console.log('[Resend] Email opened:', data.email_id);
 
-	await supabase.from('audit_log').insert({
+	const { error } = await supabase.from('audit_log').insert({
 		actor: 'system',
 		action: 'email_opened',
 		subject: `email:${data.email_id}`,
 		metadata: { to: data.to, opened_at: data.opened_at }
 	});
+
+	if (error) {
+		console.error('[DB ERROR] Error creating audit_log for email_opened:', {
+			code: error.code,
+			message: error.message
+		});
+	}
 }
 
 async function handleEmailClicked(data: any) {
 	console.log('[Resend] Email link clicked:', data.email_id);
 
-	await supabase.from('audit_log').insert({
+	const { error } = await supabase.from('audit_log').insert({
 		actor: 'system',
 		action: 'email_clicked',
 		subject: `email:${data.email_id}`,
 		metadata: { to: data.to, url: data.url, clicked_at: data.clicked_at }
 	});
+
+	if (error) {
+		console.error('[DB ERROR] Error creating audit_log for email_clicked:', {
+			code: error.code,
+			message: error.message
+		});
+	}
 }
