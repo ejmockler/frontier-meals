@@ -31,13 +31,16 @@ export const POST: RequestHandler = async ({ request }) => {
     const token = await generateMagicLinkToken(normalizedEmail);
     const magicLink = `${PUBLIC_SITE_URL}/admin/auth/verify?token=${token}`;
 
+    console.log('[Admin Auth] Generated magic link:', magicLink);
+
     // Send email
     const emailTemplate = getAdminMagicLinkEmail({
       email: normalizedEmail,
       magic_link: magicLink
     });
 
-    await sendEmail({
+    console.log('[Admin Auth] Sending email to:', normalizedEmail);
+    const emailResult = await sendEmail({
       to: normalizedEmail,
       subject: emailTemplate.subject,
       html: emailTemplate.html,
@@ -47,6 +50,13 @@ export const POST: RequestHandler = async ({ request }) => {
       ],
       idempotencyKey: `admin_magic_link/${token}`
     });
+
+    console.log('[Admin Auth] Email send result:', emailResult);
+
+    if (!emailResult.success) {
+      console.error('[Admin Auth] Email failed to send:', emailResult.error);
+      throw new Error('Failed to send email');
+    }
 
     return json({ success: true });
   } catch (error) {
