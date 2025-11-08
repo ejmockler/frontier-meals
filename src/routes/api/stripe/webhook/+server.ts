@@ -157,12 +157,16 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   // Fetch subscription details
   console.log('[Stripe API] Fetching subscription:', stripeSubscriptionId);
   const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
-  console.log('[Stripe API] Subscription retrieved:', {
+  console.log('[Stripe API] Subscription retrieved (FULL DATA):', JSON.stringify({
     id: subscription.id,
     status: subscription.status,
     current_period_start: subscription.current_period_start,
-    current_period_end: subscription.current_period_end
-  });
+    current_period_end: subscription.current_period_end,
+    billing_cycle_anchor: subscription.billing_cycle_anchor,
+    created: subscription.created,
+    trial_start: subscription.trial_start,
+    trial_end: subscription.trial_end
+  }));
 
   // Create subscription record
   console.log('[DB] Creating subscription record:', { customer_id: customer.id, stripe_subscription_id: stripeSubscriptionId });
