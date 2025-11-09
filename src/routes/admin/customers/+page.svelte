@@ -171,20 +171,12 @@
                 </div>
               </div>
 
-              <div class="flex gap-2">
-                <button
-                  on:click={() => selectedCustomer = customer}
-                  class="px-4 py-2 text-sm font-bold text-[#E67E50] hover:bg-[#E67E50]/10 border-2 border-transparent hover:border-[#E67E50]/20 rounded-sm transition-all"
-                >
-                  View Details
-                </button>
-                <button
-                  on:click={() => { selectedCustomer = customer; showQRConfirm = true; }}
-                  class="px-4 py-2 text-sm font-bold text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] hover:shadow-xl shadow-lg rounded-sm transition-all"
-                >
-                  Regenerate QR
-                </button>
-              </div>
+              <button
+                on:click={() => { selectedCustomer = customer; showQRConfirm = true; }}
+                class="px-4 py-2 text-sm font-bold text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] hover:shadow-xl shadow-lg rounded-sm transition-all"
+              >
+                Regenerate QR
+              </button>
             </div>
           </div>
         {/each}

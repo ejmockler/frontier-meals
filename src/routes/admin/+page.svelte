@@ -1,7 +1,52 @@
 <script lang="ts">
   import type { PageData } from './$types';
 
-  export let data: PageData;
+  let { data }: { data: PageData } = $props();
+
+  // Test QR modal state
+  let showTestQRModal = $state(false);
+  let testQRDate = $state('');
+  let testQRLoading = $state(false);
+
+  // Get today's date in YYYY-MM-DD format for input default
+  function getTodayString(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // Initialize with today's date
+  $effect(() => {
+    if (!testQRDate) {
+      testQRDate = getTodayString();
+    }
+  });
+
+  async function generateTestQR() {
+    testQRLoading = true;
+    try {
+      const response = await fetch('/api/admin/test-qr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceDate: testQRDate })
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        const debugInfo = result.debug ? `\n\nDebug Info:\n${JSON.stringify(result.debug, null, 2)}` : '';
+        alert(`✅ ${result.message}${debugInfo}`);
+        showTestQRModal = false;
+      } else {
+        alert(`❌ Error: ${result.error}`);
+      }
+    } catch (error) {
+      alert(`❌ Network error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      testQRLoading = false;
+    }
+  }
 
   // Format activity action for display
   function formatAction(action: string): string {
@@ -58,9 +103,6 @@
           </svg>
         </div>
       </div>
-      <div class="mt-4 flex items-center text-sm">
-        <span class="text-[#52A675] font-medium">Active subscribers</span>
-      </div>
     </div>
 
     <!-- Active subscriptions -->
@@ -96,9 +138,6 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
-      </div>
-      <div class="mt-4 flex items-center text-sm">
-        <span class="text-[#5C5A56]">QR codes scanned today</span>
       </div>
     </div>
   </div>
@@ -144,14 +183,14 @@
       </a>
 
       <button
-        on:click={() => fetch('/api/cron/issue-qr', { method: 'POST', headers: { 'cron-secret': '' } })}
+        onclick={() => showTestQRModal = true}
         class="bg-white/10 border-2 border-white/20 hover:bg-white/20 rounded-sm p-4 transition-all"
       >
         <div class="flex items-center gap-3">
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
-          <span class="font-bold">Test QR Cron</span>
+          <span class="font-bold">Test QR Code</span>
         </div>
       </button>
     </div>
@@ -181,13 +220,19 @@
                   {formatAction(activity.action)}
                 </span>
                 <div class="flex-1 min-w-0">
-                  <p class="text-sm text-[#1A1816] font-bold">{activity.subject}</p>
-                  {#if activity.metadata}
-                    <p class="text-xs text-[#5C5A56] mt-1 truncate">
-                      {JSON.stringify(activity.metadata)}
+                  <p class="text-sm text-[#1A1816] font-bold">
+                    {activity.customerName || 'Unknown customer'}
+                  </p>
+                  {#if activity.metadata?.kiosk_location}
+                    <p class="text-xs text-[#5C5A56] mt-1">
+                      at {activity.metadata.kiosk_location}
                     </p>
                   {/if}
-                  <p class="text-xs text-[#5C5A56] mt-1">by {activity.actor}</p>
+                  {#if activity.metadata?.telegram_username}
+                    <p class="text-xs text-[#5C5A56] mt-1">
+                      @{activity.metadata.telegram_username}
+                    </p>
+                  {/if}
                 </div>
               </div>
               <span class="text-xs text-[#8E8C87] whitespace-nowrap">
@@ -200,3 +245,56 @@
     </div>
   </div>
 </div>
+
+<!-- Test QR Modal -->
+{#if showTestQRModal}
+  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm shadow-2xl max-w-md w-full p-6">
+      <h3 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-4">Generate Test QR Code</h3>
+
+      <p class="text-sm text-[#5C5A56] mb-6">
+        Generate a test QR code for any service date to verify expiration handling and timezone behavior.
+      </p>
+
+      <div class="mb-6">
+        <label for="test-qr-date" class="block text-sm font-bold text-[#1A1816] mb-2">
+          Service Date
+        </label>
+        <input
+          id="test-qr-date"
+          type="date"
+          bind:value={testQRDate}
+          class="w-full px-4 py-3 bg-white border-2 border-[#D9D7D2] rounded-sm text-[#1A1816] font-medium focus:outline-none focus:border-[#E67E50] transition-colors"
+        />
+        <p class="text-xs text-[#8E8C87] mt-2">
+          QR code will expire at 11:59:59 PM Pacific Time on this date
+        </p>
+      </div>
+
+      <div class="bg-[#E67E50]/10 border-2 border-[#E67E50]/20 rounded-sm p-4 mb-6">
+        <h4 class="text-sm font-bold text-[#1A1816] mb-2">Test Scenarios:</h4>
+        <ul class="text-xs text-[#5C5A56] space-y-1">
+          <li>• <strong>Yesterday:</strong> Should show "QR code expired"</li>
+          <li>• <strong>Today:</strong> Should scan successfully</li>
+          <li>• <strong>Tomorrow:</strong> Should scan successfully (valid for future dates)</li>
+        </ul>
+      </div>
+
+      <div class="flex gap-3">
+        <button
+          onclick={() => showTestQRModal = false}
+          class="flex-1 px-4 py-3 bg-[#D9D7D2] hover:bg-[#C9C7C2] text-[#1A1816] font-bold rounded-sm transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onclick={generateTestQR}
+          disabled={testQRLoading}
+          class="flex-1 px-4 py-3 bg-[#E67E50] hover:bg-[#D97F3E] disabled:bg-[#D9D7D2] disabled:text-[#8E8C87] text-white font-bold rounded-sm transition-colors"
+        >
+          {testQRLoading ? 'Sending...' : 'Generate & Send'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}

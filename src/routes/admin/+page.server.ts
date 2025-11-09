@@ -28,7 +28,7 @@ export const load: PageServerLoad = async () => {
     { count: totalCustomers },
     { count: activeSubscriptions },
     { count: todayRedemptions },
-    { data: recentActivity }
+    { data: rawActivity }
   ] = await Promise.all([
     supabase.from('customers').select('*', { count: 'exact', head: true }),
     supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('status', 'active'),
@@ -39,6 +39,28 @@ export const load: PageServerLoad = async () => {
       .order('created_at', { ascending: false })
       .limit(10)
   ]);
+
+  // Enrich activity with customer names for readability
+  const recentActivity = await Promise.all((rawActivity || []).map(async (activity) => {
+    // Extract customer ID from subject
+    const customerIdMatch = activity.subject?.match(/customer:([a-f0-9-]+)/);
+    const customerId = customerIdMatch?.[1];
+
+    let customerName = null;
+    if (customerId) {
+      const { data: customer } = await supabase
+        .from('customers')
+        .select('email')
+        .eq('id', customerId)
+        .single();
+      customerName = customer?.email || null;
+    }
+
+    return {
+      ...activity,
+      customerName
+    };
+  }));
 
   // Get subscription status breakdown
   const { data: subscriptionStats } = await supabase
