@@ -246,9 +246,9 @@
             <div class="text-sm text-[#1A1816]">
               <p class="font-bold mb-1">Session Details</p>
               <ul class="space-y-1 text-[#5C5A56]">
-                <li>• Session expires after 24 hours</li>
                 <li>• Kiosk will be authenticated for QR scanning</li>
                 <li>• All redemptions will be logged to this kiosk ID</li>
+                <li>• Session remains active indefinitely</li>
               </ul>
             </div>
           </div>
@@ -285,10 +285,6 @@
           <div>
             <p class="text-[#5C5A56]">Location</p>
             <p class="font-extrabold text-[#1A1816]">{location}</p>
-          </div>
-          <div>
-            <p class="text-[#5C5A56]">Expires</p>
-            <p class="font-extrabold text-[#1A1816]">24 hours</p>
           </div>
           <div>
             <p class="text-[#5C5A56]">Created</p>
@@ -348,7 +344,7 @@
           </svg>
           <div class="text-sm text-[#1A1816]">
             <p class="font-bold mb-1">Security Notice</p>
-            <p class="text-[#5C5A56]">This session token grants full kiosk access. Only share it with trusted kiosk devices. The session will automatically expire after 24 hours.</p>
+            <p class="text-[#5C5A56]">This session token grants full kiosk access. Only share it with trusted kiosk devices.</p>
           </div>
         </div>
       </div>
@@ -366,7 +362,7 @@
         </div>
         <h3 class="font-extrabold text-[#1A1816]">Authenticated</h3>
       </div>
-      <p class="text-sm text-[#5C5A56]">Kiosk sessions use JWT authentication with 24-hour expiry</p>
+      <p class="text-sm text-[#5C5A56]">Kiosk sessions use JWT authentication for secure access</p>
     </div>
 
     <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">

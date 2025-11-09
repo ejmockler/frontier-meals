@@ -66,7 +66,7 @@ export const actions: Actions = {
         .setSubject('kiosk')
         .setJti(randomUUID())
         .setIssuedAt()
-        .setExpirationTime('24h') // 24 hour session
+        // No expiry - kiosks run as long as needed since admin route is protected
         .sign(privateKey);
 
       return { sessionToken };
