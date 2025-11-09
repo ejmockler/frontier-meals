@@ -5,6 +5,10 @@
 
   let { data }: { data: PageData } = $props();
 
+  // Debug: log kiosk session on mount
+  console.log('[Kiosk] Page loaded with data:', data);
+  console.log('[Kiosk] Kiosk session:', data.kiosk);
+
   let videoElement: HTMLVideoElement;
   let canvasElement: HTMLCanvasElement;
   let overlayCanvas: HTMLCanvasElement;
@@ -20,6 +24,7 @@
   let qrDetected = $state(false);
   let qrLocation: any = null;
   let qrProcessing = false;
+  let qrProcessingStartTime = $state(0);
   let particles: Array<{x: number, y: number, vx: number, vy: number, life: number}> = [];
 
   // Get current time for display
@@ -39,8 +44,10 @@
   });
 
   async function handleScanButtonClick() {
+    console.log('[Kiosk] Scan button clicked');
     playButtonClick();
     viewState = 'scanning';
+    console.log('[Kiosk] View state set to scanning');
     await startCamera();
   }
 
@@ -108,18 +115,26 @@
 
       if (code && code.location) {
         // QR detected - visualize corners organically
+        console.log('[Kiosk] QR code detected! Data length:', code.data.length);
         qrDetected = true;
         qrLocation = code.location;
 
         // Draw organic corner detection
         drawQRCorners(overlay, code.location, scaleX, scaleY);
 
+        // If processing, show success checkmark
+        if (qrProcessing) {
+          drawSuccessCheckmark(overlay, code.location, scaleX, scaleY);
+        }
+
         // Spawn particles at corners
         spawnParticles(code.location, scaleX, scaleY);
 
         // After brief lock-on, process code (only once)
         if (!qrProcessing) {
+          console.log('[Kiosk] Processing QR code...');
           qrProcessing = true;
+          qrProcessingStartTime = Date.now();
           setTimeout(() => {
             if (scanning) {
               playScanSound();
@@ -139,7 +154,7 @@
     requestAnimationFrame(tick);
   }
 
-  // Draw organic, living corner markers
+  // Draw organic, living corner markers - GREEN for success detection
   function drawQRCorners(ctx: CanvasRenderingContext2D, loc: any, sx: number, sy: number) {
     const corners = [
       { x: loc.topLeftCorner.x * sx, y: loc.topLeftCorner.y * sy },
@@ -148,14 +163,24 @@
       { x: loc.bottomLeftCorner.x * sx, y: loc.bottomLeftCorner.y * sy }
     ];
 
-    // Pulsing glow effect
+    // Enhanced pulse for better visibility
     const pulse = Math.sin(Date.now() / 200) * 0.3 + 0.7;
 
-    // Draw connecting lines - organic, not rigid
-    ctx.strokeStyle = `rgba(230, 126, 80, ${pulse})`;
-    ctx.lineWidth = 3;
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = '#E67E50';
+    // Draw filled area to clearly show detection zone
+    ctx.fillStyle = `rgba(82, 166, 117, ${pulse * 0.15})`; // Green fill
+    ctx.beginPath();
+    corners.forEach((corner, i) => {
+      if (i === 0) ctx.moveTo(corner.x, corner.y);
+      else ctx.lineTo(corner.x, corner.y);
+    });
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw connecting lines - now GREEN (success color)
+    ctx.strokeStyle = `rgba(82, 166, 117, ${pulse * 0.9})`;
+    ctx.lineWidth = 4; // Thicker for visibility
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = '#52A675';
 
     ctx.beginPath();
     corners.forEach((corner, i) => {
@@ -165,38 +190,82 @@
     ctx.closePath();
     ctx.stroke();
 
-    // Draw corner nucleotides - small molecules
+    // Enhanced corner markers - LARGER L-shaped brackets
     corners.forEach((corner, i) => {
-      const offset = Math.sin(Date.now() / 150 + i) * 3;
+      const bracketSize = 40;
+      const thickness = 6;
 
-      // Outer ring
+      ctx.strokeStyle = `rgba(82, 166, 117, ${pulse})`;
+      ctx.lineWidth = thickness;
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#52A675';
+
+      // Draw L-shaped bracket at each corner
       ctx.beginPath();
-      ctx.arc(corner.x, corner.y, 12 + offset, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(232, 197, 71, ${pulse * 0.8})`;
-      ctx.lineWidth = 2;
+      // Determine bracket orientation based on corner
+      if (i === 0) { // Top-left
+        ctx.moveTo(corner.x + bracketSize, corner.y);
+        ctx.lineTo(corner.x, corner.y);
+        ctx.lineTo(corner.x, corner.y + bracketSize);
+      } else if (i === 1) { // Top-right
+        ctx.moveTo(corner.x - bracketSize, corner.y);
+        ctx.lineTo(corner.x, corner.y);
+        ctx.lineTo(corner.x, corner.y + bracketSize);
+      } else if (i === 2) { // Bottom-right
+        ctx.moveTo(corner.x - bracketSize, corner.y);
+        ctx.lineTo(corner.x, corner.y);
+        ctx.lineTo(corner.x, corner.y - bracketSize);
+      } else { // Bottom-left
+        ctx.moveTo(corner.x + bracketSize, corner.y);
+        ctx.lineTo(corner.x, corner.y);
+        ctx.lineTo(corner.x, corner.y - bracketSize);
+      }
       ctx.stroke();
 
-      // Inner core
+      // Central dot for precise corner location
       ctx.beginPath();
-      ctx.arc(corner.x, corner.y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(230, 126, 80, ${pulse})`;
+      ctx.arc(corner.x, corner.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(82, 166, 117, ${pulse})`;
       ctx.fill();
-
-      // Dancing molecules around corner
-      for (let j = 0; j < 3; j++) {
-        const angle = (Date.now() / 400 + i * Math.PI / 2 + j * Math.PI * 2 / 3);
-        const radius = 18 + Math.sin(Date.now() / 200 + j) * 4;
-        const mx = corner.x + Math.cos(angle) * radius;
-        const my = corner.y + Math.sin(angle) * radius;
-
-        ctx.beginPath();
-        ctx.arc(mx, my, 2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(232, 197, 71, ${pulse * 0.6})`;
-        ctx.fill();
-      }
     });
 
     ctx.shadowBlur = 0;
+  }
+
+  // Draw success checkmark when QR is being processed
+  function drawSuccessCheckmark(ctx: CanvasRenderingContext2D, loc: any, sx: number, sy: number) {
+    // Calculate center of detected QR
+    const centerX = ((loc.topLeftCorner.x + loc.topRightCorner.x +
+                      loc.bottomLeftCorner.x + loc.bottomRightCorner.x) / 4) * sx;
+    const centerY = ((loc.topLeftCorner.y + loc.topRightCorner.y +
+                      loc.bottomLeftCorner.y + loc.bottomRightCorner.y) / 4) * sy;
+
+    const size = 80;
+    const scale = Math.min((Date.now() - qrProcessingStartTime) / 150, 1); // Grow over 150ms
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale(scale, scale);
+
+    // Circle background
+    ctx.beginPath();
+    ctx.arc(0, 0, size, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(82, 166, 117, 0.95)';
+    ctx.fill();
+
+    // Checkmark - brutalist style (sharp angles)
+    ctx.strokeStyle = '#F5F3EF';
+    ctx.lineWidth = 10;
+    ctx.lineCap = 'square';
+    ctx.lineJoin = 'miter';
+
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.3, 0);
+    ctx.lineTo(-size * 0.1, size * 0.25);
+    ctx.lineTo(size * 0.35, -size * 0.3);
+    ctx.stroke();
+
+    ctx.restore();
   }
 
   // Spawn particle proteins
@@ -258,6 +327,9 @@
 
       const result = await response.json();
 
+      // Log response for debugging
+      console.log('[Kiosk] Redeem response:', result);
+
       if (response.ok && result.success) {
         viewState = 'success';
         customerName = result.customer.name;
@@ -265,14 +337,14 @@
         message = 'Meal redeemed successfully!';
         playSuccessSound();
 
-        setTimeout(() => resetToIdle(), 5000);
+        setTimeout(() => resetToIdle(), 8000);
       } else {
         viewState = 'error';
         errorCode = result.code || 'UNKNOWN';
         message = result.error || 'Invalid QR code';
         playErrorSound();
 
-        setTimeout(() => resetToIdle(), 3000);
+        setTimeout(() => resetToIdle(), 5000);
       }
     } catch (error) {
       viewState = 'error';
@@ -383,10 +455,8 @@
         Ready for your meal?
       </h1>
 
-      <!-- Subtext - raw, direct -->
-      <p class="text-2xl text-[#5C5A56] mb-16 font-medium">
-        Scan to pick up
-      </p>
+      <!-- Spacer for visual balance -->
+      <div class="mb-16"></div>
 
       <!-- CTA Button - bold, minimal rounding, orange -->
       <button
@@ -407,71 +477,64 @@
       </div>
     </div>
   {:else if viewState === 'scanning'}
-    <!-- SCANNING STATE - Industrial, bold orange -->
+    <!-- SCANNING STATE - Ambient Detection Pattern -->
     <div class="relative h-screen flex items-center justify-center">
-      <!-- Scanning frame overlay - raw, minimal -->
-      <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-        <div class="w-80 h-80 border-4 border-[#E67E50] rounded-sm relative shadow-xl bg-[#1A1816]/5">
-          <!-- Corner accents - hard angles, industrial -->
-          <div class="absolute -top-1 -left-1 w-16 h-16 border-t-[6px] border-l-[6px] border-[#E8C547]"></div>
-          <div class="absolute -top-1 -right-1 w-16 h-16 border-t-[6px] border-r-[6px] border-[#E8C547]"></div>
-          <div class="absolute -bottom-1 -left-1 w-16 h-16 border-b-[6px] border-l-[6px] border-[#E8C547]"></div>
-          <div class="absolute -bottom-1 -right-1 w-16 h-16 border-b-[6px] border-r-[6px] border-[#E8C547]"></div>
+      <!-- Full-screen edge glow indicating active detection zone -->
+      <div class="absolute inset-0 pointer-events-none z-10">
+        <!-- Animated corner gradients - brutalist but organic -->
+        <div class="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-[#E67E50]/40 to-transparent animate-pulse-slow"></div>
+        <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-[#E67E50]/40 to-transparent animate-pulse-slow" style="animation-delay: 0.5s;"></div>
+        <div class="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-[#E67E50]/40 to-transparent animate-pulse-slow" style="animation-delay: 1s;"></div>
+        <div class="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-[#E67E50]/40 to-transparent animate-pulse-slow" style="animation-delay: 1.5s;"></div>
 
-          <!-- Scanning line - bold orange -->
-          <div class="absolute inset-0 flex items-center justify-center overflow-hidden">
-            <div class="w-full h-1 bg-[#E67E50] animate-scan shadow-lg"></div>
-          </div>
+        <!-- Full-width scanning lines - not confined to a box -->
+        <div class="absolute inset-0 overflow-hidden">
+          <div class="w-full h-0.5 bg-gradient-to-r from-transparent via-[#E67E50] to-transparent animate-scan-fullwidth opacity-30"></div>
+          <div class="w-full h-0.5 bg-gradient-to-r from-transparent via-[#E8C547] to-transparent animate-scan-fullwidth opacity-20" style="animation-delay: 0.7s;"></div>
         </div>
       </div>
 
-      <!-- Instructions - industrial card -->
-      <div class="absolute bottom-20 left-0 right-0 text-center z-10">
-        <div class="inline-block bg-[#E8E6E1]/95 backdrop-blur-sm px-12 py-6 rounded-sm shadow-xl border-2 border-[#D9D7D2]">
-          <p class="text-3xl font-bold text-[#1A1816] mb-2">Hold QR code steady</p>
-          <button
-            onclick={resetToIdle}
-            class="mt-4 text-[#E67E50] hover:text-[#D97F3E] font-bold text-lg uppercase tracking-wide"
-          >
-            Cancel
-          </button>
+      <!-- Instructions overlay - larger, more prominent -->
+      <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+        <div class="text-center" class:opacity-40={qrDetected} style="transition: opacity 150ms ease-out;">
+          <h2 class="text-6xl md:text-7xl font-extrabold text-white mb-4 tracking-tight drop-shadow-[0_4px_12px_rgba(26,24,22,0.8)]">
+            Show your QR code
+          </h2>
+          <p class="text-3xl md:text-4xl font-bold text-[#E8C547] drop-shadow-[0_2px_8px_rgba(26,24,22,0.6)]">
+            Anywhere on screen
+          </p>
         </div>
+      </div>
+
+      <!-- Cancel button - moved to top corner for less visual weight -->
+      <div class="absolute top-8 right-8 z-30">
+        <button
+          onclick={resetToIdle}
+          class="px-8 py-4 bg-[#1A1816]/80 hover:bg-[#1A1816] backdrop-blur-sm text-white font-bold text-xl rounded-sm border-2 border-[#E67E50] transition-all duration-150 shadow-lg"
+        >
+          Cancel
+        </button>
       </div>
     </div>
   {:else if viewState === 'success'}
-    <!-- SUCCESS STATE - Muted, warm, industrial -->
+    <!-- SUCCESS STATE - Clean, simple confirmation -->
     <div class="h-screen flex items-center justify-center bg-[#F5F3EF] relative z-10">
       <div class="text-center max-w-3xl px-8">
-        <!-- Success icon - muted green, less polished -->
+        <!-- Success icon -->
         <div class="inline-flex items-center justify-center w-40 h-40 bg-[#52A675] rounded-sm mb-8 shadow-xl border-4 border-[#52A675]/30">
           <svg class="w-24 h-24 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="4" d="M5 13l4 4L19 7" />
           </svg>
         </div>
 
-        <!-- Greeting - bold, industrial -->
-        <h1 class="text-7xl font-extrabold text-[#1A1816] mb-4 tracking-tight">
-          Welcome, {customerName}!
+        <!-- Greeting -->
+        <h1 class="text-7xl font-extrabold text-[#1A1816] mb-4 tracking-tight whitespace-nowrap">
+          Welcome,&nbsp;{customerName}!
         </h1>
 
-        <p class="text-4xl text-[#52A675] font-bold mb-12">
-          Enjoy your meal 🍽️
+        <p class="text-4xl text-[#52A675] font-bold">
+          Enjoy your meal
         </p>
-
-        {#if Object.keys(dietary_flags).length > 0}
-          <div class="bg-[#E8E6E1] rounded-sm p-8 border-2 border-[#D9D7D2] shadow-lg">
-            <p class="text-2xl font-extrabold text-[#1A1816] mb-6 uppercase tracking-wide">Dietary Preferences</p>
-            <div class="flex flex-wrap gap-3 justify-center">
-              {#each Object.entries(dietary_flags) as [key, value]}
-                {#if value}
-                  <span class="px-5 py-2 bg-[#52A675] text-white rounded-sm text-lg font-bold border-2 border-[#52A675]/50 uppercase tracking-wide">
-                    {key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                  </span>
-                {/if}
-              {/each}
-            </div>
-          </div>
-        {/if}
       </div>
     </div>
   {:else if viewState === 'error'}
@@ -481,7 +544,7 @@
         <!-- Error icon - muted red, industrial -->
         <div class="inline-flex items-center justify-center w-40 h-40 bg-[#D97F3E] rounded-sm mb-8 shadow-xl border-4 border-[#D97F3E]/30">
           <svg class="w-24 h-24 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="4" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
         </div>
 
@@ -500,15 +563,13 @@
 
         <p class="text-3xl text-[#D97F3E] font-bold mb-8">{message}</p>
 
-        <div class="bg-[#E8E6E1] rounded-sm p-8 border-2 border-[#D9D7D2] shadow-lg">
-          <p class="text-2xl text-[#5C5A56] font-medium">
-            {#if errorCode === 'ALREADY_REDEEMED'}
-              You've already picked up your meal today. Enjoy! 🍽️
-            {:else}
+        {#if errorCode !== 'ALREADY_REDEEMED'}
+          <div class="bg-[#E8E6E1] rounded-sm p-8 border-2 border-[#D9D7D2] shadow-lg">
+            <p class="text-2xl text-[#5C5A56] font-medium">
               Check your QR code or contact support
-            {/if}
-          </p>
-        </div>
+            </p>
+          </div>
+        {/if}
       </div>
     </div>
   {/if}
@@ -523,5 +584,25 @@
 
   .animate-scan {
     animation: scan 2s linear infinite;
+  }
+
+  /* Full-width scanning lines - unrestricted movement */
+  @keyframes scan-fullwidth {
+    0% { transform: translateY(-100vh); }
+    100% { transform: translateY(100vh); }
+  }
+
+  .animate-scan-fullwidth {
+    animation: scan-fullwidth 3s linear infinite;
+  }
+
+  /* Slower, more organic pulse for ambient detection */
+  @keyframes pulse-slow {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.7; }
+  }
+
+  .animate-pulse-slow {
+    animation: pulse-slow 3s ease-in-out infinite;
   }
 </style>

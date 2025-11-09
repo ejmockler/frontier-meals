@@ -36,10 +36,13 @@ export const POST: RequestHandler = async ({ request }) => {
       );
     }
 
+    // Extract first name only
+    const firstName = redemptionResult.customer_name?.split(' ')[0] || redemptionResult.customer_name;
+
     return json({
       success: true,
       customer: {
-        name: redemptionResult.customer_name,
+        name: firstName,
         dietary_flags: redemptionResult.customer_dietary_flags
       },
       redemption: {
@@ -87,20 +90,38 @@ export const POST: RequestHandler = async ({ request }) => {
     // Check if redemption succeeded
     if (!redemptionResult.success) {
       const statusCode = redemptionResult.error_code === 'CUSTOMER_NOT_FOUND' ? 404 : 400;
+
+      // Log RPC business rule failure for debugging
+      console.error('[Kiosk Redeem] RPC business rule failure:', {
+        error_code: redemptionResult.error_code,
+        error_message: redemptionResult.error_message,
+        customer_id: customerId,
+        service_date: serviceDate,
+        jti: jti
+      });
+
       return json(
         {
           error: redemptionResult.error_message,
-          code: redemptionResult.error_code
+          code: redemptionResult.error_code,
+          debug: {
+            customer_id: customerId,
+            service_date: serviceDate,
+            jti: jti.substring(0, 8) + '...' // Partial JTI for debugging
+          }
         },
         { status: statusCode }
       );
     }
 
     // Success - return customer data and redemption info
+    // Extract first name only (split on space, take first part)
+    const firstName = redemptionResult.customer_name?.split(' ')[0] || redemptionResult.customer_name;
+
     return json({
       success: true,
       customer: {
-        name: redemptionResult.customer_name,
+        name: firstName,
         dietary_flags: redemptionResult.customer_dietary_flags
       },
       redemption: {
@@ -109,9 +130,41 @@ export const POST: RequestHandler = async ({ request }) => {
       }
     });
   } catch (error) {
+    // Log ALL errors to console.error (not suppressed by Cloudflare)
+    console.error('[Kiosk Redeem] JWT verification error:', {
+      type: error?.constructor?.name,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
     if (error instanceof jose.errors.JWTExpired) {
-      return json({ error: 'QR code expired', code: 'EXPIRED' }, { status: 400 });
+      const decoded = jose.decodeJwt(qrToken);
+      console.error('[Kiosk Redeem] Expired JWT claims:', decoded);
+      return json({
+        error: 'QR code expired',
+        code: 'EXPIRED',
+        debug: {
+          exp: decoded.exp,
+          exp_iso: decoded.exp ? new Date(decoded.exp * 1000).toISOString() : null,
+          current_time: Math.floor(Date.now() / 1000),
+          current_time_iso: new Date().toISOString()
+        }
+      }, { status: 400 });
     }
-    return json({ error: 'Invalid QR code', code: 'INVALID_TOKEN' }, { status: 400 });
+
+    // Return detailed error for debugging
+    const errorDetails = {
+      type: error?.constructor?.name || 'Unknown',
+      message: error instanceof Error ? error.message : String(error),
+      qrTokenPreview: qrToken?.substring(0, 50) + '...'
+    };
+
+    console.error('[Kiosk Redeem] Returning error response:', errorDetails);
+
+    return json({
+      error: 'Invalid QR code',
+      code: 'INVALID_TOKEN',
+      debug: errorDetails
+    }, { status: 400 });
   }
 };
