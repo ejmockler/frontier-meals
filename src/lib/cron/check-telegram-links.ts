@@ -91,10 +91,10 @@ export async function checkTelegramLinks(config: {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+    .header { background: linear-gradient(135deg, #E67E50 0%, #D97F3E 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
     .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-    .button { display: inline-block; background: #3b82f6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }
-    .button-secondary { background: #6b7280; }
+    .button { display: inline-block; background: #E67E50; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }
+    .button-secondary { background: #52A675; }
     .footer { text-align: center; color: #6b7280; font-size: 14px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
   </style>
 </head>
@@ -114,7 +114,7 @@ export async function checkTelegramLinks(config: {
       <a href="${handleUpdateLink}" class="button">✏️ Update My Username</a>
     </div>
 
-    <p style="background: #dbeafe; padding: 15px; border-left: 4px solid #3b82f6; border-radius: 4px; margin: 20px 0;">
+    <p style="background: #D1F4DD; padding: 15px; border-left: 4px solid #52A675; border-radius: 4px; margin: 20px 0;">
       <strong>This will let you:</strong><br>
       • Receive daily meal QR codes<br>
       • Set dietary preferences<br>
@@ -134,12 +134,12 @@ export async function checkTelegramLinks(config: {
 
     <p style="background: #fef3c7; padding: 15px; border-left: 4px solid #f59e0b; border-radius: 4px; margin: 20px 0;">
       <strong>⏰ Links expire in 48 hours.</strong><br>
-      Need help? Message <a href="https://t.me/noahchonlee" style="color: #3b82f6;">@noahchonlee</a> on Telegram.
+      Need help? Message <a href="https://t.me/noahchonlee" style="color: #E67E50;">@noahchonlee</a> on Telegram.
     </p>
   </div>
 
   <div class="footer">
-    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #3b82f6;">@noahchonlee</a> on Telegram</p>
+    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #E67E50;">@noahchonlee</a> on Telegram</p>
     <p style="color: #9ca3af; font-size: 12px;">© 2025 Frontier Meals. All rights reserved.</p>
   </div>
 </body>

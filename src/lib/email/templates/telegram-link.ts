@@ -13,13 +13,13 @@ export function getTelegramLinkEmail(data: {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+    .header { background: linear-gradient(135deg, #2D9B9B 0%, #1F7A7A 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
     .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-    .button { display: inline-block; background: #667eea; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }
-    .button:hover { background: #5568d3; }
+    .button { display: inline-block; background: #2D9B9B; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }
+    .button:hover { background: #1F7A7A; }
     .steps { background: white; padding: 20px; border-radius: 6px; margin: 20px 0; }
     .step { display: flex; align-items: start; margin: 15px 0; }
-    .step-number { background: #667eea; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 15px; flex-shrink: 0; }
+    .step-number { background: #2D9B9B; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 15px; flex-shrink: 0; }
     .footer { text-align: center; color: #6b7280; font-size: 14px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
   </style>
 </head>
@@ -82,7 +82,7 @@ export function getTelegramLinkEmail(data: {
   </div>
 
   <div class="footer">
-    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #667eea;">@noahchonlee</a> on Telegram</p>
+    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #2D9B9B;">@noahchonlee</a> on Telegram</p>
     <p style="color: #9ca3af; font-size: 12px;">© 2025 Frontier Meals. All rights reserved.</p>
   </div>
 </body>

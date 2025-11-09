@@ -12,10 +12,10 @@ export function getAdminMagicLinkEmail(data: {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+    .header { background: linear-gradient(135deg, #E67E50 0%, #D97F3E 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
     .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-    .button { display: inline-block; background: #667eea; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }
-    .button:hover { background: #5568d3; }
+    .button { display: inline-block; background: #E67E50; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }
+    .button:hover { background: #D97F3E; }
     .expiry { background: #fef3c7; padding: 15px; border-left: 4px solid #f59e0b; border-radius: 4px; margin: 20px 0; }
     .footer { text-align: center; color: #6b7280; font-size: 14px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
   </style>

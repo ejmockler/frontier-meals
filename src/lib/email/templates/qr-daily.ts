@@ -47,7 +47,7 @@ export function getQRDailyEmail(data: {
 
     <p style="color: #6b7280;">
       Need to skip a day? Use <code>/skip</code> in Telegram<br>
-      Questions? Message <a href="https://t.me/noahchonlee" style="color: #10b981;">@noahchonlee</a>
+      Questions? Message <a href="https://t.me/noahchonlee" style="color: #52A675;">@noahchonlee</a>
     </p>
   </div>
 

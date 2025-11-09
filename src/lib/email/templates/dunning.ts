@@ -38,13 +38,13 @@ export function getDunningSoftEmail(data: { customer_name: string; amount_due: s
       <a href="${data.update_payment_url}" class="button">Update Payment Method</a>
     </div>
 
-    <p style="background: #dbeafe; padding: 15px; border-left: 4px solid #3b82f6; border-radius: 4px; margin-top: 24px;">
+    <p style="background: #D1F4DD; padding: 15px; border-left: 4px solid #52A675; border-radius: 4px; margin-top: 24px;">
       <strong>Good news:</strong> Your meal access continues uninterrupted while we work this out. We'll automatically retry in 24-48 hours.
     </p>
   </div>
 
   <div class="footer">
-    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #667eea;">@noahchonlee</a> on Telegram</p>
+    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #E67E50;">@noahchonlee</a> on Telegram</p>
     <p style="color: #9ca3af; font-size: 12px;">© 2025 Frontier Meals. All rights reserved.</p>
   </div>
 </body>
@@ -93,7 +93,7 @@ export function getDunningRetryEmail(data: { customer_name: string; update_payme
   </div>
 
   <div class="footer">
-    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #667eea;">@noahchonlee</a> on Telegram</p>
+    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #E67E50;">@noahchonlee</a> on Telegram</p>
     <p style="color: #9ca3af; font-size: 12px;">© 2025 Frontier Meals. All rights reserved.</p>
   </div>
 </body>
@@ -144,7 +144,7 @@ export function getDunningFinalEmail(data: { customer_name: string; amount_due: 
   </div>
 
   <div class="footer">
-    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #667eea;">@noahchonlee</a> on Telegram</p>
+    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #E67E50;">@noahchonlee</a> on Telegram</p>
     <p style="color: #9ca3af; font-size: 12px;">© 2025 Frontier Meals. All rights reserved.</p>
   </div>
 </body>
@@ -180,7 +180,7 @@ export function getCanceledNoticeEmail(data: { customer_name: string }) {
 
     <p>Your Frontier Meals subscription has been canceled. You'll stop receiving daily QR codes immediately.</p>
 
-    <p><strong>Want to come back?</strong> You're always welcome to resubscribe at <a href="https://frontier-meals.com" style="color: #667eea;">frontier-meals.com</a></p>
+    <p><strong>Want to come back?</strong> You're always welcome to resubscribe at <a href="https://frontier-meals.com" style="color: #E67E50;">frontier-meals.com</a></p>
 
     <p>We appreciate you being part of Frontier Meals. If you have any feedback about your experience, we'd love to hear it—message @noahchonlee on Telegram.</p>
   </div>
