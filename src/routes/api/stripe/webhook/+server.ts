@@ -335,14 +335,108 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
     return;
   }
 
+  // Fetch subscription from Stripe to get authoritative period dates
+  // In Stripe API 2025-10-29.clover, invoice.period_start/end are deprecated
+  // and represent "when invoice items were added" (single instant), NOT the billing cycle
+  console.log('[Stripe API] Fetching subscription:', stripeSubscriptionId);
+  const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId, {
+    expand: ['items']
+  });
+
+  // Period dates are in subscription items, not invoice or subscription level
+  const firstItem = subscription.items.data[0];
+  const periodStart = firstItem?.current_period_start;
+  const periodEnd = firstItem?.current_period_end;
+
+  console.log('[Stripe API] Subscription retrieved:', {
+    id: subscription.id,
+    status: subscription.status,
+    items_count: subscription.items.data.length,
+    first_item_period_start: periodStart,
+    first_item_period_end: periodEnd
+  });
+
+  const periodStartISO = periodStart
+    ? new Date(periodStart * 1000).toISOString()
+    : null;
+  const periodEndISO = periodEnd
+    ? new Date(periodEnd * 1000).toISOString()
+    : null;
+
+  // Check if subscription already has valid period dates (from checkout.session.completed)
+  // If so, don't overwrite with potentially stale Stripe API data
+  const { data: existingSub } = await supabase
+    .from('subscriptions')
+    .select('current_period_start, current_period_end')
+    .eq('stripe_subscription_id', stripeSubscriptionId)
+    .single();
+
+  if (existingSub?.current_period_start && existingSub?.current_period_end) {
+    const existingStart = new Date(existingSub.current_period_start).getTime();
+    const existingEnd = new Date(existingSub.current_period_end).getTime();
+    const existingDurationDays = (existingEnd - existingStart) / (1000 * 24 * 60 * 60);
+
+    // If existing dates are valid (end > start, duration > 1 day), skip update
+    if (existingEnd > existingStart && existingDurationDays > 1) {
+      console.log('[handleInvoicePaid] Subscription already has valid period dates, skipping update:', {
+        existing_start: existingSub.current_period_start,
+        existing_end: existingSub.current_period_end,
+        duration_days: existingDurationDays
+      });
+      return;
+    }
+  }
+
+  // Validate period dates from Stripe
+  if (periodStart && periodEnd) {
+    if (periodEnd <= periodStart) {
+      console.error('[handleInvoicePaid] CRITICAL: Invalid period dates from Stripe - end <= start:', {
+        period_start: periodStartISO,
+        period_end: periodEndISO,
+        subscription_id: stripeSubscriptionId
+      });
+      throw new Error(`Invalid subscription period: end (${periodEndISO}) <= start (${periodStartISO})`);
+    }
+
+    const durationDays = (periodEnd - periodStart) / (24 * 60 * 60);
+
+    // Reject zero-duration periods (Stripe API eventual consistency issue)
+    if (durationDays < 1) {
+      console.error('[handleInvoicePaid] CRITICAL: Zero-duration period detected - Stripe API returned stale data:', {
+        duration_days: durationDays,
+        period_start: periodStartISO,
+        period_end: periodEndISO,
+        subscription_id: stripeSubscriptionId
+      });
+      console.log('[handleInvoicePaid] Skipping write to prevent data corruption');
+      return;
+    }
+
+    if (durationDays < 27 || durationDays > 33) {
+      console.warn('[handleInvoicePaid] WARNING: Unexpected period duration:', {
+        duration_days: durationDays,
+        expected: '28-31 days (monthly)',
+        period_start: periodStartISO,
+        period_end: periodEndISO,
+        subscription_id: stripeSubscriptionId
+      });
+    } else {
+      console.log('[handleInvoicePaid] Period validation passed:', {
+        duration_days: durationDays,
+        period_start: periodStartISO,
+        period_end: periodEndISO
+      });
+    }
+  }
+
   // UPSERT pattern: Try to update existing subscription first
   console.log('[DB] Attempting to update subscription:', { stripe_subscription_id: stripeSubscriptionId });
   const { data: updatedSubs, error: updateError } = await supabase
     .from('subscriptions')
     .update({
-      status: 'active',
-      current_period_start: new Date(invoice.period_start * 1000).toISOString(),
-      current_period_end: new Date(invoice.period_end * 1000).toISOString()
+      status: subscription.status,
+      current_period_start: periodStartISO,
+      current_period_end: periodEndISO
     })
     .eq('stripe_subscription_id', stripeSubscriptionId)
     .select();
@@ -395,13 +489,13 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
       console.log('[DB SUCCESS] Customer created:', { customer_id: customerId });
     }
 
-    // Create subscription with invoice period dates
+    // Create subscription with subscription item period dates (NOT invoice dates!)
     const { error: insertError } = await supabase.from('subscriptions').insert({
       customer_id: customerId,
       stripe_subscription_id: stripeSubscriptionId,
-      status: 'active',
-      current_period_start: new Date(invoice.period_start * 1000).toISOString(),
-      current_period_end: new Date(invoice.period_end * 1000).toISOString()
+      status: subscription.status,
+      current_period_start: periodStartISO,
+      current_period_end: periodEndISO
     });
 
     if (insertError) {
@@ -429,13 +523,13 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
       metadata: {
         invoice_id: invoice.id,
         amount_paid: invoice.amount_paid,
-        period_start: new Date(invoice.period_start * 1000).toISOString(),
-        period_end: new Date(invoice.period_end * 1000).toISOString()
+        period_start: periodStartISO,
+        period_end: periodEndISO
       }
     });
   }
 
-  console.log(`[handleInvoicePaid] Complete - period ${new Date(invoice.period_start * 1000).toISOString()} to ${new Date(invoice.period_end * 1000).toISOString()}`);
+  console.log(`[handleInvoicePaid] Complete - period ${periodStartISO} to ${periodEndISO}`);
 }
 
 async function handlePaymentFailed(invoice: Stripe.Invoice) {

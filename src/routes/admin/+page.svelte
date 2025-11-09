@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { invalidate } from '$app/navigation';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -7,6 +9,44 @@
   let showTestQRModal = $state(false);
   let testQRDate = $state('');
   let testQRLoading = $state(false);
+
+  // Auto-refresh state
+  let isRefreshing = $state(false);
+  let lastRefresh = Date.now();
+
+  // Auto-refresh dashboard metrics every 30 seconds
+  onMount(() => {
+    const refreshInterval = setInterval(() => {
+      // Only refresh if page is visible (don't waste queries when tab is hidden)
+      if (document.visibilityState === 'visible') {
+        isRefreshing = true;
+        invalidate('admin:dashboard');
+        lastRefresh = Date.now();
+        setTimeout(() => isRefreshing = false, 300);
+      }
+    }, 30000); // 30 seconds
+
+    // Refresh when page becomes visible again (user switches back to tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const timeSinceLastRefresh = Date.now() - lastRefresh;
+        // Only refresh if it's been more than 15 seconds
+        if (timeSinceLastRefresh > 15000) {
+          isRefreshing = true;
+          invalidate('admin:dashboard');
+          lastRefresh = Date.now();
+          setTimeout(() => isRefreshing = false, 300);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(refreshInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  });
 
   // Get today's date in YYYY-MM-DD format for input default
   function getTodayString(): string {
@@ -82,10 +122,16 @@
 </svelte:head>
 
 <div class="space-y-8">
-  <!-- Page header -->
-  <div>
+  <!-- Page header with refresh indicator -->
+  <div class="relative">
     <h1 class="text-3xl font-extrabold tracking-tight text-[#1A1816]">Dashboard</h1>
     <p class="text-[#5C5A56] mt-2">Welcome back. Here's what's happening today.</p>
+
+    {#if isRefreshing}
+      <div class="absolute top-0 right-0 px-3 py-1 bg-[#2D9B9B] border-2 border-[#2D9B9B]/70 rounded-sm text-xs text-white font-bold animate-pulse">
+        Updated
+      </div>
+    {/if}
   </div>
 
   <!-- Key metrics grid -->

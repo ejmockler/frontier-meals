@@ -64,19 +64,11 @@ export function formatInPT(date: Date | string, formatString: string): string {
  * Returns UTC Date object for database storage
  */
 export function endOfDayPT(date: Date | string): Date {
-	const dateObj = typeof date === 'string' ? new Date(date) : date;
-	const ptDate = toPacificTime(dateObj);
-	const endOfDayPT = setMilliseconds(
-		setSeconds(
-			setMinutes(
-				setHours(ptDate, 23),
-				59
-			),
-			59
-		),
-		999
-	);
-	return fromPacificTime(endOfDayPT);
+	const dateStr = typeof date === 'string' ? date : format(date, 'yyyy-MM-dd', { timeZone: PACIFIC_TZ });
+
+	// Create a PT wall-clock time at 23:59:59.999 and convert to UTC
+	// This ensures "2025-11-09" becomes "2025-11-09T23:59:59.999" in PT, not UTC
+	return fromZonedTime(new Date(`${dateStr}T23:59:59.999`), PACIFIC_TZ);
 }
 
 /**
@@ -84,19 +76,11 @@ export function endOfDayPT(date: Date | string): Date {
  * Returns UTC Date object for database storage
  */
 export function startOfDayPT(date: Date | string): Date {
-	const dateObj = typeof date === 'string' ? new Date(date) : date;
-	const ptDate = toPacificTime(dateObj);
-	const startOfDayPT = setMilliseconds(
-		setSeconds(
-			setMinutes(
-				setHours(ptDate, 0),
-				0
-			),
-			0
-		),
-		0
-	);
-	return fromPacificTime(startOfDayPT);
+	const dateStr = typeof date === 'string' ? date : format(date, 'yyyy-MM-dd', { timeZone: PACIFIC_TZ });
+
+	// Create a PT wall-clock time at 00:00:00.000 and convert to UTC
+	// This ensures "2025-11-09" becomes "2025-11-09T00:00:00.000" in PT, not UTC
+	return fromZonedTime(new Date(`${dateStr}T00:00:00.000`), PACIFIC_TZ);
 }
 
 /**

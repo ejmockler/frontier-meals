@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { enhance } from '$app/forms';
-  import { invalidateAll } from '$app/navigation';
+  import { invalidateAll, goto } from '$app/navigation';
+  import { toasts } from '$lib/stores/toast';
 
   export let data: PageData;
   export let form;
@@ -11,13 +12,26 @@
   let selectedCustomer: any = null;
   let showQRConfirm = false;
   let isRegenerating = false;
+  let searchTimeout: ReturnType<typeof setTimeout>;
 
-  // Handle search
-  function handleSearch() {
+  // Handle search with client-side navigation (no page reload)
+  async function handleSearch() {
     const params = new URLSearchParams();
     if (search) params.set('search', search);
     if (status && status !== 'all') params.set('status', status);
-    window.location.href = `/admin/customers${params.toString() ? '?' + params.toString() : ''}`;
+
+    // Navigate without reload + invalidate data
+    await goto(`/admin/customers${params.toString() ? '?' + params.toString() : ''}`, {
+      keepFocus: true,
+      noScroll: false, // Reset scroll on new search
+      invalidateAll: true
+    });
+  }
+
+  // Debounced search (auto-search as user types)
+  function debouncedSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(handleSearch, 500);
   }
 
   // Get subscription for customer
@@ -54,11 +68,11 @@
   $: if (form?.success) {
     isRegenerating = false;
     selectedCustomer = null;
-    // Show success toast (you could add a toast component here)
+    toasts.show('QR code sent successfully!', 'success');
     setTimeout(() => invalidateAll(), 500);
   } else if (form?.error) {
     isRegenerating = false;
-    alert(form.error);
+    toasts.show(form.error, 'error', 5000);
   }
 </script>
 
@@ -81,6 +95,7 @@
           <input
             type="text"
             bind:value={search}
+            on:input={debouncedSearch}
             on:keypress={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="Search by name, email, or Telegram..."
             class="w-full pl-10 pr-4 py-2 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none font-medium text-[#1A1816] bg-white"
@@ -101,13 +116,6 @@
         <option value="past_due">Past due</option>
         <option value="canceled">Canceled</option>
       </select>
-
-      <button
-        on:click={handleSearch}
-        class="px-6 py-2 bg-[#E67E50] border-2 border-[#D97F3E] text-white font-bold rounded-sm hover:bg-[#D97F3E] hover:shadow-xl shadow-lg transition-all"
-      >
-        Search
-      </button>
     </div>
   </div>
 

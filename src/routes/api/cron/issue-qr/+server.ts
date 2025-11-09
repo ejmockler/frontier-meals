@@ -6,7 +6,7 @@ import {
 } from '$env/static/public';
 import {
   SUPABASE_SERVICE_ROLE_KEY,
-  QR_PRIVATE_KEY,
+  QR_PRIVATE_KEY_BASE64,
   CRON_SECRET
 } from '$env/static/private';
 import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
@@ -37,10 +37,19 @@ export const POST: RequestHandler = async ({ request }) => {
   console.log('[Cron] Starting daily QR issuance job');
 
   try {
+    // Decode base64-encoded private key (needed because env vars can't contain newlines)
+    // Use Web APIs available in Cloudflare Workers
+    const binaryString = atob(QR_PRIVATE_KEY_BASE64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const qrPrivateKey = new TextDecoder().decode(bytes);
+
     const results = await issueDailyQRCodes({
       supabaseUrl: PUBLIC_SUPABASE_URL,
       supabaseServiceKey: SUPABASE_SERVICE_ROLE_KEY,
-      qrPrivateKey: QR_PRIVATE_KEY
+      qrPrivateKey
     });
 
     console.log(`[Cron] Job complete. Issued: ${results.issued}, Errors: ${results.errors.length}`);

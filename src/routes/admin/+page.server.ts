@@ -6,7 +6,9 @@ import { IS_DEMO_MODE, getMockDashboardMetrics } from '$lib/demo';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ depends }) => {
+  depends('admin:dashboard'); // Mark for selective invalidation
+
   // Demo mode: return mock dashboard metrics
   if (IS_DEMO_MODE) {
     const mockMetrics = getMockDashboardMetrics();
@@ -23,7 +25,7 @@ export const load: PageServerLoad = async () => {
 
   const today = new Date().toISOString().split('T')[0];
 
-  // Fetch dashboard metrics
+  // Fetch dashboard metrics and activity log
   const [
     { count: totalCustomers },
     { count: activeSubscriptions },
@@ -40,27 +42,35 @@ export const load: PageServerLoad = async () => {
       .limit(10)
   ]);
 
-  // Enrich activity with customer names for readability
-  const recentActivity = await Promise.all((rawActivity || []).map(async (activity) => {
-    // Extract customer ID from subject
+  // Extract all customer IDs from activity (batch operation)
+  const customerIds = Array.from(new Set(
+    (rawActivity || [])
+      .map(a => a.subject?.match(/customer:([a-f0-9-]+)/)?.[1])
+      .filter(Boolean) as string[]
+  ));
+
+  // Fetch ALL customers in ONE query (10x faster than N+1)
+  const { data: customers } = customerIds.length > 0
+    ? await supabase
+        .from('customers')
+        .select('id, email')
+        .in('id', customerIds)
+    : { data: [] };
+
+  // Build lookup map for O(1) access
+  const customerMap = new Map(
+    (customers || []).map(c => [c.id, c.email])
+  );
+
+  // Enrich activity with customer names (no async, pure mapping)
+  const recentActivity = (rawActivity || []).map(activity => {
     const customerIdMatch = activity.subject?.match(/customer:([a-f0-9-]+)/);
     const customerId = customerIdMatch?.[1];
-
-    let customerName = null;
-    if (customerId) {
-      const { data: customer } = await supabase
-        .from('customers')
-        .select('email')
-        .eq('id', customerId)
-        .single();
-      customerName = customer?.email || null;
-    }
-
     return {
       ...activity,
-      customerName
+      customerName: customerId ? customerMap.get(customerId) || null : null
     };
-  }));
+  });
 
   // Get subscription status breakdown
   const { data: subscriptionStats } = await supabase

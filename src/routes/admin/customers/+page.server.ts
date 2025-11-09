@@ -5,7 +5,7 @@ import type { PageServerLoad, Actions } from './$types';
 import { fail } from '@sveltejs/kit';
 import * as jose from 'jose';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
-import QRCode from 'qrcode';
+import qrcode from 'qrcode-generator';
 import { sendEmail } from '$lib/email/send';
 import { getQRDailyEmail } from '$lib/email/templates/qr-daily';
 import { validateCSRFFromFormData } from '$lib/auth/csrf';
@@ -115,12 +115,14 @@ export const actions: Actions = {
         .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
         .sign(privateKey);
 
-      // Generate QR code
-      const qrCodeDataUrl = await QRCode.toDataURL(jwt, {
-        width: 280,
-        margin: 2,
-        color: { dark: '#000000', light: '#FFFFFF' }
-      });
+      // Generate QR code using qrcode-generator (pure JS, Cloudflare Workers compatible)
+      const qr = qrcode(0, 'H'); // 0 = auto type number, 'H' = high error correction
+      qr.addData(jwt);
+      qr.make();
+      const qrCodeDataUrl = qr.createDataURL(10, 2); // cellSize=10, margin=2 (returns data:image/gif;base64,...)
+
+      // Extract base64 content from data URL
+      const base64Content = qrCodeDataUrl.replace(/^data:image\/gif;base64,/, '');
 
       // Upsert entitlement
       await supabase
@@ -144,17 +146,24 @@ export const actions: Actions = {
           used_at: null
         }, { onConflict: 'customer_id,service_date' });
 
-      // Send email
+      // Send email with QR code as inline attachment (CID)
       const emailTemplate = getQRDailyEmail({
         customer_name: customer.name,
         service_date: today,
-        qr_code_data_url: qrCodeDataUrl
+        qr_code_data_url: 'cid:qr-code' // Reference the inline attachment
       });
 
       await sendEmail({
         to: customer.email,
         subject: emailTemplate.subject,
         html: emailTemplate.html,
+        attachments: [
+          {
+            filename: 'qr-code.gif',
+            content: base64Content,
+            content_id: 'qr-code' // Inline attachment ID
+          }
+        ],
         tags: [
           { name: 'category', value: 'qr_regenerated' },
           { name: 'service_date', value: today },

@@ -8,7 +8,7 @@
 
   let mode: 'list' | 'create' | 'edit' = 'list';
   let selectedTemplate: any = null;
-  let showPreview = false;
+  let showPreview = true; // Auto-show preview
   let showTestModal = false;
 
   // Form state
@@ -270,11 +270,12 @@
               </div>
 
               <!-- HTML preview -->
-              <div class="p-4 max-h-[600px] overflow-y-auto">
+              <div class="p-4 max-h-[600px] overflow-y-auto bg-white">
                 {#if htmlBody}
                   <iframe
                     title="Email Preview"
                     srcdoc={previewHtml}
+                    sandbox="allow-same-origin"
                     class="w-full h-[500px] border-0"
                   ></iframe>
                 {:else}
