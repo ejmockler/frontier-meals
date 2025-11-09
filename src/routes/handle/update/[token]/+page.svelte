@@ -8,6 +8,8 @@
 	let isLoading = false;
 	let isSuccess = false;
 	let error = '';
+	let deepLink = '';
+	let copied = false;
 
 	// Auto-add @ prefix if not present
 	function formatHandle(value: string) {
@@ -15,6 +17,15 @@
 			return '@' + value;
 		}
 		return value;
+	}
+
+	// Copy deep link to clipboard
+	function copyLink() {
+		if (deepLink) {
+			navigator.clipboard.writeText(deepLink);
+			copied = true;
+			setTimeout(() => copied = false, 2000);
+		}
 	}
 
 	async function handleSubmit() {
@@ -51,6 +62,8 @@
 				}
 				isLoading = false;
 			} else {
+				// Success - extract deep link from response
+				deepLink = result.deep_link || '';
 				isSuccess = true;
 			}
 		} catch (err) {
@@ -148,25 +161,62 @@
 						Your Telegram handle has been updated to <strong class="text-gray-900">{formatHandle(handle)}</strong>
 					</p>
 
-					<div class="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
-						<p class="text-sm text-blue-900 mb-2">
-							<strong>Next steps:</strong>
-						</p>
-						<ol class="text-sm text-blue-800 space-y-1 list-decimal list-inside text-left">
-							<li>Open Telegram and search for <strong>@frontiermealsbot</strong></li>
-							<li>Click "Start" to connect your account</li>
-							<li>You'll receive your meal QR codes daily</li>
-						</ol>
-					</div>
+					{#if deepLink}
+						<!-- Telegram Connection Box -->
+						<div class="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
+							<p class="text-sm text-blue-900 mb-3 font-semibold">
+								📱 Next Step: Connect Telegram
+							</p>
 
-					<a
-						href="https://t.me/frontiermealsbot"
-						target="_blank"
-						rel="noopener noreferrer"
-						class="inline-flex items-center justify-center w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold py-3 px-4 rounded-lg hover:from-blue-700 hover:to-cyan-700 focus:ring-4 focus:ring-blue-200 transition-all"
-					>
-						Open Telegram Bot →
-					</a>
+							<!-- Deep Link Display -->
+							<div class="bg-white border border-blue-200 rounded-lg p-3 mb-3">
+								<code class="text-xs text-gray-600 break-all font-mono">{deepLink}</code>
+							</div>
+
+							<!-- Action Buttons -->
+							<div class="flex gap-2">
+								<a
+									href={deepLink}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:from-blue-700 hover:to-cyan-700 focus:ring-4 focus:ring-blue-200 transition-all text-sm"
+								>
+									Open Telegram Bot →
+								</a>
+								<button
+									on:click={copyLink}
+									class="bg-white hover:bg-gray-50 text-gray-700 font-semibold py-2.5 px-4 rounded-lg transition-all border border-blue-200 text-sm"
+								>
+									{copied ? '✓ Copied!' : 'Copy'}
+								</button>
+							</div>
+
+							<p class="text-xs text-blue-700 mt-3">
+								💡 This link is valid for 7 days. We've also sent it to your email.
+							</p>
+						</div>
+					{:else}
+						<!-- Fallback if no deep link -->
+						<div class="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
+							<p class="text-sm text-blue-900 mb-2">
+								<strong>Next steps:</strong>
+							</p>
+							<ol class="text-sm text-blue-800 space-y-1 list-decimal list-inside text-left">
+								<li>Open Telegram and search for <strong>@frontiermealsbot</strong></li>
+								<li>Click "Start" to connect your account</li>
+								<li>You'll receive your meal QR codes daily</li>
+							</ol>
+						</div>
+
+						<a
+							href="https://t.me/frontiermealsbot"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="inline-flex items-center justify-center w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold py-3 px-4 rounded-lg hover:from-blue-700 hover:to-cyan-700 focus:ring-4 focus:ring-blue-200 transition-all"
+						>
+							Open Telegram Bot →
+						</a>
+					{/if}
 				</div>
 			</div>
 		{/if}

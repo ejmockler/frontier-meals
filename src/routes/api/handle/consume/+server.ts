@@ -94,6 +94,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
+		// Generate new deep link token for Telegram connection
+		const deepLinkToken = randomUUID();
+		const deepLinkTokenHash = await sha256(deepLinkToken);
+		const deepLinkExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+		const deepLink = `https://t.me/frontiermealsbot?start=${deepLinkToken}`;
+
+		console.log('[Handle Consume] Generated new deep link token for customer:', handleToken.customer_id);
+
 		// Update customer handle
 		const { error: updateError } = await supabase
 			.from('customers')
@@ -106,6 +114,20 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (updateError) {
 			console.error('[Handle Consume] Error updating customer:', updateError);
 			return json({ error: 'Failed to update handle' }, { status: 500 });
+		}
+
+		// Store new deep link token in database
+		const { error: tokenInsertError } = await supabase
+			.from('telegram_deep_link_tokens')
+			.insert({
+				customer_id: handleToken.customer_id,
+				token_hash: deepLinkTokenHash,
+				expires_at: deepLinkExpiresAt.toISOString()
+			});
+
+		if (tokenInsertError) {
+			console.error('[Handle Consume] Error storing deep link token:', tokenInsertError);
+			// Continue anyway - deep link generation is non-critical for handle update
 		}
 
 		// Mark token as used
@@ -122,14 +144,17 @@ export const POST: RequestHandler = async ({ request }) => {
 			metadata: {
 				new_handle: newHandle,
 				token_consumed: true,
-				correction_flow: true
+				correction_flow: true,
+				deep_link_generated: true
 			}
 		});
 
 		return json({
 			success: true,
 			message: 'Handle updated successfully',
-			new_handle: newHandle
+			new_handle: newHandle,
+			deep_link: deepLink,
+			deep_link_expires_at: deepLinkExpiresAt.toISOString()
 		});
 	} catch (error) {
 		console.error('[Handle Consume] Unexpected error:', error);
