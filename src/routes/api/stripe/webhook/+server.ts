@@ -154,21 +154,18 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   console.log('[DB SUCCESS] Customer created:', { customer_id: customer.id, email: customer.email });
 
-  // Fetch subscription details
+  // Fetch complete subscription data from Stripe API
+  // This ensures we have period dates immediately, regardless of webhook ordering
   console.log('[Stripe API] Fetching subscription:', stripeSubscriptionId);
   const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
-  console.log('[Stripe API] Subscription retrieved (FULL DATA):', JSON.stringify({
+  console.log('[Stripe API] Subscription retrieved:', {
     id: subscription.id,
     status: subscription.status,
     current_period_start: subscription.current_period_start,
-    current_period_end: subscription.current_period_end,
-    billing_cycle_anchor: subscription.billing_cycle_anchor,
-    created: subscription.created,
-    trial_start: subscription.trial_start,
-    trial_end: subscription.trial_end
-  }));
+    current_period_end: subscription.current_period_end
+  });
 
-  // Create subscription record
+  // Create subscription record with complete data from Stripe API
   console.log('[DB] Creating subscription record:', { customer_id: customer.id, stripe_subscription_id: stripeSubscriptionId });
   const { error: subscriptionError } = await supabase.from('subscriptions').insert({
     customer_id: customer.id,
@@ -306,84 +303,126 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
   const stripeCustomerId = invoice.customer as string;
-  const stripeSubscriptionId = invoice.subscription as string;
 
-  console.log('[handleInvoicePaid] Processing invoice:', { invoice_id: invoice.id, stripe_customer_id: stripeCustomerId });
+  // In Stripe API 2025-10-29.clover, the subscription field was moved to parent.subscription_details.subscription
+  // @ts-ignore - parent field typing may not be complete
+  const stripeSubscriptionId = invoice.parent?.subscription_details?.subscription as string | undefined;
+
+  console.log('[handleInvoicePaid] Processing invoice:', {
+    invoice_id: invoice.id,
+    stripe_customer_id: stripeCustomerId,
+    subscription_id: stripeSubscriptionId,
+    period_start: invoice.period_start,
+    period_end: invoice.period_end,
+    billing_reason: invoice.billing_reason
+  });
 
   if (!stripeSubscriptionId) {
     console.log('[handleInvoicePaid] Not a subscription invoice, skipping');
-    // Not a subscription invoice (e.g., one-time payment)
     return;
   }
 
-  // Find customer
-  console.log('[DB] Finding customer by stripe_customer_id:', stripeCustomerId);
-  const { data: customer, error: customerError } = await supabase
-    .from('customers')
-    .select('*')
-    .eq('stripe_customer_id', stripeCustomerId)
-    .single();
-
-  if (customerError || !customer) {
-    console.error('[DB ERROR] Customer not found:', {
-      code: customerError?.code,
-      message: customerError?.message,
-      stripe_customer_id: stripeCustomerId
-    });
-    throw new Error('Customer not found');
-  }
-
-  console.log('[DB SUCCESS] Customer found:', { customer_id: customer.id });
-
-  // Update subscription with PAID period dates and active status
-  // This is critical: only when invoice.paid fires do we grant access to the new period
-  console.log('[DB] Updating subscription to active:', { stripe_subscription_id: stripeSubscriptionId });
-  const { error: updateError } = await supabase
+  // UPSERT pattern: Try to update existing subscription first
+  console.log('[DB] Attempting to update subscription:', { stripe_subscription_id: stripeSubscriptionId });
+  const { data: updatedSubs, error: updateError } = await supabase
     .from('subscriptions')
     .update({
       status: 'active',
       current_period_start: new Date(invoice.period_start * 1000).toISOString(),
       current_period_end: new Date(invoice.period_end * 1000).toISOString()
     })
-    .eq('stripe_subscription_id', stripeSubscriptionId);
+    .eq('stripe_subscription_id', stripeSubscriptionId)
+    .select();
 
   if (updateError) {
-    console.error('[DB ERROR] Error updating subscription:', {
-      code: updateError.code,
-      message: updateError.message,
-      details: updateError.details,
-      hint: updateError.hint,
-      stripe_subscription_id: stripeSubscriptionId
-    });
+    console.error('[DB ERROR] Error updating subscription:', updateError);
     throw updateError;
   }
 
-  console.log('[DB SUCCESS] Subscription updated to active');
+  // If subscription doesn't exist, create it (handles race condition where invoice.paid arrives first)
+  if (!updatedSubs || updatedSubs.length === 0) {
+    console.log('[handleInvoicePaid] Subscription not found, creating it (invoice.paid arrived before checkout.session.completed)');
 
-  // Log audit event
-  console.log('[DB] Creating audit_log entry for invoice_paid');
-  const { error: auditError } = await supabase.from('audit_log').insert({
-    actor: 'system',
-    action: 'invoice_paid',
-    subject: `customer:${customer.id}`,
-    metadata: {
-      invoice_id: invoice.id,
-      amount_paid: invoice.amount_paid,
-      period_start: new Date(invoice.period_start * 1000).toISOString(),
-      period_end: new Date(invoice.period_end * 1000).toISOString()
+    // Find or create customer
+    let customerId: string;
+    const { data: existingCustomer } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('stripe_customer_id', stripeCustomerId)
+      .single();
+
+    if (existingCustomer) {
+      customerId = existingCustomer.id;
+    } else {
+      // Customer doesn't exist either - fetch from Stripe and create
+      console.log('[Stripe API] Fetching customer:', stripeCustomerId);
+      const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId);
+
+      if (stripeCustomer.deleted) {
+        console.error('[handleInvoicePaid] Customer is deleted, cannot create subscription');
+        return;
+      }
+
+      const { data: newCustomer, error: customerError } = await supabase
+        .from('customers')
+        .insert({
+          stripe_customer_id: stripeCustomerId,
+          email: stripeCustomer.email || 'unknown@example.com',
+          name: stripeCustomer.name || 'Unknown'
+        })
+        .select()
+        .single();
+
+      if (customerError) {
+        console.error('[DB ERROR] Error creating customer:', customerError);
+        throw customerError;
+      }
+
+      customerId = newCustomer.id;
+      console.log('[DB SUCCESS] Customer created:', { customer_id: customerId });
     }
-  });
 
-  if (auditError) {
-    console.error('[DB ERROR] Error creating audit_log:', {
-      code: auditError.code,
-      message: auditError.message
+    // Create subscription with invoice period dates
+    const { error: insertError } = await supabase.from('subscriptions').insert({
+      customer_id: customerId,
+      stripe_subscription_id: stripeSubscriptionId,
+      status: 'active',
+      current_period_start: new Date(invoice.period_start * 1000).toISOString(),
+      current_period_end: new Date(invoice.period_end * 1000).toISOString()
     });
+
+    if (insertError) {
+      console.error('[DB ERROR] Error creating subscription:', insertError);
+      throw insertError;
+    }
+
+    console.log('[DB SUCCESS] Subscription created from invoice.paid');
   } else {
-    console.log('[DB SUCCESS] Audit log created');
+    console.log('[DB SUCCESS] Subscription updated');
   }
 
-  console.log(`[handleInvoicePaid] Invoice paid for customer ${customer.id}, period ${new Date(invoice.period_start * 1000).toISOString()} to ${new Date(invoice.period_end * 1000).toISOString()}`);
+  // Audit log
+  const { data: customer } = await supabase
+    .from('customers')
+    .select('id')
+    .eq('stripe_customer_id', stripeCustomerId)
+    .single();
+
+  if (customer) {
+    await supabase.from('audit_log').insert({
+      actor: 'system',
+      action: 'invoice_paid',
+      subject: `customer:${customer.id}`,
+      metadata: {
+        invoice_id: invoice.id,
+        amount_paid: invoice.amount_paid,
+        period_start: new Date(invoice.period_start * 1000).toISOString(),
+        period_end: new Date(invoice.period_end * 1000).toISOString()
+      }
+    });
+  }
+
+  console.log(`[handleInvoicePaid] Complete - period ${new Date(invoice.period_start * 1000).toISOString()} to ${new Date(invoice.period_end * 1000).toISOString()}`);
 }
 
 async function handlePaymentFailed(invoice: Stripe.Invoice) {
@@ -401,11 +440,15 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
   }
 
   // Update subscription status
-  if (invoice.subscription) {
+  // In Stripe API 2025-10-29.clover, the subscription field was moved to parent.subscription_details.subscription
+  // @ts-ignore - parent field typing may not be complete
+  const stripeSubscriptionId = invoice.parent?.subscription_details?.subscription as string | undefined;
+
+  if (stripeSubscriptionId) {
     await supabase
       .from('subscriptions')
       .update({ status: 'past_due' })
-      .eq('stripe_subscription_id', invoice.subscription as string);
+      .eq('stripe_subscription_id', stripeSubscriptionId);
   }
 
   // Generate Stripe Customer Portal session for payment method update
@@ -467,14 +510,123 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
 }
 
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
-  await supabase
+  console.log('[handleSubscriptionUpdated] Processing subscription update:', {
+    subscription_id: subscription.id,
+    status: subscription.status,
+    current_period_start: subscription.current_period_start,
+    current_period_end: subscription.current_period_end
+  });
+
+  // Handle NULL period dates (can happen during trials or paused subscriptions)
+  const periodStart = subscription.current_period_start
+    ? new Date(subscription.current_period_start * 1000).toISOString()
+    : null;
+  const periodEnd = subscription.current_period_end
+    ? new Date(subscription.current_period_end * 1000).toISOString()
+    : null;
+
+  // UPSERT pattern: Try to update existing subscription first
+  console.log('[DB] Attempting to update subscription:', { stripe_subscription_id: subscription.id });
+  const { data: updatedSubs, error: updateError } = await supabase
     .from('subscriptions')
     .update({
       status: subscription.status,
-      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-      current_period_end: new Date(subscription.current_period_end * 1000).toISOString()
+      current_period_start: periodStart,
+      current_period_end: periodEnd
     })
-    .eq('stripe_subscription_id', subscription.id);
+    .eq('stripe_subscription_id', subscription.id)
+    .select();
+
+  if (updateError) {
+    console.error('[DB ERROR] Error updating subscription:', updateError);
+    throw updateError;
+  }
+
+  // If subscription doesn't exist, create it (handles race condition)
+  if (!updatedSubs || updatedSubs.length === 0) {
+    console.log('[handleSubscriptionUpdated] Subscription not found, creating it (subscription.updated arrived before checkout.session.completed)');
+
+    const stripeCustomerId = subscription.customer as string;
+
+    // Find or create customer
+    let customerId: string;
+    const { data: existingCustomer } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('stripe_customer_id', stripeCustomerId)
+      .single();
+
+    if (existingCustomer) {
+      customerId = existingCustomer.id;
+    } else {
+      // Customer doesn't exist - fetch from Stripe and create
+      console.log('[Stripe API] Fetching customer:', stripeCustomerId);
+      const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId);
+
+      if (stripeCustomer.deleted) {
+        console.error('[handleSubscriptionUpdated] Customer is deleted, cannot create subscription');
+        return;
+      }
+
+      const { data: newCustomer, error: customerError } = await supabase
+        .from('customers')
+        .insert({
+          stripe_customer_id: stripeCustomerId,
+          email: stripeCustomer.email || 'unknown@example.com',
+          name: stripeCustomer.name || 'Unknown'
+        })
+        .select()
+        .single();
+
+      if (customerError) {
+        console.error('[DB ERROR] Error creating customer:', customerError);
+        throw customerError;
+      }
+
+      customerId = newCustomer.id;
+      console.log('[DB SUCCESS] Customer created:', { customer_id: customerId });
+    }
+
+    // Create subscription
+    const { error: insertError } = await supabase.from('subscriptions').insert({
+      customer_id: customerId,
+      stripe_subscription_id: subscription.id,
+      status: subscription.status,
+      current_period_start: periodStart,
+      current_period_end: periodEnd
+    });
+
+    if (insertError) {
+      console.error('[DB ERROR] Error creating subscription:', insertError);
+      throw insertError;
+    }
+
+    console.log('[DB SUCCESS] Subscription created from subscription.updated');
+  } else {
+    console.log('[DB SUCCESS] Subscription updated');
+  }
+
+  // Audit log
+  const stripeCustomerId = subscription.customer as string;
+  const { data: customer } = await supabase
+    .from('customers')
+    .select('id')
+    .eq('stripe_customer_id', stripeCustomerId)
+    .single();
+
+  if (customer) {
+    await supabase.from('audit_log').insert({
+      actor: 'system',
+      action: 'subscription_updated',
+      subject: `customer:${customer.id}`,
+      metadata: {
+        subscription_id: subscription.id,
+        status: subscription.status,
+        period_start: periodStart,
+        period_end: periodEnd
+      }
+    });
+  }
 }
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {

@@ -16,6 +16,42 @@ export async function issueDailyQRCodes(config: {
 
   console.log(`[QR Job] Starting QR issuance for ${today}`);
 
+  // CRITICAL SAFETY CHECK: Alert on subscriptions with NULL period dates
+  const { data: nullDateSubs, error: nullCheckError } = await supabase
+    .from('subscriptions')
+    .select('id, stripe_subscription_id, customers(email)')
+    .eq('status', 'active')
+    .or('current_period_start.is.null,current_period_end.is.null');
+
+  if (nullCheckError) {
+    console.error('[QR Job] Error checking for NULL dates:', nullCheckError);
+  } else if (nullDateSubs && nullDateSubs.length > 0) {
+    const alertMessage = `🚨 CRITICAL: ${nullDateSubs.length} active subscriptions have NULL period dates!\n\nThese customers will NOT receive QR codes:\n${nullDateSubs.map(s => {
+      const customer = Array.isArray(s.customers) ? s.customers[0] : s.customers;
+      return `- ${customer?.email} (${s.stripe_subscription_id})`;
+    }).join('\n')}`;
+
+    console.error('[QR Job] NULL DATE ALERT:', alertMessage);
+
+    // Send alert via Telegram if bot token is available
+    try {
+      const { TELEGRAM_BOT_TOKEN } = await import('$env/static/private');
+      const NOAH_TELEGRAM_ID = '1413464598'; // @noahchonlee
+
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: NOAH_TELEGRAM_ID,
+          text: alertMessage,
+          parse_mode: 'Markdown'
+        })
+      });
+    } catch (alertError) {
+      console.error('[QR Job] Failed to send NULL date alert:', alertError);
+    }
+  }
+
   // Get all active subscriptions where today falls within the PAID period
   // Critical: This prevents QR issuance if invoice payment failed
   const { data: subscriptions, error: subError } = await supabase
