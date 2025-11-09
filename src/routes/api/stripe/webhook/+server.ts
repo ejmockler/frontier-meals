@@ -157,25 +157,38 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   // Fetch complete subscription data from Stripe API
   // This ensures we have period dates immediately, regardless of webhook ordering
   console.log('[Stripe API] Fetching subscription:', stripeSubscriptionId);
-  const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+  const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId, {
+    expand: ['items']
+  });
+
+  // In Stripe API 2025-10-29.clover (Basil 2025-03-31+), period dates moved to subscription items
+  // Access from first subscription item instead of subscription level
+  const firstItem = subscription.items.data[0];
+  const periodStart = firstItem?.current_period_start;
+  const periodEnd = firstItem?.current_period_end;
+
   console.log('[Stripe API] Subscription retrieved:', {
     id: subscription.id,
     status: subscription.status,
-    current_period_start: subscription.current_period_start,
-    current_period_end: subscription.current_period_end
+    items_count: subscription.items.data.length,
+    first_item: {
+      id: firstItem?.id,
+      current_period_start: periodStart,
+      current_period_end: periodEnd
+    }
   });
 
-  // Create subscription record with complete data from Stripe API
+  // Create subscription record with item-level period dates
   console.log('[DB] Creating subscription record:', { customer_id: customer.id, stripe_subscription_id: stripeSubscriptionId });
   const { error: subscriptionError } = await supabase.from('subscriptions').insert({
     customer_id: customer.id,
     stripe_subscription_id: stripeSubscriptionId,
     status: subscription.status,
-    current_period_start: subscription.current_period_start
-      ? new Date(subscription.current_period_start * 1000).toISOString()
+    current_period_start: periodStart
+      ? new Date(periodStart * 1000).toISOString()
       : null,
-    current_period_end: subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000).toISOString()
+    current_period_end: periodEnd
+      ? new Date(periodEnd * 1000).toISOString()
       : null
   });
 
@@ -510,19 +523,25 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
 }
 
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+  // In Stripe API 2025-10-29.clover (Basil 2025-03-31+), period dates moved to subscription items
+  const firstItem = subscription.items?.data?.[0];
+  const periodStart = firstItem?.current_period_start;
+  const periodEnd = firstItem?.current_period_end;
+
   console.log('[handleSubscriptionUpdated] Processing subscription update:', {
     subscription_id: subscription.id,
     status: subscription.status,
-    current_period_start: subscription.current_period_start,
-    current_period_end: subscription.current_period_end
+    items_count: subscription.items?.data?.length,
+    first_item_period_start: periodStart,
+    first_item_period_end: periodEnd
   });
 
   // Handle NULL period dates (can happen during trials or paused subscriptions)
-  const periodStart = subscription.current_period_start
-    ? new Date(subscription.current_period_start * 1000).toISOString()
+  const periodStartISO = periodStart
+    ? new Date(periodStart * 1000).toISOString()
     : null;
-  const periodEnd = subscription.current_period_end
-    ? new Date(subscription.current_period_end * 1000).toISOString()
+  const periodEndISO = periodEnd
+    ? new Date(periodEnd * 1000).toISOString()
     : null;
 
   // UPSERT pattern: Try to update existing subscription first
@@ -531,8 +550,8 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     .from('subscriptions')
     .update({
       status: subscription.status,
-      current_period_start: periodStart,
-      current_period_end: periodEnd
+      current_period_start: periodStartISO,
+      current_period_end: periodEndISO
     })
     .eq('stripe_subscription_id', subscription.id)
     .select();
@@ -592,8 +611,8 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
       customer_id: customerId,
       stripe_subscription_id: subscription.id,
       status: subscription.status,
-      current_period_start: periodStart,
-      current_period_end: periodEnd
+      current_period_start: periodStartISO,
+      current_period_end: periodEndISO
     });
 
     if (insertError) {
@@ -622,8 +641,8 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
       metadata: {
         subscription_id: subscription.id,
         status: subscription.status,
-        period_start: periodStart,
-        period_end: periodEnd
+        period_start: periodStartISO,
+        period_end: periodEndISO
       }
     });
   }
