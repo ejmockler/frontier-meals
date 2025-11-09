@@ -229,8 +229,15 @@
                     </p>
                   {/if}
                   {#if activity.metadata?.telegram_username}
-                    <p class="text-xs text-[#5C5A56] mt-1">
-                      @{activity.metadata.telegram_username}
+                    <p class="text-xs mt-1">
+                      <a
+                        href="https://t.me/{activity.metadata.telegram_username}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="text-[#2D9B9B] hover:text-[#E67E50] font-medium transition-colors hover:underline"
+                      >
+                        @{activity.metadata.telegram_username}
+                      </a>
                     </p>
                   {/if}
                 </div>
