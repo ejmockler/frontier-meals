@@ -2,18 +2,19 @@
   import type { PageData } from './$types';
   import { enhance } from '$app/forms';
 
-  export let data: PageData;
-  export let form;
+  let { data, form }: { data: PageData, form: any } = $props();
 
-  let kioskId = '';
-  let location = '';
-  let sessionUrl = '';
+  let kioskId = $state('');
+  let location = $state('');
+  let sessionUrl = $state('');
 
   // Generate session URL when form succeeds
-  $: if (form?.sessionToken) {
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-    sessionUrl = `${baseUrl}/kiosk?session=${form.sessionToken}`;
-  }
+  $effect(() => {
+    if (form?.sessionToken) {
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      sessionUrl = `${baseUrl}/kiosk?session=${form.sessionToken}`;
+    }
+  });
 
   function copySessionUrl() {
     navigator.clipboard.writeText(sessionUrl);
@@ -32,16 +33,61 @@
     form = null;
   }
 
-  // Predefined kiosk configurations
-  const predefinedKiosks = [
-    { id: 'kiosk-01', location: 'Main Lobby' },
-    { id: 'kiosk-02', location: 'Cafeteria Entrance' },
-    { id: 'kiosk-03', location: 'Building B' }
-  ];
+  // Saved kiosk configurations (stored in localStorage)
+  let savedKiosks = $state<Array<{id: string, location: string}>>([
+    { id: 'kiosk-longevity-11', location: 'Floor 11 - Longevity, Frontier Tower' }
+  ]);
 
-  function selectPredefined(kiosk: typeof predefinedKiosks[0]) {
+  let showAddKiosk = $state(false);
+  let newKioskId = $state('');
+  let newKioskLocation = $state('');
+
+  // Load saved kiosks from localStorage on mount
+  $effect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('frontiermeals_saved_kiosks');
+      if (stored) {
+        try {
+          savedKiosks = JSON.parse(stored);
+        } catch (e) {
+          console.error('Failed to parse saved kiosks', e);
+        }
+      }
+    }
+  });
+
+  function selectPredefined(kiosk: typeof savedKiosks[0]) {
     kioskId = kiosk.id;
     location = kiosk.location;
+  }
+
+  function saveNewKiosk() {
+    if (!newKioskId || !newKioskLocation) return;
+
+    // Add to saved kiosks
+    savedKiosks = [...savedKiosks, { id: newKioskId, location: newKioskLocation }];
+
+    // Save to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('frontiermeals_saved_kiosks', JSON.stringify(savedKiosks));
+    }
+
+    // Select the new kiosk
+    selectPredefined({ id: newKioskId, location: newKioskLocation });
+
+    // Reset form
+    newKioskId = '';
+    newKioskLocation = '';
+    showAddKiosk = false;
+  }
+
+  function removeKiosk(index: number) {
+    savedKiosks = savedKiosks.filter((_, i) => i !== index);
+
+    // Update localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('frontiermeals_saved_kiosks', JSON.stringify(savedKiosks));
+    }
   }
 </script>
 
@@ -64,24 +110,95 @@
     <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-8 shadow-lg">
       <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-6">Configure Kiosk Session</h2>
 
-      <!-- Predefined kiosks -->
+      <!-- Saved kiosks -->
       <div class="mb-6">
-        <label class="block text-sm font-bold text-[#1A1816] mb-3">
-          Quick Select
-        </label>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {#each predefinedKiosks as kiosk}
+        <div class="flex items-center justify-between mb-3">
+          <label class="block text-sm font-bold text-[#1A1816]">
+            Saved Kiosks
+          </label>
+          <button
+            type="button"
+            on:click={() => showAddKiosk = !showAddKiosk}
+            class="px-3 py-1 text-xs font-bold text-[#E67E50] hover:bg-[#E67E50]/10 border-2 border-[#E67E50]/20 hover:border-[#E67E50]/40 rounded-sm transition-all"
+          >
+            {showAddKiosk ? 'Cancel' : '+ Add Kiosk'}
+          </button>
+        </div>
+
+        {#if showAddKiosk}
+          <div class="bg-[#F5F3EF] border-2 border-[#D9D7D2] rounded-sm p-4 mb-4">
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <input
+                type="text"
+                bind:value={newKioskId}
+                placeholder="Kiosk ID"
+                class="px-3 py-2 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none text-sm font-medium text-[#1A1816] bg-white"
+              />
+              <input
+                type="text"
+                bind:value={newKioskLocation}
+                placeholder="Location"
+                class="px-3 py-2 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none text-sm font-medium text-[#1A1816] bg-white"
+              />
+            </div>
             <button
               type="button"
-              on:click={() => selectPredefined(kiosk)}
-              class="p-4 border-2 rounded-sm transition-all text-left
-                {kioskId === kiosk.id ? 'border-[#E67E50] bg-[#E67E50]/10' : 'border-[#D9D7D2] hover:border-[#E67E50]/50 hover:bg-[#E67E50]/5'}"
+              on:click={saveNewKiosk}
+              disabled={!newKioskId || !newKioskLocation}
+              class="w-full px-4 py-2 bg-[#52A675] border-2 border-[#52A675]/70 text-white text-sm font-bold rounded-sm hover:bg-[#52A675]/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <p class="font-extrabold text-[#1A1816] text-sm">{kiosk.id}</p>
-              <p class="text-xs text-[#5C5A56] mt-1">{kiosk.location}</p>
+              Save Kiosk
             </button>
-          {/each}
-        </div>
+          </div>
+        {/if}
+
+        {#if savedKiosks.length <= 3}
+          <!-- Button grid for ≤3 kiosks -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {#each savedKiosks as kiosk, index}
+              <div class="relative">
+                <button
+                  type="button"
+                  on:click={() => selectPredefined(kiosk)}
+                  class="w-full p-4 border-2 rounded-sm transition-all text-left
+                    {kioskId === kiosk.id ? 'border-[#E67E50] bg-[#E67E50]/10' : 'border-[#D9D7D2] hover:border-[#E67E50]/50 hover:bg-[#E67E50]/5'}"
+                >
+                  <p class="font-extrabold text-[#1A1816] text-sm pr-6">{kiosk.id}</p>
+                  <p class="text-xs text-[#5C5A56] mt-1">{kiosk.location}</p>
+                </button>
+                <button
+                  type="button"
+                  on:click={() => removeKiosk(index)}
+                  class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center text-[#C85454] hover:bg-[#C85454]/10 rounded-sm transition-all"
+                  title="Remove kiosk"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <!-- Dropdown for >3 kiosks -->
+          <div class="relative">
+            <select
+              on:change={(e) => {
+                const selected = savedKiosks[parseInt(e.currentTarget.value)];
+                if (selected) selectPredefined(selected);
+              }}
+              class="w-full px-4 py-3 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none font-medium text-[#1A1816] bg-white"
+            >
+              <option value="">Select a saved kiosk...</option>
+              {#each savedKiosks as kiosk, index}
+                <option value={index}>{kiosk.id} - {kiosk.location}</option>
+              {/each}
+            </select>
+            <p class="text-xs text-[#5C5A56] mt-2">
+              {savedKiosks.length} saved kiosks (showing dropdown for easier selection)
+            </p>
+          </div>
+        {/if}
       </div>
 
       <div class="h-px bg-[#D9D7D2] my-6"></div>
@@ -129,7 +246,7 @@
             <div class="text-sm text-[#1A1816]">
               <p class="font-bold mb-1">Session Details</p>
               <ul class="space-y-1 text-[#5C5A56]">
-                <li>• Session expires after 8 hours</li>
+                <li>• Session expires after 24 hours</li>
                 <li>• Kiosk will be authenticated for QR scanning</li>
                 <li>• All redemptions will be logged to this kiosk ID</li>
               </ul>
@@ -171,7 +288,7 @@
           </div>
           <div>
             <p class="text-[#5C5A56]">Expires</p>
-            <p class="font-extrabold text-[#1A1816]">8 hours</p>
+            <p class="font-extrabold text-[#1A1816]">24 hours</p>
           </div>
           <div>
             <p class="text-[#5C5A56]">Created</p>
@@ -231,7 +348,7 @@
           </svg>
           <div class="text-sm text-[#1A1816]">
             <p class="font-bold mb-1">Security Notice</p>
-            <p class="text-[#5C5A56]">This session token grants full kiosk access. Only share it with trusted kiosk devices. The session will automatically expire after 8 hours.</p>
+            <p class="text-[#5C5A56]">This session token grants full kiosk access. Only share it with trusted kiosk devices. The session will automatically expire after 24 hours.</p>
           </div>
         </div>
       </div>
@@ -249,7 +366,7 @@
         </div>
         <h3 class="font-extrabold text-[#1A1816]">Authenticated</h3>
       </div>
-      <p class="text-sm text-[#5C5A56]">Kiosk sessions use JWT authentication with 8-hour expiry</p>
+      <p class="text-sm text-[#5C5A56]">Kiosk sessions use JWT authentication with 24-hour expiry</p>
     </div>
 
     <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">

@@ -1,14 +1,21 @@
 import type { PageServerLoad, Actions } from './$types';
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import * as jose from 'jose';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
-import { KIOSK_PRIVATE_KEY } from '$env/static/private';
+import { KIOSK_PRIVATE_KEY_BASE64 } from '$env/static/private';
 import { validateCSRFFromFormData } from '$lib/auth/csrf';
 import { getAdminSession } from '$lib/auth/session';
 import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
-export const load: PageServerLoad = async () => {
-  return {};
+export const load: PageServerLoad = async ({ cookies }) => {
+  const session = await getAdminSession(cookies);
+  if (!session) {
+    throw redirect(302, '/admin/auth/login');
+  }
+
+  return {
+    csrfToken: session.csrfToken
+  };
 };
 
 export const actions: Actions = {
@@ -37,8 +44,17 @@ export const actions: Actions = {
     }
 
     try {
+      // Decode base64-encoded private key (needed because env vars can't contain newlines)
+      // Use Web APIs available in Cloudflare Workers
+      const binaryString = atob(KIOSK_PRIVATE_KEY_BASE64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const kioskPrivateKey = new TextDecoder().decode(bytes);
+
       // Generate kiosk session JWT
-      const privateKey = await jose.importPKCS8(KIOSK_PRIVATE_KEY, 'ES256');
+      const privateKey = await jose.importPKCS8(kioskPrivateKey, 'ES256');
 
       const sessionToken = await new jose.SignJWT({
         kiosk_id: kioskId,
@@ -50,7 +66,7 @@ export const actions: Actions = {
         .setSubject('kiosk')
         .setJti(randomUUID())
         .setIssuedAt()
-        .setExpirationTime('8h') // 8 hour session
+        .setExpirationTime('24h') // 24 hour session
         .sign(privateKey);
 
       return { sessionToken };
