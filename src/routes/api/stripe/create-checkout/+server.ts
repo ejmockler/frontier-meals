@@ -2,7 +2,6 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import Stripe from 'stripe';
 import { STRIPE_SECRET_KEY, STRIPE_PRICE_ID } from '$env/static/private';
-import { PUBLIC_SITE_URL } from '$env/static/public';
 import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
 
@@ -15,7 +14,7 @@ export const POST: RequestHandler = async ({ url }) => {
   // Demo mode: return mock checkout URL without Stripe interaction
   if (IS_DEMO_MODE) {
     logDemoAction('Create Stripe checkout session (demo)');
-    return json({ url: `${PUBLIC_SITE_URL}/demo-checkout` });
+    return json({ url: `${url.origin}/demo-checkout` });
   }
 
   try {

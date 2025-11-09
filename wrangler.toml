@@ -27,3 +27,4 @@ PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_51SMiPY4YmLzzuEydJ24OPjIBEhVbwPZXZrMKwb
 # - KIOSK_PRIVATE_KEY
 # - KIOSK_PUBLIC_KEY
 # - DEMO_MODE
+# - SITE_URL (runtime site URL for emails/cron jobs, defaults to https://frontiermeals.com)

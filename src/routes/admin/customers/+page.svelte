@@ -88,7 +88,7 @@
   </div>
 
   <!-- Search and filters -->
-  <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+  <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
     <div class="flex gap-4 flex-wrap">
       <div class="flex-1 min-w-[300px]">
         <div class="relative">
@@ -127,7 +127,7 @@
   </div>
 
   <!-- Customer list -->
-  <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm overflow-hidden shadow-lg">
+  <div class="bg-white border-2 border-[#D9D7D2] rounded-sm overflow-hidden shadow-lg">
     {#if data.customers.length === 0}
       <div class="p-12 text-center text-[#5C5A56]">
         <svg class="w-16 h-16 mx-auto mb-4 text-[#D9D7D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -141,7 +141,7 @@
         {#each data.customers as customer}
           {@const sub = getSubscription(customer)}
           {@const telegramStatus = getTelegramStatus(customer)}
-          <div class="p-6 hover:bg-[#F5F3EF] transition-colors">
+          <div class="p-6 hover:bg-white transition-colors">
             <div class="flex items-start justify-between gap-4">
               <div class="flex-1">
                 <div class="flex items-center gap-3 mb-2">
@@ -203,7 +203,7 @@
 <!-- QR Regeneration Confirmation Modal -->
 {#if showQRConfirm && selectedCustomer}
   <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" on:click={() => showQRConfirm = false}>
-    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm shadow-2xl max-w-md w-full p-6" on:click|stopPropagation>
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm shadow-2xl max-w-md w-full p-6" on:click|stopPropagation>
       <div class="text-center mb-6">
         <div class="inline-flex items-center justify-center w-16 h-16 bg-[#E67E50] border-2 border-[#D97F3E] rounded-sm mb-4">
           <svg class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">

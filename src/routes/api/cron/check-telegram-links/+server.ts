@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { checkTelegramLinks } from '$lib/cron/check-telegram-links';
-import { PUBLIC_SUPABASE_URL, PUBLIC_SITE_URL } from '$env/static/public';
-import { SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET } from '$env/static/private';
+import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+import { SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET, SITE_URL } from '$env/static/private';
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, url }) => {
   const cronSecret = request.headers.get('cron-secret');
 
   if (cronSecret !== CRON_SECRET) {
@@ -12,10 +12,13 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   try {
+    // Use SITE_URL env var if available (runtime), otherwise fall back to request origin
+    const siteUrl = SITE_URL || url.origin;
+
     const results = await checkTelegramLinks({
       supabaseUrl: PUBLIC_SUPABASE_URL,
       supabaseServiceKey: SUPABASE_SERVICE_ROLE_KEY,
-      siteUrl: PUBLIC_SITE_URL
+      siteUrl
     });
 
     return json({ success: true, ...results });

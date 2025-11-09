@@ -137,7 +137,7 @@
   <!-- Key metrics grid -->
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
     <!-- Total customers -->
-    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm font-medium text-[#5C5A56]">Total Customers</p>
@@ -152,7 +152,7 @@
     </div>
 
     <!-- Active subscriptions -->
-    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm font-medium text-[#5C5A56]">Active Subscriptions</p>
@@ -173,7 +173,7 @@
     </div>
 
     <!-- Today's redemptions -->
-    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm font-medium text-[#5C5A56]">Today's Redemptions</p>
@@ -243,7 +243,7 @@
   </div>
 
   <!-- Recent activity feed -->
-  <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm shadow-lg">
+  <div class="bg-white border-2 border-[#D9D7D2] rounded-sm shadow-lg">
     <div class="p-6 border-b-2 border-[#D9D7D2]">
       <h2 class="text-lg font-extrabold tracking-tight text-[#1A1816]">Recent Activity</h2>
       <p class="text-sm text-[#5C5A56] mt-1">Latest events from the system</p>
@@ -259,7 +259,7 @@
         </div>
       {:else}
         {#each data.recentActivity as activity}
-          <div class="p-4 hover:bg-[#F5F3EF] transition-colors">
+          <div class="p-4 hover:bg-white transition-colors">
             <div class="flex items-start justify-between gap-4">
               <div class="flex items-start gap-3 flex-1">
                 <span class="px-2 py-1 text-xs font-bold rounded-sm {getActionColor(activity.action)}">
@@ -302,7 +302,7 @@
 <!-- Test QR Modal -->
 {#if showTestQRModal}
   <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm shadow-2xl max-w-md w-full p-6">
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm shadow-2xl max-w-md w-full p-6">
       <h3 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-4">Generate Test QR Code</h3>
 
       <p class="text-sm text-[#5C5A56] mb-6">

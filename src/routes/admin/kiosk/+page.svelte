@@ -114,7 +114,7 @@
 
   {#if !sessionUrl}
     <!-- Session creation form -->
-    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-8 shadow-lg">
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-8 shadow-lg">
       <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-6">Configure Kiosk Session</h2>
 
       <!-- Saved kiosks -->
@@ -133,7 +133,7 @@
         </div>
 
         {#if showAddKiosk}
-          <div class="bg-[#F5F3EF] border-2 border-[#D9D7D2] rounded-sm p-4 mb-4">
+          <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-4 mb-4">
             <div class="grid grid-cols-2 gap-3 mb-3">
               <input
                 type="text"
@@ -271,7 +271,7 @@
     </div>
   {:else}
     <!-- Session created successfully -->
-    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-8 shadow-lg">
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-8 shadow-lg">
       <div class="text-center mb-8">
         <div class="inline-flex items-center justify-center w-16 h-16 bg-[#52A675] border-2 border-[#52A675]/70 rounded-sm mb-4 shadow-lg">
           <svg class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -283,7 +283,7 @@
       </div>
 
       <!-- Session info -->
-      <div class="bg-[#F5F3EF] border-2 border-[#D9D7D2] rounded-sm p-6 mb-6">
+      <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 mb-6">
         <div class="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p class="text-[#5C5A56]">Kiosk ID</p>
@@ -360,7 +360,7 @@
 
   <!-- Info cards -->
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
       <div class="flex items-center gap-3 mb-3">
         <div class="w-10 h-10 bg-[#2D9B9B] border-2 border-[#2D9B9B]/70 rounded-sm flex items-center justify-center">
           <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -372,7 +372,7 @@
       <p class="text-sm text-[#5C5A56]">Kiosk sessions use JWT authentication for secure access</p>
     </div>
 
-    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
       <div class="flex items-center gap-3 mb-3">
         <div class="w-10 h-10 bg-[#52A675] border-2 border-[#52A675]/70 rounded-sm flex items-center justify-center">
           <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -384,7 +384,7 @@
       <p class="text-sm text-[#5C5A56]">Full access to scan customer QR codes and validate meals</p>
     </div>
 
-    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
       <div class="flex items-center gap-3 mb-3">
         <div class="w-10 h-10 bg-[#E67E50] border-2 border-[#D97F3E] rounded-sm flex items-center justify-center">
           <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">

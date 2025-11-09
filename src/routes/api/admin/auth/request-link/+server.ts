@@ -3,7 +3,6 @@ import type { RequestHandler } from './$types';
 import { generateMagicLinkToken, isAdminEmail } from '$lib/auth/admin';
 import { sendEmail } from '$lib/email/send';
 import { getAdminMagicLinkEmail } from '$lib/email/templates/admin-magic-link';
-import { PUBLIC_SITE_URL } from '$env/static/public';
 
 /**
  * Admin Magic Link Request Endpoint
@@ -11,7 +10,7 @@ import { PUBLIC_SITE_URL } from '$env/static/public';
  * Generates a one-time magic link token and emails it to the admin.
  * Only works for emails in the admin allowlist.
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, url }) => {
   const { email } = await request.json();
 
   if (!email || typeof email !== 'string') {
@@ -33,7 +32,8 @@ export const POST: RequestHandler = async ({ request }) => {
     const token = await generateMagicLinkToken(normalizedEmail);
 
     console.log('[Admin Auth] Token generated successfully:', token);
-    const magicLink = `${PUBLIC_SITE_URL}/admin/auth/verify?token=${token}`;
+    // Use the actual request origin instead of PUBLIC_SITE_URL
+    const magicLink = `${url.origin}/admin/auth/verify?token=${token}`;
     console.log('[Admin Auth] Magic link URL:', magicLink);
 
     // Send email

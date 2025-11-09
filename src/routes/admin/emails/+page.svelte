@@ -103,7 +103,7 @@
     <!-- Template list -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {#each data.templates as template}
-        <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+        <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
           <div class="flex items-start justify-between mb-4">
             <div class="flex-1">
               <h3 class="text-lg font-extrabold tracking-tight text-[#1A1816] mb-1">{template.slug}</h3>
@@ -137,7 +137,7 @@
       {/each}
 
       {#if data.templates.length === 0}
-        <div class="col-span-full bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-12 text-center shadow-lg">
+        <div class="col-span-full bg-white border-2 border-[#D9D7D2] rounded-sm p-12 text-center shadow-lg">
           <svg class="w-16 h-16 mx-auto mb-4 text-[#D9D7D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
@@ -151,7 +151,7 @@
     <form method="POST" action={mode === 'create' ? '?/createTemplate' : '?/updateTemplate'} use:enhance class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- Left column: Editor -->
       <div class="space-y-6">
-        <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+        <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
           <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-6">
             {mode === 'create' ? 'Create Template' : 'Edit Template'}
           </h2>
@@ -253,7 +253,7 @@
 
       <!-- Right column: Preview -->
       <div class="space-y-6">
-        <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 sticky top-24 shadow-lg">
+        <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 sticky top-24 shadow-lg">
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816]">Live Preview</h2>
             <span class="px-2 py-1 text-xs font-bold bg-[#52A675] text-white border-2 border-[#52A675]/70 rounded-sm">
@@ -264,7 +264,7 @@
           {#if showPreview}
             <div class="border-2 border-[#D9D7D2] rounded-sm overflow-hidden">
               <!-- Subject preview -->
-              <div class="bg-[#F5F3EF] p-4 border-b-2 border-[#D9D7D2]">
+              <div class="bg-white p-4 border-b-2 border-[#D9D7D2]">
                 <p class="text-xs font-bold text-[#5C5A56] mb-1">Subject:</p>
                 <p class="text-sm font-extrabold text-[#1A1816]">{subject || '(No subject)'}</p>
               </div>
@@ -301,7 +301,7 @@
 <!-- Test Email Modal -->
 {#if showTestModal}
   <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" on:click={() => showTestModal = false}>
-    <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm shadow-2xl max-w-md w-full p-6" on:click|stopPropagation>
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm shadow-2xl max-w-md w-full p-6" on:click|stopPropagation>
       <h3 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-4">Send Test Email</h3>
 
       <form method="POST" action="?/sendTest" use:enhance>
