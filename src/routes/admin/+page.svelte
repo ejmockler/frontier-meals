@@ -194,7 +194,7 @@
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       <a
         href="/admin/customers"
-        class="bg-white/10 border-2 border-white/20 hover:bg-white/20 rounded-sm p-4 transition-all"
+        class="bg-white/10 border-2 border-white/20 hover:bg-white/20 rounded-sm p-4 transition-all cursor-pointer"
       >
         <div class="flex items-center gap-3">
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -206,7 +206,7 @@
 
       <a
         href="/admin/emails"
-        class="bg-white/10 border-2 border-white/20 hover:bg-white/20 rounded-sm p-4 transition-all"
+        class="bg-white/10 border-2 border-white/20 hover:bg-white/20 rounded-sm p-4 transition-all cursor-pointer"
       >
         <div class="flex items-center gap-3">
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -218,7 +218,7 @@
 
       <a
         href="/admin/kiosk"
-        class="bg-white/10 border-2 border-white/20 hover:bg-white/20 rounded-sm p-4 transition-all"
+        class="bg-white/10 border-2 border-white/20 hover:bg-white/20 rounded-sm p-4 transition-all cursor-pointer"
       >
         <div class="flex items-center gap-3">
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -230,7 +230,7 @@
 
       <button
         onclick={() => showTestQRModal = true}
-        class="bg-white/10 border-2 border-white/20 hover:bg-white/20 rounded-sm p-4 transition-all"
+        class="bg-white/10 border-2 border-white/20 hover:bg-white/20 rounded-sm p-4 transition-all cursor-pointer"
       >
         <div class="flex items-center gap-3">
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -343,7 +343,7 @@
         <button
           onclick={generateTestQR}
           disabled={testQRLoading}
-          class="flex-1 px-4 py-3 bg-[#E67E50] hover:bg-[#D97F3E] disabled:bg-[#D9D7D2] disabled:text-[#8E8C87] text-white font-bold rounded-sm transition-colors"
+          class="flex-1 px-4 py-3 bg-[#E67E50] hover:bg-[#D97F3E] disabled:bg-[#D9D7D2] disabled:text-[#8E8C87] text-white font-bold rounded-sm transition-colors disabled:cursor-not-allowed cursor-pointer"
         >
           {testQRLoading ? 'Sending...' : 'Generate & Send'}
         </button>

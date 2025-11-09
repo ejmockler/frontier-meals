@@ -17,7 +17,7 @@
   </div>
 {:else}
   <!-- Admin dashboard: full layout with navigation -->
-  <div class="min-h-screen bg-gray-50">
+  <div class="min-h-screen bg-[#F5F3EF]">
     <!-- Top navigation bar -->
     <nav class="bg-white border-b border-gray-200 sticky top-0 z-50 backdrop-blur-sm bg-white/90">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -139,5 +139,14 @@
   :global(body) {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  /* Ensure all interactive elements have proper cursor */
+  :global(button:not(:disabled)), :global(a) {
+    cursor: pointer;
+  }
+
+  :global(button:disabled) {
+    cursor: not-allowed;
   }
 </style>

@@ -226,7 +226,7 @@
         <button
           on:click={regenerateQR}
           disabled={isRegenerating}
-          class="flex-1 px-4 py-2 text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] hover:shadow-xl shadow-lg rounded-sm font-bold transition-colors disabled:opacity-50"
+          class="flex-1 px-4 py-2 text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] hover:shadow-xl shadow-lg rounded-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isRegenerating ? 'Sending...' : 'Send QR Code'}
         </button>
