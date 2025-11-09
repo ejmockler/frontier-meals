@@ -7,12 +7,17 @@
   let kioskId = $state('');
   let location = $state('');
   let sessionUrl = $state('');
+  let createdKioskId = $state('');
+  let createdLocation = $state('');
 
   // Generate session URL when form succeeds
   $effect(() => {
     if (form?.sessionToken) {
       const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
       sessionUrl = `${baseUrl}/kiosk?session=${form.sessionToken}`;
+      // Preserve the values that were used to create this session
+      createdKioskId = kioskId;
+      createdLocation = location;
     }
   });
 
@@ -30,6 +35,8 @@
     kioskId = '';
     location = '';
     sessionUrl = '';
+    createdKioskId = '';
+    createdLocation = '';
     form = null;
   }
 
@@ -280,11 +287,11 @@
         <div class="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p class="text-[#5C5A56]">Kiosk ID</p>
-            <p class="font-extrabold text-[#1A1816]">{kioskId}</p>
+            <p class="font-extrabold text-[#1A1816]">{createdKioskId}</p>
           </div>
           <div>
             <p class="text-[#5C5A56]">Location</p>
-            <p class="font-extrabold text-[#1A1816]">{location}</p>
+            <p class="font-extrabold text-[#1A1816]">{createdLocation}</p>
           </div>
           <div>
             <p class="text-[#5C5A56]">Created</p>
