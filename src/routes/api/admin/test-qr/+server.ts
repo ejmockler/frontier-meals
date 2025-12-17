@@ -1,19 +1,29 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getAdminSession } from '$lib/auth/session';
+import { extractCSRFToken, validateCSRFToken } from '$lib/auth/csrf';
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
-import { SUPABASE_SERVICE_ROLE_KEY, QR_PRIVATE_KEY_BASE64, TELEGRAM_BOT_TOKEN } from '$env/static/private';
+import { SUPABASE_SERVICE_ROLE_KEY, QR_PRIVATE_KEY_BASE64 } from '$env/static/private';
 import * as jose from 'jose';
 import { randomUUID } from '$lib/utils/crypto';
 import { todayInPT, endOfDayPT } from '$lib/utils/timezone';
 import qrcode from 'qrcode-generator';
+import { sendEmail } from '$lib/email/send';
+import { getQRDailyEmail } from '$lib/email/templates/qr-daily';
+import { generateShortCode } from '$lib/utils/short-code';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
   // Verify admin session
   const session = await getAdminSession(cookies);
   if (!session) {
     return json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Validate CSRF token
+  const csrfToken = extractCSRFToken(request);
+  if (!await validateCSRFToken(session.sessionId, csrfToken)) {
+    return json({ error: 'Invalid CSRF token' }, { status: 403 });
   }
 
   // Get service date from request body, default to today
@@ -28,17 +38,15 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
   const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    // Get admin's customer record (assuming admin has telegram_user_id)
-    // For now, we'll use the first active customer with a telegram_user_id as a test
+    // Get first customer for test (no longer needs telegram_user_id since we send via email)
     const { data: testCustomer } = await supabase
       .from('customers')
       .select('*')
-      .not('telegram_user_id', 'is', null)
       .limit(1)
       .single();
 
     if (!testCustomer) {
-      return json({ error: 'No customer found with Telegram ID' }, { status: 404 });
+      return json({ error: 'No customer found' }, { status: 404 });
     }
 
     // Decode base64-encoded private key
@@ -102,13 +110,18 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
         .eq('service_date', serviceDate);
     }
 
-    // Store QR token metadata
+    // Generate short code for QR (same as production)
+    const shortCode = generateShortCode(10);
+
+    // Store QR token metadata with short code and JWT
     const { error: insertError } = await supabase
       .from('qr_tokens')
       .insert({
         customer_id: testCustomer.id,
         service_date: serviceDate,
         jti,
+        short_code: shortCode,
+        jwt_token: jwt,
         issued_at: new Date().toISOString(),
         expires_at: expiresAt.toISOString(),
         used_at: null
@@ -119,54 +132,62 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
       return json({ error: 'Failed to store QR token metadata', details: insertError.message }, { status: 500 });
     }
 
-    // Generate QR code image
-    const qr = qrcode(0, 'H');
-    qr.addData(jwt);
+    // Generate QR code image with short code (same as production)
+    const qr = qrcode(0, 'M'); // Medium error correction
+    qr.addData(shortCode); // Use short code, not JWT!
     qr.make();
-    const qrCodeDataUrl = qr.createDataURL(10, 2);
-    const base64Content = qrCodeDataUrl.replace(/^data:image\/gif;base64,/, '');
+    const qrCodeDataUrl = qr.createDataURL(12, 4); // Larger cells for easier scanning
 
-    // Send QR code via Telegram
-    const binaryStr = atob(base64Content);
-    const photoBytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) {
-      photoBytes[i] = binaryStr.charCodeAt(i);
-    }
+    // Extract base64 content from data URL (format: "data:image/gif;base64,...")
+    const base64Content = qrCodeDataUrl.split(',')[1];
 
-    const formData = new FormData();
-    formData.append('chat_id', testCustomer.telegram_user_id.toString());
-    formData.append('photo', new Blob([photoBytes], { type: 'image/gif' }), 'test-qr.gif');
-    formData.append('caption', `🧪 Test QR Code from Admin\n📅 Service Date: ${new Date(serviceDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n⏰ Expires: ${expiresAt.toLocaleString('en-US', { timeZone: 'America/Los_Angeles', dateStyle: 'short', timeStyle: 'short' })} PT\n\nThis is a test QR code sent by the admin.`);
+    // Send QR code via email (same as production)
+    const { subject, html } = getQRDailyEmail({
+      customer_name: testCustomer.name || 'there',
+      service_date: serviceDate,
+      qr_code_base64: base64Content
+    });
 
-    const telegramResponse = await fetch(
-      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
-      {
-        method: 'POST',
-        body: formData
-      }
-    );
+    await sendEmail({
+      to: testCustomer.email,
+      subject: `[TEST] ${subject}`,
+      html,
+      attachments: [
+        {
+          filename: 'qr-code.gif',
+          content: base64Content,
+          contentType: 'image/gif',
+          inlineContentId: 'qr-code' // CORRECT property name per Resend SDK
+        }
+      ],
+      tags: [
+        { name: 'category', value: 'qr_daily_test' },
+        { name: 'customer_id', value: testCustomer.id },
+        { name: 'service_date', value: serviceDate }
+      ],
+      idempotencyKey: `qr_daily_test/${testCustomer.id}/${serviceDate}/${Date.now()}`
+    });
 
-    if (!telegramResponse.ok) {
-      const errorText = await telegramResponse.text();
-      console.error('[Admin Test QR] Telegram error:', errorText);
-      return json({ error: 'Failed to send via Telegram' }, { status: 500 });
-    }
+    console.log('[Admin Test QR] Sent test QR email to', testCustomer.email);
 
     // Decode JWT to verify claims
     const decoded = jose.decodeJwt(jwt);
 
     return json({
       success: true,
-      message: `Test QR sent to ${testCustomer.email} via Telegram for ${serviceDate}`,
+      message: `Test QR sent to ${testCustomer.email} via EMAIL for ${serviceDate}`,
       customerId: testCustomer.id,
+      customerEmail: testCustomer.email,
       serviceDate,
+      shortCode,
       debug: {
         expiresAt_iso: expiresAt.toISOString(),
         expiresAt_unix: Math.floor(expiresAt.getTime() / 1000),
         currentTime_iso: new Date().toISOString(),
         currentTime_unix: Math.floor(Date.now() / 1000),
         jwt_claims: decoded,
-        jwt_preview: jwt.substring(0, 50) + '...'
+        jwt_preview: jwt.substring(0, 50) + '...',
+        short_code: shortCode
       }
     });
   } catch (error) {

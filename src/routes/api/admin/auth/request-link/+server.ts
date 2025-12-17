@@ -3,6 +3,12 @@ import type { RequestHandler } from './$types';
 import { generateMagicLinkToken, isAdminEmail } from '$lib/auth/admin';
 import { sendEmail } from '$lib/email/send';
 import { getAdminMagicLinkEmail } from '$lib/email/templates/admin-magic-link';
+import { createClient } from '@supabase/supabase-js';
+import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
+import { checkRateLimit, RateLimitKeys } from '$lib/utils/rate-limit';
+
+const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 /**
  * Admin Magic Link Request Endpoint
@@ -19,6 +25,21 @@ export const POST: RequestHandler = async ({ request, url }) => {
 
   const normalizedEmail = email.toLowerCase().trim();
 
+  // Rate limiting: 3 requests per hour per email
+  // Prevents magic link spam and email enumeration attacks
+  const rateLimitResult = await checkRateLimit(supabase, {
+    key: RateLimitKeys.magicLink(normalizedEmail),
+    maxRequests: 3,
+    windowMinutes: 60
+  });
+
+  if (!rateLimitResult.allowed) {
+    console.warn('[Admin Auth] Rate limit exceeded for:', normalizedEmail);
+    // SECURITY: Return success even when rate limited to prevent email enumeration
+    // Don't leak whether an email is in the admin list by varying the response
+    return json({ success: true });
+  }
+
   // Check if email is authorized
   if (!isAdminEmail(normalizedEmail)) {
     // Return success even for unauthorized emails (security: don't leak admin emails)
@@ -31,10 +52,10 @@ export const POST: RequestHandler = async ({ request, url }) => {
     // Generate magic link token
     const token = await generateMagicLinkToken(normalizedEmail);
 
-    console.log('[Admin Auth] Token generated successfully:', token);
+    console.log('[Admin Auth] Token generated successfully');
     // Use the actual request origin instead of PUBLIC_SITE_URL
     const magicLink = `${url.origin}/admin/auth/verify?token=${token}`;
-    console.log('[Admin Auth] Magic link URL:', magicLink);
+    console.log('[Admin Auth] Magic link generated for:', normalizedEmail);
 
     // Send email
     const emailTemplate = getAdminMagicLinkEmail({

@@ -6,6 +6,8 @@ import { SUPABASE_SERVICE_ROLE_KEY, QR_PUBLIC_KEY } from '$env/static/private';
 import * as jose from 'jose';
 import { validateKioskSession } from '$lib/auth/kiosk';
 import { IS_DEMO_MODE, bypassMealRedemption } from '$lib/demo';
+import { isValidShortCode, normalizeShortCode } from '$lib/utils/short-code';
+import { checkRateLimit, RateLimitKeys } from '$lib/utils/rate-limit';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -19,6 +21,34 @@ export const POST: RequestHandler = async ({ request }) => {
   const kioskSession = await validateKioskSession(kioskSessionToken);
   if (!kioskSession.valid) {
     return json({ error: 'Invalid kiosk session' }, { status: 401 });
+  }
+
+  // Rate limiting: 10 requests per minute per kiosk session
+  // Prevents brute force attacks on QR codes
+  const rateLimitResult = await checkRateLimit(supabase, {
+    key: RateLimitKeys.kiosk(kioskSessionToken),
+    maxRequests: 10,
+    windowMinutes: 1
+  });
+
+  if (!rateLimitResult.allowed) {
+    console.warn('[Kiosk Redeem] Rate limit exceeded:', {
+      kiosk_id: kioskSession.kiosk_id,
+      reset_at: rateLimitResult.resetAt
+    });
+
+    return json(
+      { error: 'Too many requests. Please try again later.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(rateLimitResult.retryAfter),
+          'X-RateLimit-Limit': '10',
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': rateLimitResult.resetAt.toISOString()
+        }
+      }
+    );
   }
 
   // Demo mode: bypass JWT verification and database operations
@@ -53,15 +83,59 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   try {
+    let jwt: string;
+    let customerId: string;
+    let serviceDate: string;
+    let jti: string;
+
+    // Check if qrToken is a short code or a JWT
+    if (isValidShortCode(qrToken)) {
+      // Short code - look up JWT from database
+      console.log('[Kiosk Redeem] Received short code, looking up JWT...');
+      const normalizedCode = normalizeShortCode(qrToken);
+
+      const { data: tokenData, error: lookupError } = await supabase
+        .from('qr_tokens')
+        .select('jwt_token, customer_id, service_date, jti, used_at')
+        .eq('short_code', normalizedCode)
+        .single();
+
+      if (lookupError || !tokenData || !tokenData.jwt_token) {
+        console.error('[Kiosk Redeem] Short code lookup failed:', lookupError);
+        return json({
+          error: 'Invalid or expired QR code',
+          code: 'INVALID_SHORT_CODE'
+        }, { status: 400 });
+      }
+
+      // Check if already used (quick check before JWT verification)
+      if (tokenData.used_at) {
+        return json({
+          error: 'QR code already used',
+          code: 'ALREADY_USED',
+          debug: {
+            used_at: tokenData.used_at
+          }
+        }, { status: 400 });
+      }
+
+      jwt = tokenData.jwt_token;
+      console.log('[Kiosk Redeem] Found JWT for short code');
+    } else {
+      // Legacy JWT format (for backwards compatibility)
+      console.log('[Kiosk Redeem] Received JWT directly (legacy format)');
+      jwt = qrToken;
+    }
+
     // Verify JWT signature and extract claims
     const publicKey = await jose.importSPKI(QR_PUBLIC_KEY, 'ES256');
-    const { payload } = await jose.jwtVerify(qrToken, publicKey, {
+    const { payload } = await jose.jwtVerify(jwt, publicKey, {
       issuer: 'frontier-meals-kiosk'
     });
 
-    const customerId = payload.sub as string;
-    const serviceDate = payload.service_date as string;
-    const jti = payload.jti as string;
+    customerId = payload.sub as string;
+    serviceDate = payload.service_date as string;
+    jti = payload.jti as string;
 
     // Call atomic redemption function to prevent race conditions
     const { data: result, error: rpcError } = await supabase.rpc('redeem_meal', {
@@ -138,17 +212,18 @@ export const POST: RequestHandler = async ({ request }) => {
     });
 
     if (error instanceof jose.errors.JWTExpired) {
-      const decoded = jose.decodeJwt(qrToken);
-      console.error('[Kiosk Redeem] Expired JWT claims:', decoded);
+      const decoded = jose.decodeJwt(jwt);
+      // Log debug info for troubleshooting (server-side only)
+      console.error('[Kiosk Redeem] Expired JWT claims:', {
+        exp: decoded.exp,
+        exp_iso: decoded.exp ? new Date(decoded.exp * 1000).toISOString() : null,
+        current_time: Math.floor(Date.now() / 1000),
+        current_time_iso: new Date().toISOString()
+      });
+      // Return generic error without exposing JWT internals
       return json({
         error: 'QR code expired',
-        code: 'EXPIRED',
-        debug: {
-          exp: decoded.exp,
-          exp_iso: decoded.exp ? new Date(decoded.exp * 1000).toISOString() : null,
-          current_time: Math.floor(Date.now() / 1000),
-          current_time_iso: new Date().toISOString()
-        }
+        code: 'EXPIRED'
       }, { status: 400 });
     }
 
@@ -156,7 +231,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const errorDetails = {
       type: error?.constructor?.name || 'Unknown',
       message: error instanceof Error ? error.message : String(error),
-      qrTokenPreview: qrToken?.substring(0, 50) + '...'
+      qrTokenPreview: isValidShortCode(qrToken) ? `Short code: ${qrToken}` : qrToken?.substring(0, 50) + '...'
     };
 
     console.error('[Kiosk Redeem] Returning error response:', errorDetails);

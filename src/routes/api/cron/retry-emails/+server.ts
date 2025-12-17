@@ -5,6 +5,7 @@ import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET } from '$env/static/private';
 import { Resend } from 'resend';
 import { RESEND_API_KEY } from '$env/static/private';
+import { sendAdminAlert, formatJobErrorAlert } from '$lib/utils/alerts';
 
 const resend = new Resend(RESEND_API_KEY);
 
@@ -68,6 +69,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		failed: 0
 	};
 
+	const permanentFailures: Array<{ email: string; error: string }> = [];
+
 	for (const retry of pendingRetries) {
 		try {
 			// Attempt to send email
@@ -122,6 +125,10 @@ export const POST: RequestHandler = async ({ request }) => {
 					.eq('id', retry.id);
 
 				console.error(`[Email Retry] Max attempts reached for ${retry.recipient_email}: ${errorMessage}`);
+				permanentFailures.push({
+					email: retry.recipient_email,
+					error: errorMessage
+				});
 				results.failed++;
 			} else {
 				// Schedule next retry with exponential backoff
@@ -146,6 +153,22 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	console.log(`[Email Retry] Complete. Retried: ${results.retried}, Succeeded: ${results.succeeded}, Failed: ${results.failed}`);
+
+	// Send alert if there were permanent failures
+	if (permanentFailures.length > 0) {
+		const today = new Date().toISOString().split('T')[0];
+		const alertMessage = formatJobErrorAlert({
+			jobName: 'Email Retry Job',
+			date: today,
+			errorCount: permanentFailures.length,
+			totalProcessed: pendingRetries.length,
+			errors: permanentFailures,
+			maxErrorsToShow: 5
+		});
+
+		await sendAdminAlert(alertMessage);
+		console.log(`[Email Retry] Sent permanent failure alert to admin - ${permanentFailures.length} emails permanently failed`);
+	}
 
 	return json({
 		retried: results.retried,

@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '$lib/email/send';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
+import { buildEmailHTML, brandColors, getSupportFooter } from '$lib/email/templates/base';
+import { sendAdminAlert, formatJobErrorAlert } from '$lib/utils/alerts';
 
 /**
  * Check for customers who haven't linked Telegram within 60 minutes
@@ -41,6 +43,7 @@ export async function checkTelegramLinks(config: {
   console.log(`[Telegram Check] Found ${unlinkedCustomers.length} unlinked customers`);
 
   let emailsSent = 0;
+  const errors: Array<{ customer_id: string; email?: string; error: string }> = [];
 
   for (const customer of unlinkedCustomers) {
     const linkStatus = Array.isArray(customer.telegram_link_status)
@@ -83,68 +86,67 @@ export async function checkTelegramLinks(config: {
 
       // Send correction email with handle update link (primary) and deep link (backup)
       const subject = 'Action needed: Correct your Telegram username';
-      const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #E67E50 0%, #D97F3E 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-    .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-    .button { display: inline-block; background: #E67E50; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }
-    .button-secondary { background: #52A675; }
-    .footer { text-align: center; color: #6b7280; font-size: 14px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1 style="margin: 0; font-size: 24px;">✏️ Correct Your Telegram Username</h1>
-  </div>
 
-  <div class="content">
-    <p>Hi ${customer.name},</p>
+      const headerContent = `
+        <div style="font-size: 48px; margin-bottom: 12px;">✏️</div>
+        <h1 style="margin: 0 0 8px;">Correct Your Telegram Username</h1>
+        <p style="margin: 0; opacity: 0.95;">Let's fix this and get you connected</p>
+      `;
 
-    <p>We noticed you haven't connected your Telegram account yet. This might be because your username was mistyped during signup.</p>
+      const bodyContent = `
+        <p style="font-size: 18px; font-weight: 500; color: #111827;">Hi ${customer.name},</p>
 
-    <p><strong>Please correct your Telegram username to activate your account:</strong></p>
+        <p>We noticed you haven't connected your Telegram account yet. This might be because your username was mistyped during signup.</p>
 
-    <div style="text-align: center;">
-      <a href="${handleUpdateLink}" class="button">✏️ Update My Username</a>
-    </div>
+        <p><strong style="color: #111827;">Please correct your Telegram username to activate your account:</strong></p>
 
-    <p style="background: #D1F4DD; padding: 15px; border-left: 4px solid #52A675; border-radius: 4px; margin: 20px 0;">
-      <strong>This will let you:</strong><br>
-      • Receive daily meal QR codes<br>
-      • Set dietary preferences<br>
-      • Skip dates when you're away<br>
-      • Manage your meal schedule
-    </p>
+        <!-- Primary CTA -->
+        <div class="text-center">
+          <a href="${handleUpdateLink}" class="email-button" style="background-color: #E67E50;">
+            ✏️ Update My Username
+          </a>
+        </div>
 
-    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+        <!-- Benefits Box -->
+        <div class="info-box info-box-success">
+          <p style="margin: 0; font-weight: 600; color: #065f46;">This will let you:</p>
+          <ul style="margin: 8px 0 0; padding-left: 20px; color: #065f46;">
+            <li>Receive daily meal QR codes</li>
+            <li>Set dietary preferences</li>
+            <li>Skip dates when you're away</li>
+            <li>Manage your meal schedule</li>
+          </ul>
+        </div>
 
-    <p style="font-size: 14px; color: #6b7280;">
-      <strong>Alternative:</strong> If you don't know your Telegram username, you can also connect directly:
-    </p>
+        <!-- Divider -->
+        <div style="border-top: 2px solid #e5e7eb; margin: 32px 0;"></div>
 
-    <div style="text-align: center;">
-      <a href="${newDeepLink}" class="button button-secondary">📱 Connect on Telegram</a>
-    </div>
+        <!-- Alternative Option -->
+        <p class="text-muted" style="margin-bottom: 16px;">
+          <strong>Alternative:</strong> If you don't know your Telegram username, you can also connect directly:
+        </p>
 
-    <p style="background: #fef3c7; padding: 15px; border-left: 4px solid #f59e0b; border-radius: 4px; margin: 20px 0;">
-      <strong>⏰ Links expire in 48 hours.</strong><br>
-      Need help? Message <a href="https://t.me/noahchonlee" style="color: #E67E50;">@noahchonlee</a> on Telegram.
-    </p>
-  </div>
+        <div class="text-center">
+          <a href="${newDeepLink}" class="email-button email-button-secondary" style="background-color: #52A675;">
+            📱 Connect on Telegram
+          </a>
+        </div>
 
-  <div class="footer">
-    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #E67E50;">@noahchonlee</a> on Telegram</p>
-    <p style="color: #9ca3af; font-size: 12px;">© 2025 Frontier Meals. All rights reserved.</p>
-  </div>
-</body>
-</html>
-      `.trim();
+        <!-- Expiry Warning -->
+        <div class="info-box info-box-warning">
+          <p style="margin: 0; font-weight: 600; color: #92400e;">⏰ Links expire in 48 hours</p>
+          <p style="margin: 8px 0 0; color: #78350f;">Need help? Message <a href="https://t.me/noahchonlee" style="color: #E67E50; text-decoration: underline;">@noahchonlee</a> on Telegram.</p>
+        </div>
+      `;
+
+      const html = buildEmailHTML({
+        colorScheme: brandColors.orange,
+        title: subject,
+        preheader: 'Update your Telegram username to start receiving your daily QR codes.',
+        headerContent,
+        bodyContent,
+        footerContent: getSupportFooter(brandColors.orange)
+      });
 
       await sendEmail({
         to: customer.email,
@@ -161,10 +163,31 @@ export async function checkTelegramLinks(config: {
       console.log(`[Telegram Check] Sent correction email to ${customer.email}`);
     } catch (error) {
       console.error(`[Telegram Check] Error processing customer ${customer.id}:`, error);
+      errors.push({
+        customer_id: customer.id,
+        email: customer.email,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   }
 
-  console.log(`[Telegram Check] Complete. Checked: ${unlinkedCustomers.length}, Emails sent: ${emailsSent}`);
+  console.log(`[Telegram Check] Complete. Checked: ${unlinkedCustomers.length}, Emails sent: ${emailsSent}, Errors: ${errors.length}`);
+
+  // Send alert if there were errors
+  if (errors.length > 0) {
+    const today = new Date().toISOString().split('T')[0];
+    const alertMessage = formatJobErrorAlert({
+      jobName: 'Telegram Link Check Job',
+      date: today,
+      errorCount: errors.length,
+      totalProcessed: unlinkedCustomers.length,
+      errors,
+      maxErrorsToShow: 5
+    });
+
+    await sendAdminAlert(alertMessage);
+    console.log(`[Telegram Check] Sent error alert to admin - ${errors.length} errors`);
+  }
 
   return { checked: unlinkedCustomers.length, emails_sent: emailsSent };
 }

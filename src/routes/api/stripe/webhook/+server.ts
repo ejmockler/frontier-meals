@@ -398,12 +398,16 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
       throw new Error(`Invalid subscription period: end (${periodEndISO}) <= start (${periodStartISO})`);
     }
 
-    const durationDays = (periodEnd - periodStart) / (24 * 60 * 60);
+    // Calculate duration in days
+    // Stripe timestamps are in SECONDS (Unix timestamps), not milliseconds
+    const durationSeconds = periodEnd - periodStart;
+    const durationDays = durationSeconds / (24 * 60 * 60);
 
     // Reject zero-duration periods (Stripe API eventual consistency issue)
     if (durationDays < 1) {
       console.error('[handleInvoicePaid] CRITICAL: Zero-duration period detected - Stripe API returned stale data:', {
         duration_days: durationDays,
+        duration_seconds: durationSeconds,
         period_start: periodStartISO,
         period_end: periodEndISO,
         subscription_id: stripeSubscriptionId
