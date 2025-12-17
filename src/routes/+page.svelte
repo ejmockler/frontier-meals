@@ -38,6 +38,12 @@
   <header class="py-6 px-4 sm:px-6 lg:px-8">
     <div class="max-w-7xl mx-auto flex justify-between items-center">
       <h1 class="text-2xl font-extrabold tracking-tight text-[#1A1816]">Frontier Meals</h1>
+      <a
+        href="/demo"
+        class="px-4 py-2 bg-[#E8E6E1] hover:bg-[#D9D7D2] text-[#1A1816] font-bold text-sm rounded-sm border-2 border-[#D9D7D2] transition-all"
+      >
+        View Demo
+      </a>
     </div>
   </header>
 
@@ -117,7 +123,10 @@
         </div>
       </Card>
 
-      <div class="text-center">
+      <div class="text-center space-y-3">
+        <p class="text-sm text-[#5C5A56]">
+          Want to see how it works? <a href="/demo" class="text-[#E67E50] hover:text-[#D97F3E] underline font-bold">Try the interactive demo →</a>
+        </p>
         <p class="text-sm text-[#5C5A56]">
           Questions? Message <a href="https://t.me/noahchonlee" class="text-[#E67E50] hover:text-[#D97F3E] underline font-medium">@noahchonlee</a> on Telegram
         </p>
