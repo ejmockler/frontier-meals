@@ -1,3 +1,5 @@
+import { buildEmailHTML, brandColors, getSupportFooter } from './base';
+
 export function getTelegramLinkEmail(data: {
   customer_name: string;
   telegram_handle: string;
@@ -5,89 +7,88 @@ export function getTelegramLinkEmail(data: {
 }) {
   const subject = 'Welcome to Frontier Meals - Connect on Telegram';
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #2D9B9B 0%, #1F7A7A 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-    .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-    .button { display: inline-block; background: #2D9B9B; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }
-    .button:hover { background: #1F7A7A; }
-    .steps { background: white; padding: 20px; border-radius: 6px; margin: 20px 0; }
-    .step { display: flex; align-items: start; margin: 15px 0; }
-    .step-number { background: #2D9B9B; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 15px; flex-shrink: 0; }
-    .footer { text-align: center; color: #6b7280; font-size: 14px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1 style="margin: 0; font-size: 28px;">🍽️ Welcome to Frontier Meals!</h1>
-    <p style="margin: 10px 0 0; opacity: 0.9;">Let's get you set up on Telegram</p>
-  </div>
+  const headerContent = `
+    <div style="font-size: 48px; margin-bottom: 12px;">🍽️</div>
+    <h1 style="margin: 0 0 8px;">Welcome to Frontier Meals!</h1>
+    <p style="margin: 0; opacity: 0.95;">Let's get you set up on Telegram</p>
+  `;
 
-  <div class="content">
-    <p>Hi ${data.customer_name},</p>
+  const bodyContent = `
+    <p style="font-size: 18px; font-weight: 500; color: #111827;">Hi ${data.customer_name},</p>
 
-    <p>Your subscription is active! To complete your setup and manage your meals, you'll need to connect with our Telegram bot.</p>
+    <p>Your subscription is active! To complete your setup and manage your meals, connect with our Telegram bot.</p>
 
-    <div style="text-align: center;">
-      <a href="${data.deep_link}" class="button">📱 Connect on Telegram</a>
+    <!-- CTA Button -->
+    <div class="text-center">
+      <a href="${data.deep_link}" class="email-button" style="background-color: #2D9B9B;">
+        📱 Connect on Telegram
+      </a>
     </div>
 
-    <div class="steps">
-      <h3 style="margin-top: 0;">What happens next:</h3>
+    <!-- Steps -->
+    <div style="background: #f9fafb; padding: 24px; border-radius: 12px; margin: 32px 0;">
+      <h2 style="margin: 0 0 20px; font-size: 18px; font-weight: 600; color: #111827;">What happens next:</h2>
 
-      <div class="step">
-        <div class="step-number">1</div>
-        <div>
-          <strong>Connect on Telegram</strong><br>
-          Click the button above to open our bot
-        </div>
-      </div>
-
-      <div class="step">
-        <div class="step-number">2</div>
-        <div>
-          <strong>Set your preferences</strong><br>
-          Tell us your diet and any allergies
-        </div>
-      </div>
-
-      <div class="step">
-        <div class="step-number">3</div>
-        <div>
-          <strong>Get your daily QR code</strong><br>
-          Every day at 12 PM PT via email
-        </div>
-      </div>
-
-      <div class="step">
-        <div class="step-number">4</div>
-        <div>
-          <strong>Pick up your meal</strong><br>
-          Scan your QR at any kiosk before 11:59 PM PT
-        </div>
-      </div>
+      <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 12px 0; vertical-align: top;">
+            <div style="background: #2D9B9B; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;">1</div>
+          </td>
+          <td style="padding: 12px 0 12px 16px; vertical-align: top;">
+            <strong style="display: block; color: #111827; margin-bottom: 4px;">Connect on Telegram</strong>
+            <span style="color: #6b7280; font-size: 14px;">Click the button above to open our bot</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 12px 0; vertical-align: top;">
+            <div style="background: #2D9B9B; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;">2</div>
+          </td>
+          <td style="padding: 12px 0 12px 16px; vertical-align: top;">
+            <strong style="display: block; color: #111827; margin-bottom: 4px;">Set your preferences</strong>
+            <span style="color: #6b7280; font-size: 14px;">Tell us your diet and any allergies</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 12px 0; vertical-align: top;">
+            <div style="background: #2D9B9B; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;">3</div>
+          </td>
+          <td style="padding: 12px 0 12px 16px; vertical-align: top;">
+            <strong style="display: block; color: #111827; margin-bottom: 4px;">Get your daily QR code</strong>
+            <span style="color: #6b7280; font-size: 14px;">Every day at 12 PM PT via email</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 12px 0; vertical-align: top;">
+            <div style="background: #2D9B9B; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;">4</div>
+          </td>
+          <td style="padding: 12px 0 12px 16px; vertical-align: top;">
+            <strong style="display: block; color: #111827; margin-bottom: 4px;">Pick up your meal</strong>
+            <span style="color: #6b7280; font-size: 14px;">Scan your QR at any kiosk before 11:59 PM PT</span>
+          </td>
+        </tr>
+      </table>
     </div>
 
-    <p><strong>Your Telegram Handle:</strong> ${data.telegram_handle}</p>
-
-    <p style="background: #fef3c7; padding: 15px; border-left: 4px solid #f59e0b; border-radius: 4px; margin: 20px 0;">
-      <strong>⚠️ Important:</strong> You must connect on Telegram within 60 minutes to start receiving your daily QR codes.
+    <!-- Handle Display -->
+    <p style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 24px 0;">
+      <strong style="color: #111827;">Your Telegram Handle:</strong> <code style="background: white; padding: 4px 8px; border-radius: 4px; font-family: 'Courier New', monospace;">${data.telegram_handle}</code>
     </p>
-  </div>
 
-  <div class="footer">
-    <p>Questions? Message <a href="https://t.me/noahchonlee" style="color: #2D9B9B;">@noahchonlee</a> on Telegram</p>
-    <p style="color: #9ca3af; font-size: 12px;">© 2025 Frontier Meals. All rights reserved.</p>
-  </div>
-</body>
-</html>
-  `.trim();
+    <!-- Warning Notice -->
+    <div class="info-box info-box-warning">
+      <p style="margin: 0; font-weight: 600; color: #92400e;">⚠️ Important</p>
+      <p style="margin: 8px 0 0; color: #78350f;">You must connect on Telegram within 60 minutes to start receiving your daily QR codes.</p>
+    </div>
+  `;
+
+  const html = buildEmailHTML({
+    colorScheme: brandColors.teal,
+    title: subject,
+    preheader: 'Your subscription is active! Connect on Telegram to get started.',
+    headerContent,
+    bodyContent,
+    footerContent: getSupportFooter(brandColors.teal)
+  });
 
   return { subject, html };
 }

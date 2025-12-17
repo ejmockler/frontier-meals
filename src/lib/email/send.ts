@@ -12,7 +12,8 @@ export interface EmailOptions {
   attachments?: Array<{
     filename: string;
     content: string;
-    content_id?: string;
+    contentType?: string; // MIME type (e.g., 'image/png')
+    inlineContentId?: string; // For CID embedding (not contentId!)
   }>;
   tags?: Array<{ name: string; value: string }>;
   idempotencyKey?: string;

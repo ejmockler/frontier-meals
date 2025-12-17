@@ -213,18 +213,56 @@ export function getCurrentWeekBoundary(): Date {
 /**
  * Check if a skip date is eligible for reimbursement
  *
- * A skip is eligible if it's for a week AFTER the current Friday 09:00 PT boundary
+ * Business Rule: Skips are eligible for reimbursement if made:
+ * - Monday-Thursday (any time) for dates in the future (next week)
+ * - Friday before 9:00:00 AM PT for dates in the future (next week)
+ * - NOT eligible if made Friday 9:00:00 AM PT or later
+ * - NOT eligible if made Saturday-Sunday
+ * - NOT eligible if trying to skip today or dates in the past
  *
  * @param skipDate - The date being skipped (YYYY-MM-DD format)
  * @returns true if eligible for reimbursement
  */
 export function isSkipEligibleForReimbursement(skipDate: string): boolean {
-	const skipDateObj = new Date(skipDate + 'T00:00:00');
-	const nextBoundary = getNextFridayBoundary();
+	const now = nowInPT();
+	const today = todayInPT();
+	const dayOfWeek = getDay(now);
 
-	// Skip must be in a week that starts AFTER the next boundary
-	// This means the skip date must be >= the Friday after next boundary
-	const weekAfterBoundary = addWeeks(nextBoundary, 1);
+	// Can't skip today or past dates
+	if (skipDate <= today) {
+		return false;
+	}
 
-	return !isBefore(skipDateObj, weekAfterBoundary);
+	// Saturday (6) or Sunday (0) - NOT eligible
+	if (dayOfWeek === 6 || dayOfWeek === 0) {
+		return false;
+	}
+
+	// Friday (5) - only eligible before 9:00:00 AM PT (exact time boundary)
+	if (dayOfWeek === 5) {
+		// Create Friday 9:00:00 AM PT boundary for comparison
+		// This ensures we check the EXACT time (hour, minute, second) not just the hour
+		const fridayNineAM = setMilliseconds(
+			setSeconds(
+				setMinutes(
+					setHours(now, 9),
+					0
+				),
+				0
+			),
+			0
+		);
+
+		// If current time is 9:00:00 AM PT or later - NOT eligible
+		// Use !isBefore to handle exact equality (9:00:00.000 is not eligible)
+		if (!isBefore(now, fridayNineAM)) {
+			return false;
+		}
+
+		// Before 9:00:00 AM PT - eligible
+		return true;
+	}
+
+	// Monday-Thursday - eligible (as long as skip date is in future, checked above)
+	return true;
 }

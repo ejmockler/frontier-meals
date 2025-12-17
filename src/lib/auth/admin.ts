@@ -42,8 +42,7 @@ async function getSupabaseAdmin() {
  */
 const ADMIN_EMAILS = [
   'noah@frontier-meals.com',
-  'noahchonlee@gmail.com',
-  'mock7ee@gmail.com'
+  'noahchonlee@gmail.com'
 ];
 
 /**

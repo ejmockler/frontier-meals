@@ -1,62 +1,66 @@
+import { buildEmailHTML, brandColors, getSupportFooter } from './base';
+
 export function getQRDailyEmail(data: {
   customer_name: string;
   service_date: string;
-  qr_code_data_url: string; // base64 data URL of QR code image
+  qr_code_base64: string; // base64-encoded GIF image (without data URL prefix)
 }) {
   const date = new Date(data.service_date);
   const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+  const dateFormatted = date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
 
   const subject = `Your meal QR for ${dayName}`;
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-    .content { background: #f9fafb; padding: 30px; text-align: center; border-radius: 0 0 8px 8px; }
-    .qr-container { background: white; padding: 30px; border-radius: 8px; display: inline-block; margin: 20px 0; }
-    .qr-code { width: 280px; height: 280px; }
-    .expiry { background: #fef3c7; padding: 15px; border-left: 4px solid #f59e0b; border-radius: 4px; text-align: left; margin: 20px 0; }
-    .footer { text-align: center; color: #6b7280; font-size: 14px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1 style="margin: 0; font-size: 32px;">🍽️</h1>
-    <h2 style="margin: 10px 0 0; font-size: 24px;">Your QR Code for ${dayName}</h2>
-    <p style="margin: 5px 0 0; opacity: 0.9; font-size: 16px;">${date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-  </div>
+  const headerContent = `
+    <div style="font-size: 48px; margin-bottom: 12px;">🍽️</div>
+    <h1 style="margin: 0 0 8px;">Your QR Code for ${dayName}</h1>
+    <p style="margin: 0; opacity: 0.95;">${dateFormatted}</p>
+  `;
 
-  <div class="content">
-    <p style="font-size: 18px; margin-bottom: 10px;">Hi ${data.customer_name}!</p>
+  const bodyContent = `
+    <p style="font-size: 18px; font-weight: 500; color: #111827;">Hi ${data.customer_name}!</p>
 
     <p>Scan this QR code at any kiosk to get your fresh meal today.</p>
 
-    <div class="qr-container">
-      <img src="${data.qr_code_data_url}" alt="QR Code" class="qr-code">
+    <!-- QR Code Container -->
+    <div style="text-align: center; margin: 32px 0;">
+      <div style="background: #ffffff; padding: 32px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
+        <img
+          src="cid:qr-code"
+          alt="Your meal QR code for ${dayName}"
+          style="width: 280px; height: 280px; display: block;"
+          width="280"
+          height="280"
+        >
+      </div>
     </div>
 
-    <div class="expiry">
-      <p style="margin: 0;"><strong>⏰ Expires:</strong> Tonight at 11:59 PM PT</p>
-      <p style="margin: 5px 0 0; font-size: 14px; color: #6b7280;">You can redeem this QR code any time before midnight Pacific Time.</p>
+    <!-- Expiry Notice -->
+    <div class="info-box info-box-warning">
+      <p style="margin: 0; font-weight: 600; color: #92400e;">⏰ Expires: Tonight at 11:59 PM PT</p>
+      <p style="margin: 8px 0 0; color: #78350f;">You can redeem this QR code any time before midnight Pacific Time.</p>
     </div>
 
-    <p style="color: #6b7280;">
-      Need to skip a day? Use <code>/skip</code> in Telegram<br>
-      Questions? Message <a href="https://t.me/noahchonlee" style="color: #52A675;">@noahchonlee</a>
-    </p>
-  </div>
+    <!-- Help Text -->
+    <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e5e7eb;">
+      <p class="text-muted" style="margin: 0;">
+        Need to skip a day? Use <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace;">/skip</code> in Telegram
+      </p>
+    </div>
+  `;
 
-  <div class="footer">
-    <p style="color: #9ca3af; font-size: 12px;">© 2025 Frontier Meals. All rights reserved.</p>
-  </div>
-</body>
-</html>
-  `.trim();
+  const html = buildEmailHTML({
+    colorScheme: brandColors.green,
+    title: subject,
+    preheader: `Your QR code for ${dayName} is ready! Scan at any kiosk before 11:59 PM PT.`,
+    headerContent,
+    bodyContent,
+    footerContent: getSupportFooter(brandColors.green)
+  });
 
   return { subject, html };
 }

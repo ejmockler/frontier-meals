@@ -34,7 +34,7 @@ export function randomBytes(size: number): string {
 }
 
 /**
- * Create HMAC signature
+ * Create HMAC signature (hex-encoded)
  */
 export async function createHmac(algorithm: 'sha256', key: string, data: string): Promise<string> {
 	const keyBuffer = new TextEncoder().encode(key);
@@ -51,6 +51,30 @@ export async function createHmac(algorithm: 'sha256', key: string, data: string)
 	const signature = await crypto.subtle.sign('HMAC', cryptoKey, dataBuffer);
 	const signatureArray = Array.from(new Uint8Array(signature));
 	return signatureArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Create HMAC signature (base64-encoded)
+ * Used for webhook signature verification (e.g., Svix/Resend)
+ */
+export async function createHmacBase64(algorithm: 'sha256', key: string, data: string): Promise<string> {
+	const keyBuffer = new TextEncoder().encode(key);
+	const dataBuffer = new TextEncoder().encode(data);
+
+	const cryptoKey = await crypto.subtle.importKey(
+		'raw',
+		keyBuffer,
+		{ name: 'HMAC', hash: 'SHA-256' },
+		false,
+		['sign']
+	);
+
+	const signature = await crypto.subtle.sign('HMAC', cryptoKey, dataBuffer);
+
+	// Convert ArrayBuffer to base64
+	const signatureArray = new Uint8Array(signature);
+	const binaryString = String.fromCharCode(...signatureArray);
+	return btoa(binaryString);
 }
 
 /**

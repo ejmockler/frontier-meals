@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { RESEND_WEBHOOK_SECRET, SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { createClient } from '@supabase/supabase-js';
-import { randomUUID, sha256 } from '$lib/utils/crypto';
+import { createHmacBase64, timingSafeEqual } from '$lib/utils/crypto';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -31,10 +31,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Signed content format: "{id}.{timestamp}.{body}"
 	const signedContent = `${svixId}.${svixTimestamp}.${body}`;
 
-	const expectedSignature = crypto
-		.createHmac('sha256', RESEND_WEBHOOK_SECRET)
-		.update(signedContent)
-		.digest('base64');
+	const expectedSignature = await createHmacBase64('sha256', RESEND_WEBHOOK_SECRET, signedContent);
 
 	// Svix includes multiple signatures in the header (for key rotation)
 	// Format: "v1,signature1 v1,signature2"
@@ -43,7 +40,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		.map((s) => s.trim().split(',')[1])
 		.filter(Boolean);
 
-	const isValidSignature = signatures.includes(expectedSignature);
+	// Use timing-safe comparison to prevent timing attacks
+	const isValidSignature = signatures.some(sig => timingSafeEqual(sig, expectedSignature));
 
 	if (!isValidSignature) {
 		console.error('[Resend Webhook] Invalid signature');
