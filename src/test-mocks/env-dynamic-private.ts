@@ -1,6 +1,5 @@
 // Mock for $env/dynamic/private in tests
 export const env = {
-	DEMO_MODE: process.env.DEMO_MODE || 'false',
 	TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
 	RESEND_API_KEY: process.env.RESEND_API_KEY,
 	STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,

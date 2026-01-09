@@ -10,31 +10,12 @@ import { sendEmail } from '$lib/email/send';
 import { getQRDailyEmail } from '$lib/email/templates/qr-daily';
 import { validateCSRFFromFormData } from '$lib/auth/csrf';
 import { getAdminSession } from '$lib/auth/session';
-import { IS_DEMO_MODE, getMockCustomerList, logDemoAction } from '$lib/demo';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 export const load: PageServerLoad = async ({ url }) => {
   const search = url.searchParams.get('search') || '';
   const status = url.searchParams.get('status') || 'all';
-
-  // Demo mode: return mock customer list
-  if (IS_DEMO_MODE) {
-    logDemoAction('Loading customer list (demo)');
-    const mockCustomers = getMockCustomerList();
-
-    // Apply search filter if specified
-    let filteredCustomers = mockCustomers;
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filteredCustomers = mockCustomers.filter(c =>
-        c.email.toLowerCase().includes(searchLower) ||
-        c.name.toLowerCase().includes(searchLower)
-      );
-    }
-
-    return { customers: filteredCustomers, search, status };
-  }
 
   let query = supabase
     .from('customers')
@@ -68,16 +49,9 @@ export const actions: Actions = {
   regenerateQR: async ({ request, cookies }) => {
     const formData = await request.formData();
 
-    // Demo mode: simulate success without database writes
-    if (IS_DEMO_MODE) {
-      const customerId = formData.get('customerId') as string;
-      logDemoAction('Regenerate QR code (demo)', { customerId });
-      return { success: true };
-    }
-
     // Validate CSRF
     const session = await getAdminSession(cookies);
-    if (!session || !validateCSRFFromFormData(formData, session.sessionId)) {
+    if (!session || !await validateCSRFFromFormData(formData, session.sessionId)) {
       return fail(403, { error: 'Invalid CSRF token' });
     }
 
@@ -150,7 +124,7 @@ export const actions: Actions = {
       const emailTemplate = getQRDailyEmail({
         customer_name: customer.name,
         service_date: today,
-        qr_code_data_url: 'cid:qr-code' // Reference the inline attachment
+        qr_code_base64: base64Content
       });
 
       await sendEmail({
@@ -161,7 +135,8 @@ export const actions: Actions = {
           {
             filename: 'qr-code.gif',
             content: base64Content,
-            content_id: 'qr-code' // Inline attachment ID
+            contentType: 'image/gif',
+            inlineContentId: 'qr-code' // Inline attachment ID for cid:qr-code reference
           }
         ],
         tags: [

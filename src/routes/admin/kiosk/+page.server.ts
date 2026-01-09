@@ -1,11 +1,10 @@
 import type { PageServerLoad, Actions } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import * as jose from 'jose';
-import { randomUUID, sha256 } from '$lib/utils/crypto';
+import { randomUUID } from '$lib/utils/crypto';
 import { KIOSK_PRIVATE_KEY_BASE64 } from '$env/static/private';
-import { validateCSRFFromFormData } from '$lib/auth/csrf';
+import { validateCSRFFromFormData, generateCSRFToken } from '$lib/auth/csrf';
 import { getAdminSession } from '$lib/auth/session';
-import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
 export const load: PageServerLoad = async ({ cookies }) => {
   const session = await getAdminSession(cookies);
@@ -13,8 +12,10 @@ export const load: PageServerLoad = async ({ cookies }) => {
     throw redirect(302, '/admin/auth/login');
   }
 
+  const csrfToken = await generateCSRFToken(session.sessionId);
+
   return {
-    csrfToken: session.csrfToken
+    csrfToken
   };
 };
 
@@ -22,17 +23,9 @@ export const actions: Actions = {
   createSession: async ({ request, cookies }) => {
     const formData = await request.formData();
 
-    // Demo mode: return mock kiosk session token
-    if (IS_DEMO_MODE) {
-      const kioskId = formData.get('kioskId') as string;
-      const location = formData.get('location') as string;
-      logDemoAction('Create kiosk session (demo)', { kioskId, location });
-      return { sessionToken: `demo-kiosk-session-${Date.now()}` };
-    }
-
     // Validate CSRF
     const session = await getAdminSession(cookies);
-    if (!session || !validateCSRFFromFormData(formData, session.sessionId)) {
+    if (!session || !await validateCSRFFromFormData(formData, session.sessionId)) {
       return fail(403, { error: 'Invalid CSRF token' });
     }
 

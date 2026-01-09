@@ -1,18 +1,18 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { TELEGRAM_SECRET_TOKEN, TELEGRAM_BOT_TOKEN, SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY } from '$env/static/private';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
-import { createClient } from '@supabase/supabase-js';
 import { todayInPT, isSkipEligibleForReimbursement } from '$lib/utils/timezone';
-import { randomUUID, sha256, timingSafeEqual } from '$lib/utils/crypto';
+import { sha256, timingSafeEqual } from '$lib/utils/crypto';
+import { getEnv, type ServerEnv } from '$lib/server/env';
 import Stripe from 'stripe';
-import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
-const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: '2025-10-29.clover',
-  typescript: true
-});
+// Request-scoped context for clients and env
+interface RequestContext {
+  supabase: SupabaseClient;
+  stripe: Stripe;
+  env: ServerEnv;
+}
 
 // Session storage for multi-select skip flow (database-backed)
 interface SkipSession {
@@ -23,8 +23,8 @@ interface SkipSession {
 }
 
 // Database helpers for skip sessions
-async function getSkipSession(telegramUserId: number): Promise<SkipSession | null> {
-  const { data, error } = await supabase
+async function getSkipSession(ctx: RequestContext, telegramUserId: number): Promise<SkipSession | null> {
+  const { data, error } = await ctx.supabase
     .from('telegram_skip_sessions')
     .select('*')
     .eq('telegram_user_id', telegramUserId)
@@ -36,7 +36,7 @@ async function getSkipSession(telegramUserId: number): Promise<SkipSession | nul
 
   // Check if expired
   if (new Date(data.expires_at) < new Date()) {
-    await deleteSkipSession(telegramUserId);
+    await deleteSkipSession(ctx, telegramUserId);
     return null;
   }
 
@@ -48,8 +48,8 @@ async function getSkipSession(telegramUserId: number): Promise<SkipSession | nul
   };
 }
 
-async function setSkipSession(telegramUserId: number, session: SkipSession): Promise<void> {
-  const { error } = await supabase
+async function setSkipSession(ctx: RequestContext, telegramUserId: number, session: SkipSession): Promise<void> {
+  const { error } = await ctx.supabase
     .from('telegram_skip_sessions')
     .upsert({
       telegram_user_id: telegramUserId,
@@ -66,8 +66,8 @@ async function setSkipSession(telegramUserId: number, session: SkipSession): Pro
   }
 }
 
-async function deleteSkipSession(telegramUserId: number): Promise<void> {
-  const { error } = await supabase
+async function deleteSkipSession(ctx: RequestContext, telegramUserId: number): Promise<void> {
+  const { error } = await ctx.supabase
     .from('telegram_skip_sessions')
     .delete()
     .eq('telegram_user_id', telegramUserId);
@@ -109,37 +109,53 @@ interface TelegramChat {
   type: string;
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+  const { request } = event;
+
   // LOG: Webhook received
   console.log('[Telegram Webhook] Request received at', new Date().toISOString());
-  console.log('[Telegram Webhook] Headers:', Object.fromEntries(request.headers.entries()));
 
-  // Demo mode: ignore Telegram webhooks (safety check)
-  if (IS_DEMO_MODE) {
-    console.log('[Telegram Webhook] Demo mode - ignoring');
-    logDemoAction('Telegram webhook received (demo) - ignoring');
-    return json({ ok: true });
-  }
+  // Debug: Check platform.env availability
+  console.log('[Telegram Webhook] platform available:', !!event.platform);
+  console.log('[Telegram Webhook] platform.env available:', !!event.platform?.env);
+
+  // Get environment (works in both Cloudflare and local dev)
+  const env = await getEnv(event);
+
+  // Debug: Check if we got the secrets
+  console.log('[Telegram Webhook] SUPABASE_SERVICE_ROLE_KEY present:', !!env.SUPABASE_SERVICE_ROLE_KEY);
+  console.log('[Telegram Webhook] SUPABASE_SERVICE_ROLE_KEY length:', env.SUPABASE_SERVICE_ROLE_KEY?.length || 0);
 
   // Verify secret token using constant-time comparison to prevent timing attacks
   const secretToken = request.headers.get('x-telegram-bot-api-secret-token');
   console.log('[Telegram Webhook] Secret token present:', !!secretToken);
-  console.log('[Telegram Webhook] Secret token matches:', secretToken === TELEGRAM_SECRET_TOKEN);
 
-  if (!secretToken || !timingSafeEqual(secretToken, TELEGRAM_SECRET_TOKEN)) {
+  if (!secretToken || !timingSafeEqual(secretToken, env.TELEGRAM_SECRET_TOKEN)) {
     console.error('[Telegram Webhook] Invalid secret token - REJECTED');
     return json({ error: 'Forbidden' }, { status: 403 });
   }
 
   console.log('[Telegram Webhook] Secret token verified - processing update');
 
+  // Create request-scoped context with clients
+  console.log('[Telegram Webhook] Creating Supabase client with URL:', PUBLIC_SUPABASE_URL);
+  const ctx: RequestContext = {
+    env,
+    supabase: createClient(PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+    stripe: new Stripe(env.STRIPE_SECRET_KEY, {
+      apiVersion: '2025-12-15.clover',
+      typescript: true
+    })
+  };
+  console.log('[Telegram Webhook] Context created successfully');
+
   const update: TelegramUpdate = await request.json();
 
   try {
     if (update.message) {
-      await handleMessage(update.message);
+      await handleMessage(ctx, update.message);
     } else if (update.callback_query) {
-      await handleCallbackQuery(update.callback_query);
+      await handleCallbackQuery(ctx, update.callback_query);
     }
 
     return json({ ok: true });
@@ -151,7 +167,7 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 };
 
-async function handleMessage(message: TelegramMessage) {
+async function handleMessage(ctx: RequestContext, message: TelegramMessage) {
   const text = message.text || '';
   const chatId = message.chat.id;
 
@@ -163,33 +179,36 @@ async function handleMessage(message: TelegramMessage) {
 
     switch (command) {
       case '/start':
-        await handleStartCommand(message);
+        await handleStartCommand(ctx, message);
         break;
       case '/diet':
-        await handleDietCommand(chatId);
+        await handleDietCommand(ctx, chatId);
         break;
       case '/skip':
-        await handleSkipCommand(chatId);
+        await handleSkipCommand(ctx, chatId);
         break;
       case '/status':
-        await handleStatusCommand(chatId);
+        await handleStatusCommand(ctx, chatId);
         break;
       case '/billing':
-        await handleBillingCommand(chatId);
+        await handleBillingCommand(ctx, chatId);
         break;
       case '/help':
-        await handleHelpCommand(chatId);
+        await handleHelpCommand(ctx, chatId);
         break;
       case '/undo':
-        await handleUndoCommand(chatId);
+        await handleUndoCommand(ctx, chatId);
+        break;
+      case '/unskip':
+        await handleUnskipCommand(ctx, chatId);
         break;
       default:
-        await sendMessage(chatId, 'Not sure what that is. Try /help to see what\'s available.');
+        await sendMessage(ctx, chatId, 'Not sure what that is. Try /help to see what\'s available.');
     }
   }
 }
 
-async function handleStartCommand(message: TelegramMessage) {
+async function handleStartCommand(ctx: RequestContext, message: TelegramMessage) {
   const text = message.text || '';
   const parts = text.split(' ');
   const token = parts.length > 1 ? parts[1] : null;
@@ -198,15 +217,21 @@ async function handleStartCommand(message: TelegramMessage) {
   const chatId = message.chat.id;
 
   // Check if already linked
-  const { data: existingCustomer } = await supabase
+  console.log('[Telegram Webhook] Checking if user already linked, telegram_user_id:', telegramUserId);
+  const { data: existingCustomer, error: existingError } = await ctx.supabase
     .from('customers')
     .select('*')
     .eq('telegram_user_id', telegramUserId)
     .single();
 
+  console.log('[Telegram Webhook] Existing customer check:', {
+    found: !!existingCustomer,
+    error: existingError ? { code: existingError.code, message: existingError.message } : null
+  });
+
   if (existingCustomer) {
     // Already linked - update last seen
-    await supabase
+    await ctx.supabase
       .from('telegram_link_status')
       .upsert({
         customer_id: existingCustomer.id,
@@ -214,13 +239,14 @@ async function handleStartCommand(message: TelegramMessage) {
         last_seen_at: new Date().toISOString()
       });
 
-    await sendMessage(chatId, 'Hey again! You\'re all set.\n\n/skip to manage dates\n/status to see what\'s coming\n/help for everything else');
+    await sendMessage(ctx, chatId, 'Hey again! You\'re all set.\n\n/skip to manage dates\n/status to see what\'s coming\n/help for everything else');
     return;
   }
 
   // Not linked yet - need token
   if (!token) {
     await sendMessage(
+      ctx,
       chatId,
       'Hey! Welcome to Frontier.\n\nHead to frontier-meals.com to subscribe — we\'ll send you a link to connect your account here.\n\nQuestions? Hit up @noahchonlee'
     );
@@ -229,16 +255,24 @@ async function handleStartCommand(message: TelegramMessage) {
 
   // Verify deep link token (hash incoming token for comparison)
   const tokenHash = await sha256(token);
+  console.log('[Telegram Webhook] Token hash computed, querying database...');
 
-  const { data: deepLinkToken } = await supabase
+  const { data: deepLinkToken, error: deepLinkError } = await ctx.supabase
     .from('telegram_deep_link_tokens')
     .select('*')
     .eq('token_hash', tokenHash)
     .eq('used', false)
     .single();
 
+  console.log('[Telegram Webhook] Deep link query result:', {
+    found: !!deepLinkToken,
+    error: deepLinkError ? { code: deepLinkError.code, message: deepLinkError.message } : null
+  });
+
   if (!deepLinkToken) {
+    console.log('[Telegram Webhook] No valid deep link token found');
     await sendMessage(
+      ctx,
       chatId,
       'Hmm, that link isn\'t working — might be expired.\n\nCheck your welcome email for a fresh one, or ping @noahchonlee if you need a hand.'
     );
@@ -249,6 +283,7 @@ async function handleStartCommand(message: TelegramMessage) {
   const expiresAt = new Date(deepLinkToken.expires_at);
   if (expiresAt < new Date()) {
     await sendMessage(
+      ctx,
       chatId,
       'Hmm, that link isn\'t working — might be expired.\n\nCheck your welcome email for a fresh one, or ping @noahchonlee if you need a hand.'
     );
@@ -257,7 +292,7 @@ async function handleStartCommand(message: TelegramMessage) {
 
   // Link the account
   console.log('[DB] Linking telegram account:', { customer_id: deepLinkToken.customer_id, telegram_user_id: telegramUserId });
-  const { error: linkError } = await supabase
+  const { error: linkError } = await ctx.supabase
     .from('customers')
     .update({ telegram_user_id: telegramUserId })
     .eq('id', deepLinkToken.customer_id);
@@ -270,7 +305,7 @@ async function handleStartCommand(message: TelegramMessage) {
       hint: linkError.hint,
       customer_id: deepLinkToken.customer_id
     });
-    await sendMessage(chatId, 'Something went wrong.\n\nTry again? If it keeps happening, ping @noahchonlee.');
+    await sendMessage(ctx, chatId, 'Something went wrong.\n\nTry again? If it keeps happening, ping @noahchonlee.');
     return;
   }
 
@@ -278,7 +313,7 @@ async function handleStartCommand(message: TelegramMessage) {
 
   // Mark token as used
   console.log('[DB] Marking token as used');
-  const { error: tokenError } = await supabase
+  const { error: tokenError } = await ctx.supabase
     .from('telegram_deep_link_tokens')
     .update({ used: true, used_at: new Date().toISOString() })
     .eq('token_hash', tokenHash);
@@ -293,7 +328,7 @@ async function handleStartCommand(message: TelegramMessage) {
 
   // Update telegram_link_status
   console.log('[DB] Updating telegram_link_status');
-  const { error: statusError } = await supabase
+  const { error: statusError } = await ctx.supabase
     .from('telegram_link_status')
     .upsert({
       customer_id: deepLinkToken.customer_id,
@@ -316,7 +351,7 @@ async function handleStartCommand(message: TelegramMessage) {
 
   // Log audit event
   console.log('[DB] Creating audit_log entry for telegram_linked');
-  const { error: auditError } = await supabase.from('audit_log').insert({
+  const { error: auditError } = await ctx.supabase.from('audit_log').insert({
     actor: `customer:${deepLinkToken.customer_id}`,
     action: 'telegram_linked',
     subject: `customer:${deepLinkToken.customer_id}`,
@@ -333,11 +368,12 @@ async function handleStartCommand(message: TelegramMessage) {
   }
 
   // Send onboarding - diet selection
-  await sendDietSelectionKeyboard(chatId);
+  await sendDietSelectionKeyboard(ctx, chatId);
 }
 
-async function sendDietSelectionKeyboard(chatId: number) {
+async function sendDietSelectionKeyboard(ctx: RequestContext, chatId: number) {
   await sendMessage(
+    ctx,
     chatId,
     'Nice! You\'re connected.\n\nLet\'s dial in your meals — what\'s your diet?',
     {
@@ -351,13 +387,50 @@ async function sendDietSelectionKeyboard(chatId: number) {
   );
 }
 
-async function handleCallbackQuery(query: TelegramCallbackQuery) {
+async function handleCallbackQuery(ctx: RequestContext, query: TelegramCallbackQuery) {
   const data = query.data;
   const chatId = query.message.chat.id;
   const telegramUserId = query.from.id;
 
+  // Handle unskip callback before answering query (needs to answer with custom message)
+  if (data.startsWith('unskip:')) {
+    const skipId = data.replace('unskip:', '');
+
+    // Get skip details before deleting (verify it's a telegram skip)
+    const { data: skip } = await ctx.supabase
+      .from('skips')
+      .select('skip_date, customer_id, source')
+      .eq('id', skipId)
+      .eq('source', 'telegram')  // Safety check
+      .single();
+
+    if (!skip) {
+      await answerCallbackQuery(ctx, query.id, 'That skip was already removed.');
+      return;
+    }
+
+    // Delete (source filter for defense-in-depth, already verified above)
+    await ctx.supabase.from('skips').delete().eq('id', skipId).eq('source', 'telegram');
+
+    const date = new Date(skip.skip_date + 'T12:00:00');
+    const formatted = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+    // Edit the original message
+    await editMessage(ctx, chatId, query.message.message_id, `✅ ${formatted} is back on.`);
+
+    // Audit log
+    await ctx.supabase.from('audit_log').insert({
+      actor: `customer:${skip.customer_id}`,
+      action: 'skip_removed',
+      subject: `customer:${skip.customer_id}`,
+      metadata: { skip_date: skip.skip_date, via: 'unskip_command' }
+    });
+
+    return;
+  }
+
   // Answer callback query first (acknowledge button press)
-  await answerCallbackQuery(query.id);
+  await answerCallbackQuery(ctx, query.id);
 
   // Parse callback data
   const parts = data.split(':');
@@ -365,37 +438,37 @@ async function handleCallbackQuery(query: TelegramCallbackQuery) {
 
   switch (action) {
     case 'diet':
-      await handleDietSelection(chatId, telegramUserId, parts[1]);
+      await handleDietSelection(ctx, chatId, telegramUserId, parts[1]);
       break;
     case 'allergy':
-      await handleAllergyResponse(chatId, telegramUserId, parts[1]);
+      await handleAllergyResponse(ctx, chatId, telegramUserId, parts[1]);
       break;
     case 'skip':
-      await handleSkipSelection(chatId, telegramUserId, parts[1]);
+      await handleSkipSelection(ctx, chatId, telegramUserId, parts[1]);
       break;
     case 'skip_multi':
-      await handleSkipMultiAction(chatId, telegramUserId, query.message.message_id, parts.slice(1));
+      await handleSkipMultiAction(ctx, chatId, telegramUserId, query.message.message_id, parts.slice(1));
       break;
     default:
       console.log('Unknown callback action:', action);
   }
 }
 
-async function handleDietSelection(chatId: number, telegramUserId: number, diet: string) {
+async function handleDietSelection(ctx: RequestContext, chatId: number, telegramUserId: number, diet: string) {
   // Find customer
-  const { data: customer } = await supabase
+  const { data: customer } = await ctx.supabase
     .from('customers')
     .select('*')
     .eq('telegram_user_id', telegramUserId)
     .single();
 
   if (!customer) {
-    await sendMessage(chatId, 'Can\'t find your account.\n\nSomething\'s off — message @noahchonlee and we\'ll sort it out.');
+    await sendMessage(ctx, chatId, 'Can\'t find your account.\n\nSomething\'s off — message @noahchonlee and we\'ll sort it out.');
     return;
   }
 
   // Update dietary flags
-  await supabase
+  await ctx.supabase
     .from('customers')
     .update({
       dietary_flags: { diet }
@@ -404,6 +477,7 @@ async function handleDietSelection(chatId: number, telegramUserId: number, diet:
 
   // Send next question - allergies
   await sendMessage(
+    ctx,
     chatId,
     `Got it — ${diet} it is.\n\nAny food allergies we should know about?`,
     {
@@ -415,8 +489,8 @@ async function handleDietSelection(chatId: number, telegramUserId: number, diet:
   );
 }
 
-async function handleAllergyResponse(chatId: number, telegramUserId: number, response: string) {
-  const { data: customer } = await supabase
+async function handleAllergyResponse(ctx: RequestContext, chatId: number, telegramUserId: number, response: string) {
+  const { data: customer } = await ctx.supabase
     .from('customers')
     .select('*')
     .eq('telegram_user_id', telegramUserId)
@@ -426,17 +500,18 @@ async function handleAllergyResponse(chatId: number, telegramUserId: number, res
 
   if (response === 'yes') {
     // Update allergies flag
-    await supabase
+    await ctx.supabase
       .from('customers')
       .update({ allergies: true })
       .eq('id', customer.id);
 
     await sendMessage(
+      ctx,
       chatId,
       'Let\'s make sure we get this right.\n\nSend @noahchonlee a message so we can safely accommodate your needs.'
     );
   } else {
-    await supabase
+    await ctx.supabase
       .from('customers')
       .update({ allergies: false })
       .eq('id', customer.id);
@@ -444,36 +519,38 @@ async function handleAllergyResponse(chatId: number, telegramUserId: number, res
 
   // Send completion message
   await sendMessage(
+    ctx,
     chatId,
     'You\'re all set!\n\nYour daily QR drops at noon PT. See you then.\n\n(/help if you need anything)'
   );
 }
 
-async function handleDietCommand(chatId: number) {
-  await sendDietSelectionKeyboard(chatId);
+async function handleDietCommand(ctx: RequestContext, chatId: number) {
+  await sendDietSelectionKeyboard(ctx, chatId);
 }
 
-async function handleSkipCommand(chatId: number) {
+async function handleSkipCommand(ctx: RequestContext, chatId: number) {
   const telegramUserId = chatId; // In DM, chatId === userId
 
   // Find customer
-  const { data: customer } = await supabase
+  const { data: customer } = await ctx.supabase
     .from('customers')
     .select('*')
     .eq('telegram_user_id', telegramUserId)
     .single();
 
   if (!customer) {
-    await sendMessage(chatId, 'Please use /start first to link your account.');
+    await sendMessage(ctx, chatId, 'Please use /start first to link your account.');
     return;
   }
 
   // Load existing skips (exclude today - cannot skip today)
   const todayStr = todayInPT();
-  const { data: existingSkips } = await supabase
+  const { data: existingSkips } = await ctx.supabase
     .from('skips')
     .select('*')
     .eq('customer_id', customer.id)
+    .eq('source', 'telegram') // Only load user-created skips
     .gt('skip_date', todayStr); // gt (greater than) not gte - exclude today
 
   const existingSkipSet = new Set((existingSkips || []).map(s => s.skip_date));
@@ -486,31 +563,42 @@ async function handleSkipCommand(chatId: number) {
     expires_at: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
   };
 
-  await setSkipSession(telegramUserId, session);
+  await setSkipSession(ctx, telegramUserId, session);
 
   // Send calendar
-  const response = await sendSkipCalendar(chatId, telegramUserId, existingSkipSet);
+  const response = await sendSkipCalendar(ctx, chatId, telegramUserId, existingSkipSet);
 
   // Update session with message ID
   if (response.result?.message_id) {
     session.message_id = response.result.message_id;
-    await setSkipSession(telegramUserId, session);
+    await setSkipSession(ctx, telegramUserId, session);
   }
 }
 
 async function sendSkipCalendar(
+  ctx: RequestContext,
   chatId: number,
   telegramUserId: number,
   existingSkips: Set<string>
 ) {
-  const session = await getSkipSession(telegramUserId);
+  const session = await getSkipSession(ctx, telegramUserId);
   if (!session) {
-    await sendMessage(chatId, 'Session expired. Use /skip to start again.');
+    await sendMessage(ctx, chatId, 'Session expired. Use /skip to start again.');
     return;
   }
 
   const todayStr = todayInPT();
   const today = new Date(todayStr + 'T00:00:00');
+
+  // Load admin-created skips to display as locked
+  const { data: adminSkips } = await ctx.supabase
+    .from('skips')
+    .select('*')
+    .eq('customer_id', session.customer_id)
+    .eq('source', 'admin')
+    .gt('skip_date', todayStr);
+
+  const adminSkipSet = new Set((adminSkips || []).map(s => s.skip_date));
   const calendar: Array<Array<{ text: string; callback_data: string }>> = [];
 
   // Generate next 14 days (starting from tomorrow - skip today)
@@ -524,8 +612,13 @@ async function sendSkipCalendar(
 
     let emoji, text, callbackData;
 
-    if (session.selected_dates.has(dateStr)) {
-      // Selected in current session
+    if (adminSkipSet.has(dateStr)) {
+      // Admin-created skip - locked, not toggleable
+      emoji = '🔒';
+      text = `${emoji} ${dayName} ${monthDay}`;
+      callbackData = `skip_multi:locked:${dateStr}`;
+    } else if (session.selected_dates.has(dateStr)) {
+      // User-created skip - selected in current session
       emoji = '✅';
       text = `${emoji} ${dayName} ${monthDay}`;
       callbackData = `skip_multi:toggle:${dateStr}`;
@@ -553,32 +646,33 @@ async function sendSkipCalendar(
 
   const messageText = `📅 Select dates to skip your meals\n(Tap to toggle • Confirm when ready)\n\nCurrently selected: ${selectedCount} dates`;
 
-  return await sendMessage(chatId, messageText, { inline_keyboard: calendar });
+  return await sendMessage(ctx, chatId, messageText, { inline_keyboard: calendar });
 }
 
 async function handleSkipMultiAction(
+  ctx: RequestContext,
   chatId: number,
   telegramUserId: number,
   messageId: number,
   actionParts: string[]
 ) {
-  const session = await getSkipSession(telegramUserId);
+  const session = await getSkipSession(ctx, telegramUserId);
 
   if (!session) {
-    await editMessage(chatId, messageId, '⏱️ Selection expired. Use /skip to start again.');
+    await editMessage(ctx, chatId, messageId, '⏱️ Selection expired. Use /skip to start again.');
     return;
   }
 
   const action = actionParts[0];
 
-  if (action === 'disabled') {
-    // User clicked today - do nothing
+  if (action === 'disabled' || action === 'locked') {
+    // User clicked today or admin-locked date - do nothing
     return;
   }
 
   if (action === 'cancel') {
-    await deleteSkipSession(telegramUserId);
-    await editMessage(chatId, messageId, 'Got it — cancelled.');
+    await deleteSkipSession(ctx, telegramUserId);
+    await editMessage(ctx, chatId, messageId, 'Got it — cancelled.');
     return;
   }
 
@@ -599,27 +693,29 @@ async function handleSkipMultiAction(
     }
 
     // Save updated session
-    await setSkipSession(telegramUserId, session);
+    await setSkipSession(ctx, telegramUserId, session);
 
     // Update calendar display
-    const { data: existingSkips } = await supabase
+    const { data: existingSkips } = await ctx.supabase
       .from('skips')
       .select('*')
       .eq('customer_id', session.customer_id)
+      .eq('source', 'telegram') // Only load user-created skips
       .gt('skip_date', todayStr); // gt (greater than) not gte - exclude today
 
     const existingSkipSet = new Set((existingSkips || []).map(s => s.skip_date));
-    await updateSkipCalendar(chatId, messageId, telegramUserId, existingSkipSet);
+    await updateSkipCalendar(ctx, chatId, messageId, telegramUserId, existingSkipSet);
     return;
   }
 
   if (action === 'confirm') {
     // Get existing skips (exclude today - cannot skip today)
     const todayStr = todayInPT();
-    const { data: existingSkips } = await supabase
+    const { data: existingSkips } = await ctx.supabase
       .from('skips')
       .select('*')
       .eq('customer_id', session.customer_id)
+      .eq('source', 'telegram') // Only load user-created skips
       .gt('skip_date', todayStr); // gt (greater than) not gte - exclude today
 
     const existingSkipSet = new Set((existingSkips || []).map(s => s.skip_date));
@@ -628,28 +724,30 @@ async function handleSkipMultiAction(
     const datesToAdd = [...session.selected_dates].filter(d => !existingSkipSet.has(d));
     const datesToRemove = [...existingSkipSet].filter(d => !session.selected_dates.has(d));
 
-    // Batch insert new skips
+    // Batch insert new skips (with source = 'telegram')
     if (datesToAdd.length > 0) {
       const skipInserts = datesToAdd.map(date => ({
         customer_id: session.customer_id,
         skip_date: date,
+        source: 'telegram',
         eligible_for_reimbursement: isSkipEligibleForReimbursement(date)
       }));
 
-      await supabase.from('skips').insert(skipInserts);
+      await ctx.supabase.from('skips').insert(skipInserts);
     }
 
-    // Batch delete removed skips
+    // Batch delete removed skips (only user-created ones)
     if (datesToRemove.length > 0) {
-      await supabase
+      await ctx.supabase
         .from('skips')
         .delete()
         .in('skip_date', datesToRemove)
-        .eq('customer_id', session.customer_id);
+        .eq('customer_id', session.customer_id)
+        .eq('source', 'telegram'); // Only delete user-created skips
     }
 
     // Clear session
-    await deleteSkipSession(telegramUserId);
+    await deleteSkipSession(ctx, telegramUserId);
 
     // Send confirmation message
     let confirmText = '✅ Done!';
@@ -678,22 +776,33 @@ async function handleSkipMultiAction(
       confirmText += '\n\n(/status to see your schedule)';
     }
 
-    await editMessage(chatId, messageId, confirmText);
+    await editMessage(ctx, chatId, messageId, confirmText);
     return;
   }
 }
 
 async function updateSkipCalendar(
+  ctx: RequestContext,
   chatId: number,
   messageId: number,
   telegramUserId: number,
   existingSkips: Set<string>
 ) {
-  const session = await getSkipSession(telegramUserId);
+  const session = await getSkipSession(ctx, telegramUserId);
   if (!session) return;
 
   const todayStr = todayInPT();
   const today = new Date(todayStr + 'T00:00:00');
+
+  // Load admin-created skips to display as locked
+  const { data: adminSkips } = await ctx.supabase
+    .from('skips')
+    .select('*')
+    .eq('customer_id', session.customer_id)
+    .eq('source', 'admin')
+    .gt('skip_date', todayStr);
+
+  const adminSkipSet = new Set((adminSkips || []).map(s => s.skip_date));
   const calendar: Array<Array<{ text: string; callback_data: string }>> = [];
 
   // Generate next 14 days (starting from tomorrow - skip today)
@@ -707,11 +816,18 @@ async function updateSkipCalendar(
 
     let emoji, text, callbackData;
 
-    if (session.selected_dates.has(dateStr)) {
+    if (adminSkipSet.has(dateStr)) {
+      // Admin-created skip - locked, not toggleable
+      emoji = '🔒';
+      text = `${emoji} ${dayName} ${monthDay}`;
+      callbackData = `skip_multi:locked:${dateStr}`;
+    } else if (session.selected_dates.has(dateStr)) {
+      // User-created skip - selected in current session
       emoji = '✅';
       text = `${emoji} ${dayName} ${monthDay}`;
       callbackData = `skip_multi:toggle:${dateStr}`;
     } else {
+      // Available to select
       emoji = '⬜';
       text = `${emoji} ${dayName} ${monthDay}`;
       callbackData = `skip_multi:toggle:${dateStr}`;
@@ -732,43 +848,45 @@ async function updateSkipCalendar(
 
   const messageText = `📅 Select dates to skip your meals\n(Tap to toggle • Confirm when ready)\n\nCurrently selected: ${selectedCount} dates`;
 
-  await editMessage(chatId, messageId, messageText, { inline_keyboard: calendar });
+  await editMessage(ctx, chatId, messageId, messageText, { inline_keyboard: calendar });
 }
 
-async function handleSkipSelection(chatId: number, telegramUserId: number, dateStr: string) {
+async function handleSkipSelection(ctx: RequestContext, chatId: number, telegramUserId: number, dateStr: string) {
   if (dateStr === 'cancel') {
-    await sendMessage(chatId, 'Cancelled.');
+    await sendMessage(ctx, chatId, 'Cancelled.');
     return;
   }
 
   // Find customer
-  const { data: customer } = await supabase
+  const { data: customer } = await ctx.supabase
     .from('customers')
     .select('*')
     .eq('telegram_user_id', telegramUserId)
     .single();
 
   if (!customer) {
-    await sendMessage(chatId, 'Error: Could not find your account.');
+    await sendMessage(ctx, chatId, 'Error: Could not find your account.');
     return;
   }
 
-  // Check if already skipped
-  const { data: existingSkip } = await supabase
+  // Check if already skipped (user-created only)
+  const { data: existingSkip } = await ctx.supabase
     .from('skips')
     .select('*')
     .eq('customer_id', customer.id)
     .eq('skip_date', dateStr)
+    .eq('source', 'telegram')
     .single();
 
   if (existingSkip) {
     // Unskip (delete the skip record)
     console.log('[DB] Deleting skip:', { customer_id: customer.id, skip_date: dateStr });
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await ctx.supabase
       .from('skips')
       .delete()
       .eq('customer_id', customer.id)
-      .eq('skip_date', dateStr);
+      .eq('skip_date', dateStr)
+      .eq('source', 'telegram');
 
     if (deleteError) {
       console.error('[DB ERROR] Error deleting skip:', {
@@ -777,7 +895,7 @@ async function handleSkipSelection(chatId: number, telegramUserId: number, dateS
         customer_id: customer.id,
         skip_date: dateStr
       });
-      await sendMessage(chatId, '❌ Error removing skip. Please try again or contact @noahchonlee.');
+      await sendMessage(ctx, chatId, '❌ Error removing skip. Please try again or contact @noahchonlee.');
       return;
     }
 
@@ -786,10 +904,10 @@ async function handleSkipSelection(chatId: number, telegramUserId: number, dateS
     const date = new Date(dateStr);
     const formattedDate = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-    await sendMessage(chatId, `✅ ${formattedDate} is back on your schedule!`);
+    await sendMessage(ctx, chatId, `✅ ${formattedDate} is back on your schedule!`);
 
     // Log audit event
-    const { error: auditError } = await supabase.from('audit_log').insert({
+    const { error: auditError } = await ctx.supabase.from('audit_log').insert({
       actor: `customer:${customer.id}`,
       action: 'skip_removed',
       subject: `customer:${customer.id}`,
@@ -804,11 +922,12 @@ async function handleSkipSelection(chatId: number, telegramUserId: number, dateS
     const eligible = isSkipEligibleForReimbursement(dateStr);
 
     console.log('[DB] Creating skip:', { customer_id: customer.id, skip_date: dateStr, eligible_for_reimbursement: eligible });
-    const { error: insertError } = await supabase
+    const { error: insertError } = await ctx.supabase
       .from('skips')
       .insert({
         customer_id: customer.id,
         skip_date: dateStr,
+        source: 'telegram',
         eligible_for_reimbursement: eligible
       });
 
@@ -821,7 +940,7 @@ async function handleSkipSelection(chatId: number, telegramUserId: number, dateS
         customer_id: customer.id,
         skip_date: dateStr
       });
-      await sendMessage(chatId, '❌ Error adding skip. Please try again or contact @noahchonlee.');
+      await sendMessage(ctx, chatId, '❌ Error adding skip. Please try again or contact @noahchonlee.');
       return;
     }
 
@@ -830,10 +949,10 @@ async function handleSkipSelection(chatId: number, telegramUserId: number, dateS
     const date = new Date(dateStr);
     const formattedDate = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-    await sendMessage(chatId, `✅ Skipped ${formattedDate}. You won't receive a QR code for this date.`);
+    await sendMessage(ctx, chatId, `✅ Skipped ${formattedDate}. You won't receive a QR code for this date.`);
 
     // Log audit event
-    const { error: auditError } = await supabase.from('audit_log').insert({
+    const { error: auditError } = await ctx.supabase.from('audit_log').insert({
       actor: `customer:${customer.id}`,
       action: 'skip_added',
       subject: `customer:${customer.id}`,
@@ -846,37 +965,44 @@ async function handleSkipSelection(chatId: number, telegramUserId: number, dateS
   }
 }
 
-async function handleStatusCommand(chatId: number) {
+async function handleStatusCommand(ctx: RequestContext, chatId: number) {
   const telegramUserId = chatId;
 
   // Find customer
-  const { data: customer } = await supabase
+  const { data: customer } = await ctx.supabase
     .from('customers')
     .select('*, subscriptions(*)')
     .eq('telegram_user_id', telegramUserId)
     .single();
 
   if (!customer) {
-    await sendMessage(chatId, 'Please use /start first to link your account.');
+    await sendMessage(ctx, chatId, 'Please use /start first to link your account.');
     return;
   }
 
   const subscription = Array.isArray(customer.subscriptions) ? customer.subscriptions[0] : customer.subscriptions;
 
   if (!subscription) {
-    await sendMessage(chatId, 'No active subscription found. Please visit https://frontier-meals.com to subscribe.');
+    await sendMessage(ctx, chatId, 'No active subscription found. Please visit https://frontier-meals.com to subscribe.');
     return;
   }
 
-  // Get upcoming skips
+  // Get upcoming skips (both user and admin - show all to user)
   const todayStr = todayInPT(); // Use Pacific Time
-  const { data: upcomingSkips } = await supabase
+  const { data: upcomingSkips } = await ctx.supabase
     .from('skips')
-    .select('*')
+    .select('skip_date, source')
     .eq('customer_id', customer.id)
     .gte('skip_date', todayStr)
     .order('skip_date', { ascending: true })
     .limit(5);
+
+  // Format skips with indicator for admin-created ones
+  const formatSkip = (s: { skip_date: string; source: string }) => {
+    const date = new Date(s.skip_date + 'T12:00:00');
+    const formatted = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return s.source === 'admin' ? `  🔒 ${formatted}` : `  • ${formatted}`;
+  };
 
   const statusText = `
 Here's what's up:
@@ -887,21 +1013,22 @@ Here's what's up:
 🥗 Diet: ${(customer.dietary_flags?.diet || 'Everything').charAt(0).toUpperCase() + (customer.dietary_flags?.diet || 'Everything').slice(1)}
 ⚠️ Allergies: ${customer.allergies ? 'Yes (contact @noahchonlee)' : 'None'}
 
-${upcomingSkips && upcomingSkips.length > 0 ? `Upcoming skips:\n${upcomingSkips.map(s => `  • ${new Date(s.skip_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`).join('\n')}` : 'No skips coming up — you\'re getting meals every day.'}
+${upcomingSkips && upcomingSkips.length > 0 ? `Upcoming skips:\n${upcomingSkips.map(formatSkip).join('\n')}` : 'No skips coming up — you\'re getting meals every day.'}
 
 /skip to change dates
 /diet to update preferences
   `.trim();
 
-  await sendMessage(chatId, statusText);
+  await sendMessage(ctx, chatId, statusText);
 }
 
-async function handleHelpCommand(chatId: number) {
+async function handleHelpCommand(ctx: RequestContext, chatId: number) {
   const helpText = `
 Here's what you can do:
 
 /diet — Update food preferences
-/skip — Skip meal dates
+/skip — Skip future meal(s)
+/unskip — Remove a skip
 /status — See what's coming
 /billing — Manage subscription
 /undo — Undo your last skip
@@ -909,54 +1036,56 @@ Here's what you can do:
 Questions? Hit up @noahchonlee
   `.trim();
 
-  await sendMessage(chatId, helpText);
+  await sendMessage(ctx, chatId, helpText);
 }
 
-async function handleUndoCommand(chatId: number) {
+async function handleUndoCommand(ctx: RequestContext, chatId: number) {
   const telegramUserId = chatId;
 
   // Find customer
-  const { data: customer } = await supabase
+  const { data: customer } = await ctx.supabase
     .from('customers')
     .select('*')
     .eq('telegram_user_id', telegramUserId)
     .single();
 
   if (!customer) {
-    await sendMessage(chatId, 'Please use /start first to link your account.');
+    await sendMessage(ctx, chatId, 'Please use /start first to link your account.');
     return;
   }
 
   // Get most recent skip (from today forward)
   const todayStr = todayInPT(); // Use Pacific Time
-  const { data: recentSkips } = await supabase
+  const { data: recentSkips } = await ctx.supabase
     .from('skips')
     .select('*')
     .eq('customer_id', customer.id)
+    .eq('source', 'telegram')  // Only undo user's own skips, not admin-created ones
     .gte('skip_date', todayStr)
     .order('created_at', { ascending: false })
     .limit(1);
 
   if (!recentSkips || recentSkips.length === 0) {
-    await sendMessage(chatId, 'Nothing to undo — you haven\'t skipped anything recently.');
+    await sendMessage(ctx, chatId, 'Nothing to undo — you haven\'t skipped anything recently.');
     return;
   }
 
   const skipToUndo = recentSkips[0];
 
   // Remove the skip
-  await supabase
+  await ctx.supabase
     .from('skips')
     .delete()
-    .eq('id', skipToUndo.id);
+    .eq('id', skipToUndo.id)
+    .eq('source', 'telegram');  // Extra safety - only delete user-created skips
 
   const date = new Date(skipToUndo.skip_date);
   const formattedDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
-  await sendMessage(chatId, `✅ Undone — ${formattedDate} is back on.`);
+  await sendMessage(ctx, chatId, `✅ Undone — ${formattedDate} is back on.`);
 
   // Log audit event
-  await supabase.from('audit_log').insert({
+  await ctx.supabase.from('audit_log').insert({
     actor: `customer:${customer.id}`,
     action: 'skip_undone',
     subject: `customer:${customer.id}`,
@@ -964,23 +1093,71 @@ async function handleUndoCommand(chatId: number) {
   });
 }
 
-async function handleBillingCommand(chatId: number) {
+async function handleUnskipCommand(ctx: RequestContext, chatId: number) {
+  const telegramUserId = chatId;
+
+  const { data: customer } = await ctx.supabase
+    .from('customers')
+    .select('id')
+    .eq('telegram_user_id', telegramUserId)
+    .single();
+
+  if (!customer) {
+    await sendMessage(ctx, chatId, 'Please use /start first to link your account.');
+    return;
+  }
+
+  // Get future user-created skips only
+  const todayStr = todayInPT();
+  const { data: skips } = await ctx.supabase
+    .from('skips')
+    .select('id, skip_date')
+    .eq('customer_id', customer.id)
+    .eq('source', 'telegram')  // Only user's own skips
+    .gt('skip_date', todayStr)
+    .order('skip_date', { ascending: true });
+
+  if (!skips || skips.length === 0) {
+    await sendMessage(ctx, chatId, 'You have no upcoming skips to remove.\n\nUse /skip to manage your schedule.');
+    return;
+  }
+
+  // Build buttons (2 per row)
+  const buttons: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (let i = 0; i < skips.length; i++) {
+    const skip = skips[i];
+    const date = new Date(skip.skip_date + 'T12:00:00');
+    const label = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const button = { text: `❌ ${label}`, callback_data: `unskip:${skip.id}` };
+
+    if (i % 2 === 0) {
+      buttons.push([button]);
+    } else {
+      buttons[buttons.length - 1].push(button);
+    }
+  }
+
+  await sendMessage(ctx, chatId, 'Tap a date to restore it:', { inline_keyboard: buttons });
+}
+
+async function handleBillingCommand(ctx: RequestContext, chatId: number) {
   const telegramUserId = chatId;
 
   // Find customer
-  const { data: customer } = await supabase
+  const { data: customer } = await ctx.supabase
     .from('customers')
     .select('*')
     .eq('telegram_user_id', telegramUserId)
     .single();
 
   if (!customer) {
-    await sendMessage(chatId, 'Please use /start first to link your account.');
+    await sendMessage(ctx, chatId, 'Please use /start first to link your account.');
     return;
   }
 
   if (!customer.stripe_customer_id) {
     await sendMessage(
+      ctx,
       chatId,
       'Can\'t find your billing account.\n\nSomething\'s off — message @noahchonlee and we\'ll sort it out.'
     );
@@ -989,13 +1166,14 @@ async function handleBillingCommand(chatId: number) {
 
   try {
     // Generate Stripe Customer Portal session (expires in 30 minutes)
-    const portalSession = await stripe.billingPortal.sessions.create({
+    const portalSession = await ctx.stripe.billingPortal.sessions.create({
       customer: customer.stripe_customer_id,
       return_url: 'https://frontier-meals.com'
     });
 
     // Send message with inline button
     await sendMessage(
+      ctx,
       chatId,
       '💳 Manage your subscription:\n\n• Update payment\n• View billing history\n• Pause or cancel\n\nTap below to open your portal (expires in 30 min)',
       {
@@ -1011,7 +1189,7 @@ async function handleBillingCommand(chatId: number) {
     );
 
     // Log audit event
-    await supabase.from('audit_log').insert({
+    await ctx.supabase.from('audit_log').insert({
       actor: `customer:${customer.id}`,
       action: 'billing_portal_accessed',
       subject: `customer:${customer.id}`,
@@ -1020,6 +1198,7 @@ async function handleBillingCommand(chatId: number) {
   } catch (error) {
     console.error('[Telegram] Error creating portal session:', error);
     await sendMessage(
+      ctx,
       chatId,
       'Something went wrong.\n\nTry again? If it keeps happening, ping @noahchonlee.'
     );
@@ -1033,6 +1212,7 @@ async function handleBillingCommand(chatId: number) {
  * Returns null on failure to allow graceful handling
  */
 async function sendMessage(
+  ctx: RequestContext,
   chatId: number,
   text: string,
   replyMarkup?: { inline_keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>> }
@@ -1047,7 +1227,7 @@ async function sendMessage(
       payload.reply_markup = replyMarkup;
     }
 
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    const response = await fetch(`https://api.telegram.org/bot${ctx.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -1080,6 +1260,7 @@ async function sendMessage(
  * Returns null on failure to allow graceful handling
  */
 async function editMessage(
+  ctx: RequestContext,
   chatId: number,
   messageId: number,
   text: string,
@@ -1096,7 +1277,7 @@ async function editMessage(
       payload.reply_markup = replyMarkup;
     }
 
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageText`, {
+    const response = await fetch(`https://api.telegram.org/bot${ctx.env.TELEGRAM_BOT_TOKEN}/editMessageText`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -1130,12 +1311,12 @@ async function editMessage(
  * Safe wrapper for answerCallbackQuery - catches and logs errors without crashing
  * Returns false on failure to allow graceful handling
  */
-async function answerCallbackQuery(queryId: string, text?: string): Promise<boolean> {
+async function answerCallbackQuery(ctx: RequestContext, queryId: string, text?: string): Promise<boolean> {
   try {
     const payload: any = { callback_query_id: queryId };
     if (text) payload.text = text;
 
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+    const response = await fetch(`https://api.telegram.org/bot${ctx.env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)

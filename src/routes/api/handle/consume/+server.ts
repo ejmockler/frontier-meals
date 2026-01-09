@@ -4,7 +4,6 @@ import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
-import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -32,16 +31,6 @@ export const POST: RequestHandler = async ({ request }) => {
 			},
 			{ status: 400 }
 		);
-	}
-
-	// Demo mode: return success without database writes
-	if (IS_DEMO_MODE) {
-		logDemoAction('Handle update (demo)', { token, newHandle });
-		return json({
-			success: true,
-			message: 'Handle updated successfully',
-			new_handle: newHandle
-		});
 	}
 
 	try {

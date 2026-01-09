@@ -46,7 +46,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
     // Redirect to admin dashboard
     throw redirect(302, '/admin');
-  } catch (error) {
+  } catch (error: unknown) {
     // SvelteKit redirects: check for redirect-like objects
     if (
       error instanceof Response ||
@@ -56,11 +56,12 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
     }
 
     // Log actual errors
+    const err = error instanceof Error ? error : new Error(String(error));
     console.error('[Admin Auth] Verification error:', error);
     console.error('[Admin Auth] Error details:', {
-      name: error?.name,
-      message: error?.message,
-      stack: error?.stack
+      name: err.name,
+      message: err.message,
+      stack: err.stack
     });
     return json({ error: 'Verification failed' }, { status: 500 });
   }

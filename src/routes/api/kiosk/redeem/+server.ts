@@ -5,7 +5,6 @@ import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY, QR_PUBLIC_KEY } from '$env/static/private';
 import * as jose from 'jose';
 import { validateKioskSession } from '$lib/auth/kiosk';
-import { IS_DEMO_MODE, bypassMealRedemption } from '$lib/demo';
 import { isValidShortCode, normalizeShortCode } from '$lib/utils/short-code';
 import { checkRateLimit, RateLimitKeys } from '$lib/utils/rate-limit';
 
@@ -51,39 +50,10 @@ export const POST: RequestHandler = async ({ request }) => {
     );
   }
 
-  // Demo mode: bypass JWT verification and database operations
-  if (IS_DEMO_MODE) {
-    const redemptionResult = bypassMealRedemption(qrToken);
-
-    if (!redemptionResult.success) {
-      const statusCode = redemptionResult.error_code === 'CUSTOMER_NOT_FOUND' ? 404 : 400;
-      return json(
-        {
-          error: redemptionResult.error_message,
-          code: redemptionResult.error_code
-        },
-        { status: statusCode }
-      );
-    }
-
-    // Extract first name only
-    const firstName = redemptionResult.customer_name?.split(' ')[0] || redemptionResult.customer_name;
-
-    return json({
-      success: true,
-      customer: {
-        name: firstName,
-        dietary_flags: redemptionResult.customer_dietary_flags
-      },
-      redemption: {
-        id: redemptionResult.redemption_id,
-        redeemed_at: new Date().toISOString()
-      }
-    });
-  }
+  // Declare jwt outside try block so it's accessible in catch for debugging
+  let jwt: string = '';
 
   try {
-    let jwt: string;
     let customerId: string;
     let serviceDate: string;
     let jti: string;

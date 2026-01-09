@@ -9,11 +9,17 @@ import { isServiceDay } from '$lib/utils/service-calendar';
 import { generateShortCode } from '$lib/utils/short-code';
 import { sendAdminAlert, formatJobErrorAlert } from '$lib/utils/alerts';
 
+interface IssueDailyQRCodesResult {
+  issued: number;
+  errors: Array<{ customer_id: string; email?: string; error: string }>;
+  skipped?: boolean;
+}
+
 export async function issueDailyQRCodes(config: {
   supabaseUrl: string;
   supabaseServiceKey: string;
   qrPrivateKey: string;
-}) {
+}): Promise<IssueDailyQRCodesResult> {
   const jobStartTime = Date.now();
   const supabase = createClient(config.supabaseUrl, config.supabaseServiceKey);
   const today = todayInPT(); // YYYY-MM-DD in Pacific Time
@@ -21,7 +27,7 @@ export async function issueDailyQRCodes(config: {
   console.log(`[QR Job] Starting QR issuance for ${today}`);
 
   // Check if today is a service day (configured via admin panel + database)
-  if (!(await isServiceDay(today))) {
+  if (!(await isServiceDay(today, supabase))) {
     const date = new Date(today + 'T12:00:00-08:00');
     const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' });
     console.log(`[QR Job] Skipping ${dayOfWeek} ${today} - not a service day (weekend, holiday, or special closure)`);

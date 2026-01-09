@@ -9,7 +9,6 @@ import {
   QR_PRIVATE_KEY_BASE64,
   CRON_SECRET
 } from '$env/static/private';
-import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
 /**
  * Daily QR Code Issuance Endpoint
@@ -20,12 +19,6 @@ import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
  * Authorization: Cron-Secret header must match CRON_SECRET env variable
  */
 export const POST: RequestHandler = async ({ request }) => {
-  // Demo mode: ignore cron jobs (safety check)
-  if (IS_DEMO_MODE) {
-    logDemoAction('QR issuance cron triggered (demo) - ignoring');
-    return json({ success: true, issued: 0, errors: [] });
-  }
-
   // Verify cron secret
   const cronSecret = request.headers.get('cron-secret');
 

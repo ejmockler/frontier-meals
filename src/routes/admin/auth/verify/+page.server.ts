@@ -63,7 +63,7 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 
     // Redirect to admin dashboard
     throw redirect(302, '/admin');
-  } catch (error) {
+  } catch (error: unknown) {
     // SvelteKit redirects: check for redirect-like objects
     // In Cloudflare Workers, SvelteKit's redirect() doesn't return a Response instance
     // Instead it returns an object with status and location properties
@@ -76,12 +76,13 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 
     // This should only run for actual errors, not redirects
     console.error('[Admin Auth] Actual error (not redirect):', JSON.stringify(error, null, 2));
+    const err = error instanceof Error ? error : new Error(String(error));
     console.error('[Admin Auth] Error details:', {
-      name: error?.name,
-      message: error?.message,
-      stack: error?.stack,
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
       type: typeof error,
-      constructor: error?.constructor?.name
+      constructor: err.constructor?.name
     });
     throw redirect(302, '/admin/auth/login?error=verification_failed');
   }

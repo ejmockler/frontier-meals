@@ -1,14 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
-import {
-	IS_DEMO_MODE,
-	bypassAdminEmailCheck,
-	bypassMagicLinkGeneration,
-	bypassMagicLinkVerification,
-	bypassAdminSessionCreation,
-	bypassAdminSessionValidation
-} from '$lib/demo';
 
 // Helper to get authenticated Supabase client with service role
 async function getSupabaseAdmin() {
@@ -42,18 +34,14 @@ async function getSupabaseAdmin() {
  */
 const ADMIN_EMAILS = [
   'noah@frontier-meals.com',
-  'noahchonlee@gmail.com'
+  'noahchonlee@gmail.com',
+  'mock7ee@gmail.com'
 ];
 
 /**
  * Check if an email is authorized as admin
  */
 export function isAdminEmail(email: string): boolean {
-  // Demo mode: all emails are valid
-  if (IS_DEMO_MODE) {
-    return bypassAdminEmailCheck(email);
-  }
-
   return ADMIN_EMAILS.includes(email.toLowerCase());
 }
 
@@ -65,11 +53,6 @@ export function isAdminEmail(email: string): boolean {
 export async function generateMagicLinkToken(email: string): Promise<string> {
   if (!isAdminEmail(email)) {
     throw new Error('Unauthorized email');
-  }
-
-  // Demo mode: return mock token without database write
-  if (IS_DEMO_MODE) {
-    return bypassMagicLinkGeneration(email);
   }
 
   const supabase = await getSupabaseAdmin();
@@ -99,11 +82,6 @@ export async function generateMagicLinkToken(email: string): Promise<string> {
  * Hashes incoming token before database lookup
  */
 export async function verifyMagicLinkToken(token: string): Promise<{ valid: boolean; email?: string; expired?: boolean }> {
-  // Demo mode: accept any token
-  if (IS_DEMO_MODE) {
-    return bypassMagicLinkVerification(token);
-  }
-
   const supabase = await getSupabaseAdmin();
 
   // Hash the incoming token to compare with stored hash
@@ -158,11 +136,6 @@ export interface AdminSession {
  * Returns session data to be stored in encrypted cookie
  */
 export function createAdminSession(email: string): AdminSession {
-  // Demo mode: return mock session
-  if (IS_DEMO_MODE) {
-    return bypassAdminSessionCreation(email);
-  }
-
   return {
     sessionId: randomUUID(),
     email,
@@ -176,11 +149,6 @@ export function createAdminSession(email: string): AdminSession {
  * Validate an admin session
  */
 export function validateAdminSession(session: any): session is AdminSession {
-  // Demo mode: accept any session
-  if (IS_DEMO_MODE) {
-    return bypassAdminSessionValidation(session);
-  }
-
   if (!session || !session.sessionId || !session.email || !session.role || session.role !== 'admin') {
     return false;
   }

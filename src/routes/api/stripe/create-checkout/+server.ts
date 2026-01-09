@@ -2,7 +2,6 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import Stripe from 'stripe';
 import { STRIPE_SECRET_KEY, STRIPE_PRICE_ID, SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
-import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
@@ -11,17 +10,11 @@ import { checkRateLimit, RateLimitKeys } from '$lib/utils/rate-limit';
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: '2025-10-29.clover',
+  apiVersion: '2025-12-15.clover',
   typescript: true
 });
 
 export const POST: RequestHandler = async ({ url, request, getClientAddress }) => {
-  // Demo mode: return mock checkout URL without Stripe interaction
-  if (IS_DEMO_MODE) {
-    logDemoAction('Create Stripe checkout session (demo)');
-    return json({ url: `${url.origin}/demo-checkout` });
-  }
-
   // Get client IP address for rate limiting
   // Priority: CF-Connecting-IP (Cloudflare) > X-Forwarded-For > getClientAddress()
   const clientIp =

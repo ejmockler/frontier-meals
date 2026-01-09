@@ -82,12 +82,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
     }
 
     return json({ success: true });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('[Admin Auth] Error generating magic link:', error);
+    const err = error instanceof Error ? error : new Error(String(error));
     console.error('[Admin Auth] Error details:', {
-      name: error?.name,
-      message: error?.message,
-      stack: error?.stack
+      name: err.name,
+      message: err.message,
+      stack: err.stack
     });
     return json({ error: 'Failed to send magic link' }, { status: 500 });
   }

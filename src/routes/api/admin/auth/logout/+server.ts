@@ -8,7 +8,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
   const session = await getAdminSession(cookies);
   if (session) {
     const formData = await request.formData();
-    if (!validateCSRFFromFormData(formData, session.sessionId)) {
+    if (!await validateCSRFFromFormData(formData, session.sessionId)) {
       return json({ error: 'Invalid CSRF token' }, { status: 403 });
     }
   }

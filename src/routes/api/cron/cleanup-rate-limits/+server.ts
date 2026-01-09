@@ -1,35 +1,20 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createClient } from '@supabase/supabase-js';
-import { PUBLIC_SUPABASE_URL } from '$env/static/public';
-import { SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET } from '$env/static/private';
 import { cleanupRateLimits } from '$lib/utils/rate-limit';
-
-const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+import { getEnv, getSupabaseAdmin } from '$lib/server/env';
 
 /**
  * Rate Limit Cleanup Cron Job
  * Removes old rate limit records to prevent table bloat
  *
- * Schedule: Every hour
+ * Schedule: Weekly (Sunday 3am UTC)
  * Authorization: Cron-Secret header must match CRON_SECRET env variable
- *
- * Environment variables:
- * - CRON_SECRET: Secret token for cron job authorization
- * - SUPABASE_SERVICE_ROLE_KEY: Service role key for database access
- *
- * Cloudflare Pages Cron Setup:
- * Add to wrangler.toml:
- * ```toml
- * [triggers]
- * crons = ["0 * * * *"]  # Every hour at minute 0
- * ```
  */
-export const GET: RequestHandler = async ({ request }) => {
-  // Verify cron secret
-  const cronSecret = request.headers.get('Cron-Secret');
+export const POST: RequestHandler = async (event) => {
+  const env = await getEnv(event);
+  const cronSecret = event.request.headers.get('Cron-Secret');
 
-  if (cronSecret !== CRON_SECRET) {
+  if (cronSecret !== env.CRON_SECRET) {
     console.error('[Cleanup Rate Limits] Unauthorized cron attempt');
     return json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -37,6 +22,7 @@ export const GET: RequestHandler = async ({ request }) => {
   console.log('[Cleanup Rate Limits] Starting rate limit cleanup...');
 
   try {
+    const supabase = await getSupabaseAdmin(event);
     // Clean up records older than 24 hours
     const deletedCount = await cleanupRateLimits(supabase, 24);
 

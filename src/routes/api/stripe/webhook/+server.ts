@@ -8,22 +8,15 @@ import { sendEmail } from '$lib/email/send';
 import { getTelegramLinkEmail } from '$lib/email/templates/telegram-link';
 import { getDunningSoftEmail, getDunningRetryEmail, getDunningFinalEmail, getCanceledNoticeEmail } from '$lib/email/templates/dunning';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
-import { IS_DEMO_MODE, logDemoAction } from '$lib/demo';
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: '2025-10-29.clover',
+  apiVersion: '2025-12-15.clover',
   typescript: true
 });
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 export const POST: RequestHandler = async ({ request }) => {
-  // Demo mode: ignore webhooks (safety check)
-  if (IS_DEMO_MODE) {
-    logDemoAction('Stripe webhook received (demo) - ignoring');
-    return json({ received: true });
-  }
-
   const body = await request.text();
   const signature = request.headers.get('stripe-signature');
 

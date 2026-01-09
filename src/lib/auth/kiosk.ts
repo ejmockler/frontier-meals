@@ -1,6 +1,5 @@
 import * as jose from 'jose';
 import { KIOSK_PUBLIC_KEY } from '$env/static/private';
-import { IS_DEMO_MODE, bypassKioskSessionValidation } from '$lib/demo';
 
 /**
  * Validate a kiosk session JWT token
@@ -10,11 +9,6 @@ export async function validateKioskSession(token: string): Promise<{
   kiosk_id?: string;
   location?: string;
 }> {
-  // Demo mode: accept any token
-  if (IS_DEMO_MODE) {
-    return bypassKioskSessionValidation(token);
-  }
-
   try {
     const publicKey = await jose.importSPKI(KIOSK_PUBLIC_KEY, 'ES256');
 
