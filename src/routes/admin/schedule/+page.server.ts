@@ -1,21 +1,14 @@
 import { redirect, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
+import {
+	sendScheduleChangeNotification,
+	getActiveCustomerCount
+} from '$lib/email/schedule-notifications';
+import { getAdminSession } from '$lib/auth/session';
 
-export const load: PageServerLoad = async ({ locals: { supabase, session } }) => {
-	if (!session) {
-		throw redirect(303, '/admin/login');
-	}
-
-	// Verify admin access
-	const { data: staff } = await supabase
-		.from('staff_accounts')
-		.select('*')
-		.eq('id', session.user.id)
-		.single();
-
-	if (!staff) {
-		throw redirect(303, '/admin/login');
-	}
+export const load: PageServerLoad = async ({ locals: { supabase }, parent }) => {
+	// Session already validated by parent layout - just get it
+	const { session } = await parent();
 
 	// Load service schedule config
 	const { data: config } = await supabase
@@ -29,6 +22,9 @@ export const load: PageServerLoad = async ({ locals: { supabase, session } }) =>
 		.select('*')
 		.order('date', { ascending: true });
 
+	// Get active customer count for notification preview
+	const activeCustomerCount = await getActiveCustomerCount(supabase);
+
 	// Separate holidays and special events
 	const holidays = exceptions?.filter((e) => e.type === 'holiday') || [];
 	const specialEvents = exceptions?.filter((e) => e.type === 'special_event') || [];
@@ -36,15 +32,24 @@ export const load: PageServerLoad = async ({ locals: { supabase, session } }) =>
 	return {
 		config: config || { service_days: [1, 2, 3, 4, 5] },
 		holidays,
-		specialEvents
+		specialEvents,
+		activeCustomerCount
 	};
 };
 
 export const actions: Actions = {
-	updateServicePattern: async ({ request, locals: { supabase, session } }) => {
+	updateServicePattern: async ({ request, cookies, locals: { supabase } }) => {
+		const session = await getAdminSession(cookies);
 		if (!session) {
 			return fail(401, { error: 'Unauthorized' });
 		}
+
+		// Get staff ID from email
+		const { data: staff } = await supabase
+			.from('staff_accounts')
+			.select('id')
+			.eq('email', session.email)
+			.single();
 
 		const formData = await request.formData();
 		const serviceDaysStr = formData.get('service_days') as string;
@@ -60,7 +65,7 @@ export const actions: Actions = {
 			.update({
 				service_days: serviceDays,
 				updated_at: new Date().toISOString(),
-				updated_by: session.user.id
+				updated_by: staff?.id || null
 			})
 			.eq('id', (await supabase.from('service_schedule_config').select('id').single()).data?.id);
 
@@ -72,10 +77,18 @@ export const actions: Actions = {
 		return { success: true };
 	},
 
-	addException: async ({ request, locals: { supabase, session } }) => {
+	addException: async ({ request, cookies, locals: { supabase } }) => {
+		const session = await getAdminSession(cookies);
 		if (!session) {
 			return fail(401, { error: 'Unauthorized' });
 		}
+
+		// Get staff ID from email
+		const { data: staff } = await supabase
+			.from('staff_accounts')
+			.select('id')
+			.eq('email', session.email)
+			.single();
 
 		const formData = await request.formData();
 		const date = formData.get('date') as string;
@@ -96,7 +109,7 @@ export const actions: Actions = {
 			is_service_day: isServiceDay,
 			recurring: recurring || 'one-time',
 			recurrence_rule: recurrenceRule || null,
-			created_by: session.user.id
+			created_by: staff?.id || null
 		});
 
 		if (error) {
@@ -107,7 +120,8 @@ export const actions: Actions = {
 		return { success: true };
 	},
 
-	updateException: async ({ request, locals: { supabase, session } }) => {
+	updateException: async ({ request, cookies, locals: { supabase } }) => {
+		const session = await getAdminSession(cookies);
 		if (!session) {
 			return fail(401, { error: 'Unauthorized' });
 		}
@@ -146,7 +160,8 @@ export const actions: Actions = {
 		return { success: true };
 	},
 
-	deleteException: async ({ request, locals: { supabase, session } }) => {
+	deleteException: async ({ request, cookies, locals: { supabase } }) => {
+		const session = await getAdminSession(cookies);
 		if (!session) {
 			return fail(401, { error: 'Unauthorized' });
 		}
@@ -166,5 +181,54 @@ export const actions: Actions = {
 		}
 
 		return { success: true };
+	},
+
+	sendNotification: async ({ request, cookies, locals: { supabase } }) => {
+		const session = await getAdminSession(cookies);
+		if (!session) {
+			return fail(401, { error: 'Unauthorized' });
+		}
+
+		const formData = await request.formData();
+		const changeType = formData.get('change_type') as 'service_pattern' | 'holiday' | 'special_event';
+		const changeAction = formData.get('change_action') as 'added' | 'updated' | 'deleted';
+		const message = formData.get('message') as string;
+		const affectedDatesStr = formData.get('affected_dates') as string;
+		const effectiveDate = formData.get('effective_date') as string | null;
+
+		if (!changeType || !changeAction || !message) {
+			return fail(400, { error: 'Missing required notification fields' });
+		}
+
+		const affectedDates = affectedDatesStr ? JSON.parse(affectedDatesStr) : [];
+
+		try {
+			const result = await sendScheduleChangeNotification({
+				supabase,
+				changeType,
+				changeAction,
+				message,
+				affectedDates,
+				effectiveDate: effectiveDate || undefined
+			});
+
+			if (!result.success) {
+				console.error('Notification send failed:', result.errors);
+				return fail(500, {
+					error: 'Some notifications failed to send',
+					sent: result.sent,
+					failed: result.failed
+				});
+			}
+
+			return {
+				success: true,
+				sent: result.sent,
+				failed: result.failed
+			};
+		} catch (error) {
+			console.error('Error sending notifications:', error);
+			return fail(500, { error: 'Failed to send notifications' });
+		}
 	}
 };

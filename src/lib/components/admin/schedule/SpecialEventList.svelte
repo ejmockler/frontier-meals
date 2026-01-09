@@ -3,7 +3,10 @@
 
 	export let events: any[];
 
-	const dispatch = createEventDispatcher();
+	const dispatch = createEventDispatcher<{
+		edit: any;
+		deleted: { exception: any };
+	}>();
 
 	function formatDate(dateStr: string): string {
 		const date = new Date(dateStr + 'T00:00:00');
@@ -15,21 +18,24 @@
 		});
 	}
 
-	async function deleteEvent(id: string) {
+	async function deleteEvent(event: any) {
 		if (!confirm('Delete this special event? This action cannot be undone.')) {
 			return;
 		}
 
 		const formData = new FormData();
-		formData.append('id', id);
+		formData.append('id', event.id);
 
 		try {
-			await fetch('?/deleteException', {
+			const response = await fetch('?/deleteException', {
 				method: 'POST',
 				body: formData
 			});
 
-			window.location.reload();
+			if (response.ok) {
+				// Dispatch deleted event for notification modal
+				dispatch('deleted', { exception: event });
+			}
 		} catch (error) {
 			console.error('Error deleting event:', error);
 		}
@@ -60,7 +66,7 @@
 						<button class="btn-edit" on:click={() => dispatch('edit', event)}>
 							Edit
 						</button>
-						<button class="btn-delete" on:click={() => deleteEvent(event.id)}>
+						<button class="btn-delete" on:click={() => deleteEvent(event)}>
 							Delete
 						</button>
 					</div>

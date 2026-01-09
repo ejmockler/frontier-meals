@@ -5,7 +5,10 @@
 	export let type: 'holiday' | 'special_event';
 	export let exception: any = null;
 
-	const dispatch = createEventDispatcher();
+	const dispatch = createEventDispatcher<{
+		close: void;
+		saved: { exception: any; isNew: boolean };
+	}>();
 
 	let formData = {
 		date: exception?.date || '',
@@ -25,6 +28,7 @@
 
 		saving = true;
 
+		const isNew = !exception?.id;
 		const data = new FormData();
 		if (exception?.id) data.append('id', exception.id);
 		data.append('date', formData.date);
@@ -44,7 +48,19 @@
 			});
 
 			if (response.ok) {
-				window.location.reload();
+				// Dispatch saved event with exception data for notification modal
+				dispatch('saved', {
+					exception: {
+						id: exception?.id,
+						date: formData.date,
+						type,
+						name: formData.name,
+						is_service_day: formData.is_service_day,
+						recurring: formData.recurring,
+						recurrence_rule: formData.recurrence_rule
+					},
+					isNew
+				});
 			}
 		} catch (error) {
 			console.error('Error saving exception:', error);

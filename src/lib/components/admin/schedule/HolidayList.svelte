@@ -3,7 +3,10 @@
 
 	export let holidays: any[];
 
-	const dispatch = createEventDispatcher();
+	const dispatch = createEventDispatcher<{
+		edit: any;
+		deleted: { exception: any };
+	}>();
 
 	function formatDate(dateStr: string): string {
 		const date = new Date(dateStr + 'T00:00:00');
@@ -21,21 +24,24 @@
 		return 'One-time';
 	}
 
-	async function deleteHoliday(id: string) {
+	async function deleteHoliday(holiday: any) {
 		if (!confirm('Delete this holiday? This action cannot be undone.')) {
 			return;
 		}
 
 		const formData = new FormData();
-		formData.append('id', id);
+		formData.append('id', holiday.id);
 
 		try {
-			await fetch('?/deleteException', {
+			const response = await fetch('?/deleteException', {
 				method: 'POST',
 				body: formData
 			});
 
-			window.location.reload();
+			if (response.ok) {
+				// Dispatch deleted event for notification modal
+				dispatch('deleted', { exception: holiday });
+			}
 		} catch (error) {
 			console.error('Error deleting holiday:', error);
 		}
@@ -69,7 +75,7 @@
 						<button class="btn-edit" on:click={() => dispatch('edit', holiday)}>
 							Edit
 						</button>
-						<button class="btn-delete" on:click={() => deleteHoliday(holiday.id)}>
+						<button class="btn-delete" on:click={() => deleteHoliday(holiday)}>
 							Delete
 						</button>
 					</div>

@@ -1,8 +1,11 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
+	import { createEventDispatcher } from 'svelte';
 
 	export let serviceDays: number[];
+
+	const dispatch = createEventDispatcher<{
+		saved: { previousDays: number[]; newDays: number[] };
+	}>();
 
 	const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 	let selectedDays = new Set(serviceDays);
@@ -20,8 +23,11 @@
 	async function savePattern() {
 		saving = true;
 
+		const previousDays = [...serviceDays].sort();
+		const newDays = Array.from(selectedDays).sort();
+
 		const formData = new FormData();
-		formData.append('service_days', JSON.stringify(Array.from(selectedDays).sort()));
+		formData.append('service_days', JSON.stringify(newDays));
 
 		try {
 			const response = await fetch('?/updateServicePattern', {
@@ -30,7 +36,8 @@
 			});
 
 			if (response.ok) {
-				await invalidateAll();
+				// Dispatch saved event with previous and new values for notification modal
+				dispatch('saved', { previousDays, newDays });
 			}
 		} catch (error) {
 			console.error('Error saving service pattern:', error);
