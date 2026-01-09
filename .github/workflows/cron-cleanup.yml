@@ -1,0 +1,32 @@
+# Weekly Cleanup Jobs
+name: Weekly Cleanup
+
+on:
+  schedule:
+    # Sunday at 3:00 AM UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+env:
+  PRODUCTION_URL: ${{ secrets.PRODUCTION_URL || 'https://frontier-meals.pages.dev' }}
+
+jobs:
+  cleanup-rate-limits:
+    name: Cleanup Rate Limits
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup Expired Rate Limits
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/cleanup-rate-limits" \
+            -H "Content-Type: application/json" \
+            -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          if [ "$http_code" != "200" ]; then
+            echo "::warning::Rate limit cleanup returned status $http_code"
+          fi

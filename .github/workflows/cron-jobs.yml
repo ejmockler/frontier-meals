@@ -1,0 +1,113 @@
+# Cron Jobs for Frontier Meals
+# These workflows trigger the API endpoints that handle scheduled tasks.
+# Secrets required in GitHub repo settings:
+#   - CRON_SECRET: Shared secret for authenticating cron requests
+#   - PRODUCTION_URL: https://frontiermeals.com (or your deployed URL)
+
+name: Scheduled Jobs
+
+on:
+  schedule:
+    # Issue daily QR codes - 12:00 PM Pacific (20:00 UTC in winter, 19:00 UTC in summer)
+    # Using 19:00 UTC to account for PDT
+    - cron: '0 19 * * *'
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Job to run manually'
+        required: true
+        type: choice
+        options:
+          - issue-qr
+          - check-telegram-links
+          - retry-emails
+          - cleanup-rate-limits
+          - all
+
+env:
+  PRODUCTION_URL: ${{ secrets.PRODUCTION_URL || 'https://frontier-meals.pages.dev' }}
+
+jobs:
+  # Daily QR Code Issuance - Main job that runs on schedule
+  issue-qr:
+    name: Issue Daily QR Codes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event.inputs.job == 'issue-qr' || github.event.inputs.job == 'all'
+    steps:
+      - name: Trigger QR Issuance
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/issue-qr" \
+            -H "Content-Type: application/json" \
+            -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          if [ "$http_code" != "200" ]; then
+            echo "::error::QR issuance failed with status $http_code"
+            exit 1
+          fi
+
+  # Check Telegram Links - Runs daily after QR issuance
+  check-telegram-links:
+    name: Check Telegram Link Status
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event.inputs.job == 'check-telegram-links' || github.event.inputs.job == 'all'
+    needs: [issue-qr]
+    # Continue even if issue-qr is skipped (manual run)
+    if: always() && (github.event_name == 'schedule' || github.event.inputs.job == 'check-telegram-links' || github.event.inputs.job == 'all')
+    steps:
+      - name: Check Telegram Links
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/check-telegram-links" \
+            -H "Content-Type: application/json" \
+            -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          if [ "$http_code" != "200" ]; then
+            echo "::warning::Telegram link check returned status $http_code"
+          fi
+
+  # Retry Failed Emails - Runs every 6 hours
+  retry-emails:
+    name: Retry Failed Emails
+    runs-on: ubuntu-latest
+    if: github.event.inputs.job == 'retry-emails' || github.event.inputs.job == 'all'
+    steps:
+      - name: Retry Failed Emails
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/retry-emails" \
+            -H "Content-Type: application/json" \
+            -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+  # Cleanup Rate Limits - Runs weekly
+  cleanup-rate-limits:
+    name: Cleanup Rate Limits
+    runs-on: ubuntu-latest
+    if: github.event.inputs.job == 'cleanup-rate-limits' || github.event.inputs.job == 'all'
+    steps:
+      - name: Cleanup Rate Limits
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/cleanup-rate-limits" \
+            -H "Content-Type: application/json" \
+            -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
