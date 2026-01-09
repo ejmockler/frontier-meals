@@ -12,11 +12,6 @@
  * 2. Checkout session creation - Deep link token generation, metadata
  * 3. Error handling - Stripe API failures, logging
  * 4. IP extraction - Header priority (CF-Connecting-IP > X-Forwarded-For > fallback)
- * 5. Demo mode - Bypasses Stripe calls, returns mock URL
- *
- * NOTE: Demo mode tests are currently not feasible in this test suite because
- * IS_DEMO_MODE is determined at module load time from environment variables.
- * To test demo mode, set DEMO_MODE=true in .env before running tests.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
@@ -126,7 +121,7 @@ describe('Stripe Checkout Creation Integration (Real DB + Mocked Stripe)', () =>
 	 */
 	function getStripeMock() {
 		const StripeConstructor = vi.mocked(Stripe);
-		const stripeInstance = new StripeConstructor('test-key', { apiVersion: '2025-10-29.clover' });
+		const stripeInstance = new StripeConstructor('test-key', { apiVersion: '2025-12-15.clover' });
 		return stripeInstance.checkout.sessions.create as any;
 	}
 

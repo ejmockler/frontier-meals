@@ -185,7 +185,7 @@ describe('Operational Safety Tests', () => {
 
 			const { data: nullDateSubs } = await supabase
 				.from('subscriptions')
-				.select('id')
+				.select('id, stripe_subscription_id')
 				.eq('status', 'active')
 				.or('current_period_start.is.null,current_period_end.is.null');
 

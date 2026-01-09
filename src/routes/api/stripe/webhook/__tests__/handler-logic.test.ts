@@ -67,7 +67,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 	beforeEach(async () => {
 		// Get mock Stripe instance
 		const StripeConstructor = (await import('stripe')).default;
-		stripe = new StripeConstructor('test-key', { apiVersion: '2025-10-29.clover' });
+		stripe = new StripeConstructor('test-key', { apiVersion: '2025-12-15.clover' });
 
 		// Reset mocks
 		vi.clearAllMocks();
@@ -123,8 +123,8 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			});
 
-			// Create checkout session mock
-			const session: Partial<Stripe.Checkout.Session> = {
+			// Create checkout session mock (using type assertion for test mock compatibility)
+			const session = {
 				customer: stripeCustomerId,
 				subscription: stripeSubscriptionId,
 				customer_details: {
@@ -133,14 +133,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 					address: null,
 					phone: null,
 					tax_exempt: 'none',
-					tax_ids: null
+					tax_ids: null,
+					business_name: null,
+					individual_name: null
 				},
 				custom_fields: [
 					{
 						key: 'telegram_handle',
 						label: { custom: 'Telegram Handle', type: 'custom' },
 						type: 'text',
-						text: { value: '@testuser' },
+						text: { value: '@testuser', default_value: null, maximum_length: null, minimum_length: null },
 						optional: false
 					}
 				],
@@ -148,7 +150,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 					deep_link_token: deepLinkToken,
 					deep_link_token_hash: deepLinkTokenHash
 				}
-			};
+			} as Partial<Stripe.Checkout.Session>;
 
 			// Import and call the handler
 			const { POST } = await import('../+server');
@@ -171,7 +173,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 			};
 
 			// Execute handler
-			const response = await POST({ request: mockRequest as any });
+			const response = await POST({ request: mockRequest } as any);
 			const result = await response.json();
 
 			expect(result).toEqual({ received: true });
@@ -269,7 +271,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			});
 
-			const session: Partial<Stripe.Checkout.Session> = {
+			const session = {
 				customer: stripeCustomerId,
 				subscription: stripeSubscriptionId,
 				customer_details: {
@@ -278,14 +280,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 					address: null,
 					phone: null,
 					tax_exempt: 'none',
-					tax_ids: null
+					tax_ids: null,
+					business_name: null,
+					individual_name: null
 				},
 				custom_fields: [
 					{
 						key: 'telegram_handle',
 						label: { custom: 'Telegram Handle', type: 'custom' },
 						type: 'text',
-						text: { value: '@testuser' },
+						text: { value: '@testuser', default_value: null, maximum_length: null, minimum_length: null },
 						optional: false
 					}
 				],
@@ -293,7 +297,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 					deep_link_token: deepLinkToken,
 					deep_link_token_hash: deepLinkTokenHash
 				}
-			};
+			} as Partial<Stripe.Checkout.Session>;
 
 			const { POST } = await import('../+server');
 			const webhookEvent = {
@@ -312,7 +316,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			await POST({ request: mockRequest as any });
+			await POST({ request: mockRequest } as any);
 
 			// Verify subscription created with NULL period dates
 			const { data: customer } = await supabase
@@ -354,7 +358,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 			});
 
 			// Session WITHOUT deep_link_token in metadata
-			const session: Partial<Stripe.Checkout.Session> = {
+			const session = {
 				customer: stripeCustomerId,
 				subscription: stripeSubscriptionId,
 				customer_details: {
@@ -363,10 +367,12 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 					address: null,
 					phone: null,
 					tax_exempt: 'none',
-					tax_ids: null
+					tax_ids: null,
+					business_name: null,
+					individual_name: null
 				},
 				metadata: {} // Missing deep_link_token!
-			};
+			} as Partial<Stripe.Checkout.Session>;
 
 			const { POST } = await import('../+server');
 			const webhookEvent = {
@@ -385,7 +391,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			const response = await POST({ request: mockRequest as any });
+			const response = await POST({ request: mockRequest } as any);
 			const result = await response.json();
 
 			// Should fail gracefully
@@ -492,7 +498,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			const response = await POST({ request: mockRequest as any });
+			const response = await POST({ request: mockRequest } as any);
 
 			// Should fail due to validation
 			expect(response.status).toBe(500);
@@ -580,7 +586,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			const response = await POST({ request: mockRequest as any });
+			const response = await POST({ request: mockRequest } as any);
 
 			// Should succeed but skip update (logged warning)
 			expect(response.status).toBe(200);
@@ -674,7 +680,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			await POST({ request: mockRequest as any });
+			await POST({ request: mockRequest } as any);
 
 			// Verify existing dates NOT overwritten
 			const { data: subscription } = await supabase
@@ -764,7 +770,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			const response = await POST({ request: mockRequest as any });
+			const response = await POST({ request: mockRequest } as any);
 			expect(response.status).toBe(200);
 
 			// Verify period dates updated
@@ -853,7 +859,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			const response = await POST({ request: mockRequest as any });
+			const response = await POST({ request: mockRequest } as any);
 			expect(response.status).toBe(200);
 
 			// Verify soft email sent
@@ -947,7 +953,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			await POST({ request: mockRequest as any });
+			await POST({ request: mockRequest } as any);
 
 			// Verify retry email sent
 			const { sendEmail } = await import('$lib/email/send');
@@ -1019,7 +1025,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			await POST({ request: mockRequest as any });
+			await POST({ request: mockRequest } as any);
 
 			// Verify final email sent
 			const { sendEmail } = await import('$lib/email/send');
@@ -1078,7 +1084,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			await POST({ request: mockRequest as any });
+			await POST({ request: mockRequest } as any);
 
 			// Verify portal session created
 			expect(stripe.billingPortal.sessions.create).toHaveBeenCalledWith({
@@ -1135,7 +1141,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			const response = await POST({ request: mockRequest as any });
+			const response = await POST({ request: mockRequest } as any);
 			expect(response.status).toBe(200);
 
 			// Verify subscription status updated to canceled
@@ -1199,7 +1205,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 			};
 
 			// Should not throw
-			const response = await POST({ request: mockRequest as any });
+			const response = await POST({ request: mockRequest } as any);
 			expect(response.status).toBe(200);
 
 			// Email should NOT be sent
@@ -1223,7 +1229,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 			});
 			testEventIds.push(eventId);
 
-			const session: Partial<Stripe.Checkout.Session> = {
+			const session = {
 				customer: stripeCustomerId,
 				customer_details: {
 					email: testEmail,
@@ -1231,9 +1237,11 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 					address: null,
 					phone: null,
 					tax_exempt: 'none',
-					tax_ids: null
+					tax_ids: null,
+					business_name: null,
+					individual_name: null
 				}
-			};
+			} as Partial<Stripe.Checkout.Session>;
 
 			const { POST } = await import('../+server');
 			const webhookEvent = {
@@ -1251,7 +1259,7 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 				}
 			};
 
-			const response = await POST({ request: mockRequest as any });
+			const response = await POST({ request: mockRequest } as any);
 			expect(response.status).toBe(200);
 
 			// Customer should NOT be created (duplicate)

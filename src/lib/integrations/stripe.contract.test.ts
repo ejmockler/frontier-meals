@@ -22,7 +22,7 @@ import Stripe from 'stripe';
 import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } from '$env/static/private';
 
 // Real Stripe client for contract verification
-const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-11-20.acacia' });
+const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2025-12-15.clover' });
 
 describe('Stripe API Contract - Critical Revenue Paths', () => {
 	let testCustomer: Stripe.Customer;
@@ -118,34 +118,39 @@ describe('Stripe API Contract - Critical Revenue Paths', () => {
 			});
 
 			// CONTRACT: Metadata round-trips correctly
+			expect(session.metadata).not.toBeNull();
 			expect(session.metadata).toHaveProperty('customer_email');
 			expect(session.metadata).toHaveProperty('telegram_handle');
 			expect(session.metadata).toHaveProperty('deep_link_token');
-			expect(session.metadata.customer_email).toBe('contract@example.com');
+			expect(session.metadata!.customer_email).toBe('contract@example.com');
 		}, 30000);
 	});
 
 	describe('customer.subscription.created - Lifecycle Critical', () => {
-		it('CONTRACT: subscription has period dates', async () => {
+		it('CONTRACT: subscription items have period dates', async () => {
 			const subscription = await stripe.subscriptions.create({
 				customer: testCustomer.id,
 				items: [{ price: testPrice.id }],
 				metadata: { test: 'true' }
 			});
 
-			// CRITICAL: We depend on these for QR issuance timing
-			expect(subscription).toHaveProperty('current_period_start');
-			expect(subscription).toHaveProperty('current_period_end');
+			// Basic subscription properties
 			expect(subscription).toHaveProperty('status');
 			expect(subscription).toHaveProperty('created');
 
+			// CRITICAL: In Stripe API 2025-12-15.clover, period dates moved to subscription items
+			expect(subscription.items.data.length).toBeGreaterThan(0);
+			const firstItem = subscription.items.data[0];
+			expect(firstItem).toHaveProperty('current_period_start');
+			expect(firstItem).toHaveProperty('current_period_end');
+
 			// Type contract: must be numbers (unix timestamps)
-			expect(typeof subscription.current_period_start).toBe('number');
-			expect(typeof subscription.current_period_end).toBe('number');
+			expect(typeof firstItem.current_period_start).toBe('number');
+			expect(typeof firstItem.current_period_end).toBe('number');
 
 			// Business logic contract: end > start
-			expect(subscription.current_period_end).toBeGreaterThan(
-				subscription.current_period_start
+			expect(firstItem.current_period_end).toBeGreaterThan(
+				firstItem.current_period_start
 			);
 
 			// Cleanup
