@@ -1,4 +1,13 @@
-import { buildEmailHTML, brandColors, getSupportFooter } from './base';
+import {
+  buildEmailHTML,
+  brandColors,
+  getSupportFooter,
+  styles,
+  tokens,
+  infoBoxStyle,
+  infoBoxTitleStyle,
+  infoBoxTextStyle,
+} from './base';
 
 export function getQRDailyEmail(data: {
   customer_name: string;
@@ -17,38 +26,46 @@ export function getQRDailyEmail(data: {
 
   const headerContent = `
     <div style="font-size: 48px; margin-bottom: 12px;">🍽️</div>
-    <h1 style="margin: 0 0 8px;">Your QR Code for ${dayName}</h1>
-    <p style="margin: 0; opacity: 0.95;">${dateFormatted}</p>
+    <h1>Your QR Code for ${dayName}</h1>
+    <p>${dateFormatted}</p>
   `;
 
   const bodyContent = `
-    <p style="font-size: 18px; font-weight: 500; color: #111827;">Hi ${data.customer_name}!</p>
+    <p style="${styles.pLead}">Hi ${data.customer_name}!</p>
 
-    <p>Scan this QR code at any kiosk to get your fresh meal today.</p>
+    <p style="${styles.p}">Scan this QR code at any kiosk to get your fresh meal today.</p>
 
     <!-- QR Code Container -->
-    <div style="text-align: center; margin: 32px 0;">
-      <div style="background: #ffffff; padding: 32px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
-        <img
-          src="cid:qr-code"
-          alt="Your meal QR code for ${dayName}"
-          style="width: 280px; height: 280px; display: block;"
-          width="280"
-          height="280"
-        >
-      </div>
-    </div>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: ${tokens.spacing.xl} 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="background: ${tokens.bg.card}; padding: ${tokens.spacing.xl}; border-radius: ${tokens.radius.lg}; border: 1px solid ${tokens.border.light};">
+            <tr>
+              <td>
+                <img
+                  src="cid:qr-code"
+                  alt="Your meal QR code for ${dayName}"
+                  style="width: 280px; height: 280px; display: block;"
+                  width="280"
+                  height="280"
+                >
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
 
     <!-- Expiry Notice -->
-    <div class="info-box info-box-warning">
-      <p style="margin: 0; font-weight: 600; color: #92400e;">⏰ Expires: Tonight at 11:59 PM PT</p>
-      <p style="margin: 8px 0 0; color: #78350f;">You can redeem this QR code any time before midnight Pacific Time.</p>
+    <div style="${infoBoxStyle('warning')}">
+      <p style="${infoBoxTitleStyle('warning')}">⏰ Expires: Tonight at 11:59 PM PT</p>
+      <p style="${infoBoxTextStyle('warning')}">You can redeem this QR code any time before midnight Pacific Time.</p>
     </div>
 
     <!-- Help Text -->
-    <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e5e7eb;">
-      <p class="text-muted" style="margin: 0;">
-        Need to skip a day? Use <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace;">/skip</code> in Telegram
+    <div style="text-align: center; margin-top: ${tokens.spacing.xl}; padding-top: ${tokens.spacing.lg}; border-top: 1px solid ${tokens.border.light};">
+      <p style="${styles.pMuted}">
+        Need to skip a day? Use <code style="${styles.code}">/skip</code> in Telegram
       </p>
     </div>
   `;

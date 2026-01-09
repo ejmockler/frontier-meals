@@ -1,4 +1,14 @@
-import { buildEmailHTML, brandColors, getSupportFooter } from './base';
+import {
+  buildEmailHTML,
+  brandColors,
+  getSupportFooter,
+  styles,
+  tokens,
+  buttonStyle,
+  infoBoxStyle,
+  infoBoxTitleStyle,
+  infoBoxTextStyle,
+} from './base';
 
 export function getTelegramLinkEmail(data: {
   customer_name: string;
@@ -6,88 +16,98 @@ export function getTelegramLinkEmail(data: {
   deep_link: string;
 }) {
   const subject = 'Welcome to Frontier Meals - Connect on Telegram';
+  const scheme = brandColors.teal;
 
   const headerContent = `
     <div style="font-size: 48px; margin-bottom: 12px;">🍽️</div>
-    <h1 style="margin: 0 0 8px;">Welcome to Frontier Meals!</h1>
-    <p style="margin: 0; opacity: 0.95;">Let's get you set up on Telegram</p>
+    <h1>Welcome to Frontier Meals!</h1>
+    <p>Let's get you set up on Telegram</p>
   `;
 
-  const bodyContent = `
-    <p style="font-size: 18px; font-weight: 500; color: #111827;">Hi ${data.customer_name},</p>
+  // Step number badge style
+  const stepBadge = `background: ${scheme.primary}; color: ${scheme.onPrimary}; width: 28px; height: 28px; border-radius: 50%; text-align: center; font-weight: 700; font-size: ${tokens.fontSize.sm}; line-height: 28px;`;
 
-    <p>Your subscription is active! To complete your setup and manage your meals, connect with our Telegram bot.</p>
+  const bodyContent = `
+    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+
+    <p style="${styles.p}">Your subscription is active! To complete your setup and manage your meals, connect with our Telegram bot.</p>
 
     <!-- CTA Button -->
-    <div class="text-center">
-      <a href="${data.deep_link}" class="email-button" style="background-color: #2D9B9B;">
-        📱 Connect on Telegram
-      </a>
-    </div>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: ${tokens.spacing.lg} 0;">
+      <tr>
+        <td align="center">
+          <a href="${data.deep_link}" style="${buttonStyle(scheme)}">
+            📱 Connect on Telegram
+          </a>
+        </td>
+      </tr>
+    </table>
 
     <!-- Steps -->
-    <div style="background: #f9fafb; padding: 24px; border-radius: 12px; margin: 32px 0;">
-      <h2 style="margin: 0 0 20px; font-size: 18px; font-weight: 600; color: #111827;">What happens next:</h2>
+    <div style="background: ${tokens.bg.subtle}; padding: ${tokens.spacing.lg}; border-radius: ${tokens.radius.lg}; margin: ${tokens.spacing.xl} 0;">
+      <h2 style="${styles.h3}">What happens next:</h2>
 
-      <table role="presentation" style="width: 100%; border-collapse: collapse;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
         <tr>
-          <td style="padding: 12px 0; vertical-align: top;">
-            <div style="background: #2D9B9B; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;">1</div>
+          <td style="padding: 12px 0; vertical-align: top; width: 40px;">
+            <div style="${stepBadge}">1</div>
           </td>
-          <td style="padding: 12px 0 12px 16px; vertical-align: top;">
-            <strong style="display: block; color: #111827; margin-bottom: 4px;">Connect on Telegram</strong>
-            <span style="color: #6b7280; font-size: 14px;">Click the button above to open our bot</span>
+          <td style="padding: 12px 0 12px 12px; vertical-align: top;">
+            <strong style="display: block; color: ${tokens.text.primary}; margin-bottom: 4px;">Connect on Telegram</strong>
+            <span style="color: ${tokens.text.muted}; font-size: ${tokens.fontSize.sm};">Click the button above to open our bot</span>
           </td>
         </tr>
         <tr>
-          <td style="padding: 12px 0; vertical-align: top;">
-            <div style="background: #2D9B9B; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;">2</div>
+          <td style="padding: 12px 0; vertical-align: top; width: 40px;">
+            <div style="${stepBadge}">2</div>
           </td>
-          <td style="padding: 12px 0 12px 16px; vertical-align: top;">
-            <strong style="display: block; color: #111827; margin-bottom: 4px;">Set your preferences</strong>
-            <span style="color: #6b7280; font-size: 14px;">Tell us your diet and any allergies</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 12px 0; vertical-align: top;">
-            <div style="background: #2D9B9B; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;">3</div>
-          </td>
-          <td style="padding: 12px 0 12px 16px; vertical-align: top;">
-            <strong style="display: block; color: #111827; margin-bottom: 4px;">Get your daily QR code</strong>
-            <span style="color: #6b7280; font-size: 14px;">Every day at 12 PM PT via email</span>
+          <td style="padding: 12px 0 12px 12px; vertical-align: top;">
+            <strong style="display: block; color: ${tokens.text.primary}; margin-bottom: 4px;">Set your preferences</strong>
+            <span style="color: ${tokens.text.muted}; font-size: ${tokens.fontSize.sm};">Tell us your diet and any allergies</span>
           </td>
         </tr>
         <tr>
-          <td style="padding: 12px 0; vertical-align: top;">
-            <div style="background: #2D9B9B; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;">4</div>
+          <td style="padding: 12px 0; vertical-align: top; width: 40px;">
+            <div style="${stepBadge}">3</div>
           </td>
-          <td style="padding: 12px 0 12px 16px; vertical-align: top;">
-            <strong style="display: block; color: #111827; margin-bottom: 4px;">Pick up your meal</strong>
-            <span style="color: #6b7280; font-size: 14px;">Scan your QR at any kiosk before 11:59 PM PT</span>
+          <td style="padding: 12px 0 12px 12px; vertical-align: top;">
+            <strong style="display: block; color: ${tokens.text.primary}; margin-bottom: 4px;">Get your daily QR code</strong>
+            <span style="color: ${tokens.text.muted}; font-size: ${tokens.fontSize.sm};">Every day at 12 PM PT via email</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 12px 0; vertical-align: top; width: 40px;">
+            <div style="${stepBadge}">4</div>
+          </td>
+          <td style="padding: 12px 0 12px 12px; vertical-align: top;">
+            <strong style="display: block; color: ${tokens.text.primary}; margin-bottom: 4px;">Pick up your meal</strong>
+            <span style="color: ${tokens.text.muted}; font-size: ${tokens.fontSize.sm};">Scan your QR at any kiosk before 11:59 PM PT</span>
           </td>
         </tr>
       </table>
     </div>
 
     <!-- Handle Display -->
-    <p style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 24px 0;">
-      <strong style="color: #111827;">Your Telegram Handle:</strong> <code style="background: white; padding: 4px 8px; border-radius: 4px; font-family: 'Courier New', monospace;">${data.telegram_handle}</code>
-    </p>
+    <div style="background: ${tokens.bg.code}; padding: ${tokens.spacing.md}; border-radius: ${tokens.radius.md}; margin: ${tokens.spacing.lg} 0;">
+      <p style="margin: 0; color: ${tokens.text.primary};">
+        <strong>Your Telegram Handle:</strong> <code style="${styles.code}; background: ${tokens.bg.card};">${data.telegram_handle}</code>
+      </p>
+    </div>
 
     <!-- Warning Notice -->
-    <div class="info-box info-box-warning">
-      <p style="margin: 0; font-weight: 600; color: #92400e;">⚠️ Important</p>
-      <p style="margin: 8px 0 0; color: #78350f;">You must connect on Telegram within 60 minutes to start receiving your daily QR codes.</p>
+    <div style="${infoBoxStyle('warning')}">
+      <p style="${infoBoxTitleStyle('warning')}">⚠️ Important</p>
+      <p style="${infoBoxTextStyle('warning')}">You must connect on Telegram within 60 minutes to start receiving your daily QR codes.</p>
     </div>
   `;
 
   const html = buildEmailHTML({
-    colorScheme: brandColors.teal,
+    colorScheme: scheme,
     title: subject,
     preheader: 'Your subscription is active! Connect on Telegram to get started.',
     headerContent,
     bodyContent,
-    footerContent: getSupportFooter(brandColors.teal)
+    footerContent: getSupportFooter(scheme)
   });
 
   return { subject, html };

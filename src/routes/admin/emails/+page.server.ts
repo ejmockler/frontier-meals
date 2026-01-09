@@ -6,17 +6,10 @@ import { fail } from '@sveltejs/kit';
 import { sendEmail } from '$lib/email/send';
 import { validateCSRFFromFormData } from '$lib/auth/csrf';
 import { getAdminSession } from '$lib/auth/session';
-import { IS_DEMO_MODE, getMockEmailTemplates, logDemoAction } from '$lib/demo';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 export const load: PageServerLoad = async () => {
-  // Demo mode: return mock email templates
-  if (IS_DEMO_MODE) {
-    logDemoAction('Loading email templates (demo)');
-    return { templates: getMockEmailTemplates() };
-  }
-
   const { data: templates } = await supabase
     .from('email_templates')
     .select('*')
@@ -29,16 +22,9 @@ export const actions: Actions = {
   createTemplate: async ({ request, cookies }) => {
     const formData = await request.formData();
 
-    // Demo mode: simulate success without database writes
-    if (IS_DEMO_MODE) {
-      const slug = formData.get('slug') as string;
-      logDemoAction('Create email template (demo)', { slug });
-      return { success: true };
-    }
-
     // Validate CSRF
     const session = await getAdminSession(cookies);
-    if (!session || !validateCSRFFromFormData(formData, session.sessionId)) {
+    if (!session || !await validateCSRFFromFormData(formData, session.sessionId)) {
       return fail(403, { error: 'Invalid CSRF token' });
     }
 
@@ -71,16 +57,9 @@ export const actions: Actions = {
   updateTemplate: async ({ request, cookies }) => {
     const formData = await request.formData();
 
-    // Demo mode: simulate success without database writes
-    if (IS_DEMO_MODE) {
-      const id = formData.get('id') as string;
-      logDemoAction('Update email template (demo)', { id });
-      return { success: true };
-    }
-
     // Validate CSRF
     const session = await getAdminSession(cookies);
-    if (!session || !validateCSRFFromFormData(formData, session.sessionId)) {
+    if (!session || !await validateCSRFFromFormData(formData, session.sessionId)) {
       return fail(403, { error: 'Invalid CSRF token' });
     }
 
@@ -114,16 +93,9 @@ export const actions: Actions = {
   sendTest: async ({ request, cookies }) => {
     const formData = await request.formData();
 
-    // Demo mode: simulate success without sending email
-    if (IS_DEMO_MODE) {
-      const email = formData.get('email') as string;
-      logDemoAction('Send test email (demo)', { email });
-      return { testSent: true };
-    }
-
     // Validate CSRF
     const session = await getAdminSession(cookies);
-    if (!session || !validateCSRFFromFormData(formData, session.sessionId)) {
+    if (!session || !await validateCSRFFromFormData(formData, session.sessionId)) {
       return fail(403, { error: 'Invalid CSRF token' });
     }
 
@@ -153,16 +125,9 @@ export const actions: Actions = {
   deleteTemplate: async ({ request, cookies }) => {
     const formData = await request.formData();
 
-    // Demo mode: simulate success without database writes
-    if (IS_DEMO_MODE) {
-      const id = formData.get('id') as string;
-      logDemoAction('Delete email template (demo)', { id });
-      return { deleted: true };
-    }
-
     // Validate CSRF
     const session = await getAdminSession(cookies);
-    if (!session || !validateCSRFFromFormData(formData, session.sessionId)) {
+    if (!session || !await validateCSRFFromFormData(formData, session.sessionId)) {
       return fail(403, { error: 'Invalid CSRF token' });
     }
 
