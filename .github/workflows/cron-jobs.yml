@@ -25,7 +25,8 @@ on:
           - all
 
 env:
-  PRODUCTION_URL: ${{ secrets.PRODUCTION_URL || 'https://frontier-meals.pages.dev' }}
+  # Using direct Pages URL to ensure we hit the SvelteKit backend, not the landing page
+  PRODUCTION_URL: 'https://frontier-meals.pages.dev'
 
 jobs:
   # Daily QR Code Issuance - Main job that runs on schedule
@@ -36,7 +37,7 @@ jobs:
     steps:
       - name: Trigger QR Issuance
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/issue-qr" \
+          response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/issue-qr" \
             -H "Content-Type: application/json" \
             -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
 
@@ -55,14 +56,13 @@ jobs:
   check-telegram-links:
     name: Check Telegram Link Status
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || github.event.inputs.job == 'check-telegram-links' || github.event.inputs.job == 'all'
     needs: [issue-qr]
     # Continue even if issue-qr is skipped (manual run)
     if: always() && (github.event_name == 'schedule' || github.event.inputs.job == 'check-telegram-links' || github.event.inputs.job == 'all')
     steps:
       - name: Check Telegram Links
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/check-telegram-links" \
+          response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/check-telegram-links" \
             -H "Content-Type: application/json" \
             -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
 
@@ -84,7 +84,7 @@ jobs:
     steps:
       - name: Retry Failed Emails
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/retry-emails" \
+          response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/retry-emails" \
             -H "Content-Type: application/json" \
             -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
 
@@ -102,7 +102,7 @@ jobs:
     steps:
       - name: Cleanup Rate Limits
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/cleanup-rate-limits" \
+          response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/cleanup-rate-limits" \
             -H "Content-Type: application/json" \
             -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
 

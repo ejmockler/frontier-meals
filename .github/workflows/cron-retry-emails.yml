@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 env:
-  PRODUCTION_URL: ${{ secrets.PRODUCTION_URL || 'https://frontier-meals.pages.dev' }}
+  # Using direct Pages URL to ensure we hit the SvelteKit backend
+  PRODUCTION_URL: 'https://frontier-meals.pages.dev'
 
 jobs:
   retry-emails:
@@ -17,7 +18,7 @@ jobs:
     steps:
       - name: Retry Failed Emails
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/retry-emails" \
+          response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/retry-emails" \
             -H "Content-Type: application/json" \
             -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
 
