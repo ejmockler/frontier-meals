@@ -112,33 +112,18 @@ interface TelegramChat {
 export const POST: RequestHandler = async (event) => {
   const { request } = event;
 
-  // LOG: Webhook received
-  console.log('[Telegram Webhook] Request received at', new Date().toISOString());
-
-  // Debug: Check platform.env availability
-  console.log('[Telegram Webhook] platform available:', !!event.platform);
-  console.log('[Telegram Webhook] platform.env available:', !!event.platform?.env);
-
   // Get environment (works in both Cloudflare and local dev)
   const env = await getEnv(event);
 
-  // Debug: Check if we got the secrets
-  console.log('[Telegram Webhook] SUPABASE_SERVICE_ROLE_KEY present:', !!env.SUPABASE_SERVICE_ROLE_KEY);
-  console.log('[Telegram Webhook] SUPABASE_SERVICE_ROLE_KEY length:', env.SUPABASE_SERVICE_ROLE_KEY?.length || 0);
-
   // Verify secret token using constant-time comparison to prevent timing attacks
   const secretToken = request.headers.get('x-telegram-bot-api-secret-token');
-  console.log('[Telegram Webhook] Secret token present:', !!secretToken);
 
   if (!secretToken || !timingSafeEqual(secretToken, env.TELEGRAM_SECRET_TOKEN)) {
-    console.error('[Telegram Webhook] Invalid secret token - REJECTED');
+    console.error('[Telegram Webhook] Unauthorized request rejected');
     return json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  console.log('[Telegram Webhook] Secret token verified - processing update');
-
   // Create request-scoped context with clients
-  console.log('[Telegram Webhook] Creating Supabase client with URL:', PUBLIC_SUPABASE_URL);
   const ctx: RequestContext = {
     env,
     supabase: createClient(PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
@@ -147,7 +132,6 @@ export const POST: RequestHandler = async (event) => {
       typescript: true
     })
   };
-  console.log('[Telegram Webhook] Context created successfully');
 
   const update: TelegramUpdate = await request.json();
 
