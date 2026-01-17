@@ -1,5 +1,9 @@
 @import 'tailwindcss';
 
+/* Frontier Meals Design System */
+@import './lib/styles/tokens.css';
+@import './lib/styles/animations.css';
+
 /* Frontier Tower Design System - Typography */
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
@@ -105,6 +109,23 @@
 		letter-spacing: -0.02em;
 	}
 
+	/* Interactive element affordances */
+	a {
+		cursor: pointer;
+	}
+
+	button:not(:disabled) {
+		cursor: pointer;
+	}
+
+	button:disabled {
+		cursor: not-allowed;
+	}
+
+	[role="button"]:not([aria-disabled="true"]) {
+		cursor: pointer;
+	}
+
 	/* Subtle texture overlay for that unfinished feel */
 	.frontier-texture::before {
 		content: '';
@@ -113,5 +134,84 @@
 		background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
 		pointer-events: none;
 		opacity: 0.4;
+	}
+}
+
+/* === UTILITY CLASSES USING DESIGN TOKENS === */
+
+@layer utilities {
+	/* Typography utilities */
+	.text-attract {
+		color: var(--color-attract);
+	}
+
+	.text-value {
+		color: var(--color-value);
+	}
+
+	.text-community {
+		color: var(--color-community);
+	}
+
+	.bg-attract {
+		background-color: var(--color-attract);
+	}
+
+	.bg-value {
+		background-color: var(--color-value);
+	}
+
+	.bg-ground {
+		background-color: var(--color-ground);
+	}
+
+	.bg-ground-elevated {
+		background-color: var(--color-ground-elevated);
+	}
+
+	/* Border utilities */
+	.border-attract {
+		border-color: var(--color-attract);
+	}
+
+	.border-industrial {
+		border-width: var(--border-width);
+	}
+
+	/* Container utilities */
+	.container-prose {
+		max-width: var(--max-width-prose);
+		margin-left: auto;
+		margin-right: auto;
+	}
+
+	.container-content {
+		max-width: var(--max-width-content);
+		margin-left: auto;
+		margin-right: auto;
+		padding-left: var(--container-padding);
+		padding-right: var(--container-padding);
+	}
+
+	@media (max-width: 768px) {
+		.container-content {
+			padding-left: var(--container-padding-sm);
+			padding-right: var(--container-padding-sm);
+		}
+	}
+
+	/* Focus states */
+	.focus-ring {
+		outline: 2px solid var(--color-focus-ring);
+		outline-offset: 2px;
+	}
+
+	/* Shadow utilities */
+	.shadow-attract {
+		box-shadow: var(--shadow-attract);
+	}
+
+	.shadow-value {
+		box-shadow: var(--shadow-value);
 	}
 }
