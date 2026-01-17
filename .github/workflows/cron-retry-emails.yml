@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 env:
-  # Using direct Pages URL to ensure we hit the SvelteKit backend
-  PRODUCTION_URL: 'https://frontier-meals.pages.dev'
+  # Production domain - Cloudflare Pages with custom domain
+  PRODUCTION_URL: 'https://frontiermeals.com'
 
 jobs:
   retry-emails:

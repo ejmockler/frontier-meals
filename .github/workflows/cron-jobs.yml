@@ -25,8 +25,8 @@ on:
           - all
 
 env:
-  # Using direct Pages URL to ensure we hit the SvelteKit backend, not the landing page
-  PRODUCTION_URL: 'https://frontier-meals.pages.dev'
+  # Production domain - Cloudflare Pages with custom domain
+  PRODUCTION_URL: 'https://frontiermeals.com'
 
 jobs:
   # Daily QR Code Issuance - Main job that runs on schedule
