@@ -1,6 +1,16 @@
 <script lang="ts">
-  import Button from '$lib/components/ui/button.svelte';
-  import Card from '$lib/components/ui/card.svelte';
+  import {
+    HeroSection,
+    CommunityGallery,
+    HowItWorks,
+    FlexibilityFeatures,
+    FoodShowcase,
+    BenefitsGrid,
+    SocialProof,
+    FinalCTA,
+    Container,
+    Text,
+  } from '$lib/components/landing';
 
   let loading = $state(false);
   let error = $state('');
@@ -31,104 +41,92 @@
       loading = false;
     }
   }
+
+  function handleLearnMore() {
+    // Smooth scroll to How It Works section
+    document.getElementById('how-it-works')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+  }
+
+  function handleContact() {
+    // Open Telegram contact
+    window.open('https://t.me/noahchonlee', '_blank');
+  }
 </script>
 
-<div class="min-h-screen bg-[#F5F3EF] frontier-texture flex flex-col">
-  <!-- Header -->
-  <header class="py-6 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-7xl mx-auto flex justify-between items-center">
-      <h1 class="text-2xl font-extrabold tracking-tight text-[#1A1816]">Frontier Meals</h1>
+<svelte:head>
+  <title>Frontier Meals - Healthy Lunch Subscription at Frontier Tower</title>
+  <meta name="description" content="Healthy lunches delivered daily to Frontier Tower. Subscribe once, show up at noon, and enjoy community dining or grab and go." />
+</svelte:head>
+
+<div class="min-h-screen bg-[#F5F3EF]">
+  <!-- Skip Link for Keyboard Navigation -->
+  <a
+    href="#main-content"
+    class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-[#E67E50] focus:text-white focus:rounded-md focus:font-bold cursor-pointer"
+  >
+    Skip to main content
+  </a>
+
+  <!-- Error Banner (if any) -->
+  {#if error}
+    <div class="fixed top-0 left-0 right-0 z-50 bg-[#C85454] text-white py-3 px-4 text-center">
+      <Container>
+        <p class="text-sm font-medium">{error}</p>
+      </Container>
     </div>
-  </header>
+  {/if}
 
-  <!-- Hero Section -->
-  <main class="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8">
-    <div class="max-w-3xl w-full space-y-8">
-      <div class="text-center">
-        <h2 class="text-5xl font-extrabold tracking-tight text-[#1A1816] mb-4">
-          Fresh meals,<br />delivered daily
-        </h2>
-        <p class="text-xl text-[#5C5A56] mb-8">
-          Subscribe to Frontier Meals and pick up your fresh, chef-prepared meal every day.
-          Skip anytime via Telegram.
-        </p>
-      </div>
+  <!-- Main Content -->
+  <main id="main-content">
+    <!-- Hero: Identity + Value Proposition -->
+    <HeroSection
+      onSubscribe={handleSubscribe}
+      onLearnMore={handleLearnMore}
+      {loading}
+    />
 
-      <Card variant="concrete" class="p-8">
-        <div class="space-y-6">
-          <div class="text-center">
-            <p class="text-3xl font-extrabold tracking-tight text-[#1A1816]">$13.33/day</p>
-            <p class="text-[#5C5A56]">$400/month • Cancel anytime</p>
-          </div>
+    <!-- Community: Emotional resonance + Social proof -->
+    <CommunityGallery />
 
-          <div class="space-y-3">
-            <div class="flex items-start">
-              <div class="flex-shrink-0 w-6 h-6 rounded-sm bg-[#E67E50] border-2 border-[#D97F3E] flex items-center justify-center mt-0.5">
-                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <p class="ml-3 text-[#1A1816] font-medium">Daily QR code for kiosk pickup</p>
-            </div>
-            <div class="flex items-start">
-              <div class="flex-shrink-0 w-6 h-6 rounded-sm bg-[#E8C547] border-2 border-[#E8C547]/50 flex items-center justify-center mt-0.5">
-                <svg class="w-4 h-4 text-[#1A1816]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <p class="ml-3 text-[#1A1816] font-medium">Manage preferences via Telegram bot</p>
-            </div>
-            <div class="flex items-start">
-              <div class="flex-shrink-0 w-6 h-6 rounded-sm bg-[#E67E50] border-2 border-[#D97F3E] flex items-center justify-center mt-0.5">
-                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <p class="ml-3 text-[#1A1816] font-medium">Skip days you won't need a meal</p>
-            </div>
-            <div class="flex items-start">
-              <div class="flex-shrink-0 w-6 h-6 rounded-sm bg-[#E8C547] border-2 border-[#E8C547]/50 flex items-center justify-center mt-0.5">
-                <svg class="w-4 h-4 text-[#1A1816]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <p class="ml-3 text-[#1A1816] font-medium">Dietary preferences supported</p>
-            </div>
-          </div>
-
-          {#if error}
-            <div class="rounded-sm bg-[#C85454]/10 border-2 border-[#C85454]/50 p-4">
-              <p class="text-sm text-[#C85454] font-medium">{error}</p>
-            </div>
-          {/if}
-
-          <Button
-            onclick={handleSubscribe}
-            disabled={loading}
-            size="lg"
-            class="w-full"
-          >
-            {loading ? 'Loading...' : 'Subscribe Now'}
-          </Button>
-
-          <p class="text-xs text-[#5C5A56] text-center">
-            By subscribing, you agree to receive daily QR codes via email and manage your subscription through Telegram.
-          </p>
-        </div>
-      </Card>
-
-      <div class="text-center">
-        <p class="text-sm text-[#5C5A56]">
-          Questions? Message <a href="https://t.me/noahchonlee" class="text-[#E67E50] hover:text-[#D97F3E] underline font-medium">@noahchonlee</a> on Telegram
-        </p>
-      </div>
+    <!-- How It Works: Mental model construction -->
+    <div id="how-it-works">
+      <HowItWorks />
     </div>
+
+    <!-- Flexibility: Risk mitigation + Key differentiator (75% reimbursement) -->
+    <FlexibilityFeatures />
+
+    <!-- Food: Sensory appeal + Quality signal -->
+    <FoodShowcase />
+
+    <!-- Benefits: Rational justification -->
+    <BenefitsGrid />
+
+    <!-- Social Proof: Trust + Belonging -->
+    <SocialProof />
+
+    <!-- Final CTA: Decision capture -->
+    <FinalCTA
+      onSubscribe={handleSubscribe}
+      onContact={handleContact}
+      {loading}
+    />
   </main>
 
   <!-- Footer -->
-  <footer class="py-6 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-7xl mx-auto text-center text-sm text-[#8E8C87]">
-      © 2025 Frontier Meals. All rights reserved.
-    </div>
+  <footer class="bg-[#1A1816] py-8">
+    <Container>
+      <div class="text-center">
+        <Text color="inverse" size="sm" align="center" as="p">
+          © 2025 Frontier Meals. Serving Frontier Tower weekdays at noon.
+        </Text>
+        <Text color="tertiary" size="sm" align="center" as="p" class="mt-2">
+          Questions? Message <a href="https://t.me/noahchonlee" class="text-[#E67E50] hover:underline focus:outline-none focus:ring-2 focus:ring-[#E67E50] focus:ring-offset-2 focus:ring-offset-[#1A1816] rounded cursor-pointer" aria-label="Contact Noah on Telegram">@noahchonlee</a> on Telegram
+        </Text>
+      </div>
+    </Container>
   </footer>
 </div>
