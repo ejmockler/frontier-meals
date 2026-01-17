@@ -54,3 +54,4 @@ drizzle/**/*.sql
 # Misc
 .cache
 .temp
+.playwright-mcp/
