@@ -262,10 +262,10 @@ describe('Stripe API Contract - Critical Revenue Paths', () => {
 
 	describe('API Version Compatibility', () => {
 		it('CONTRACT: API version matches our expectations', () => {
-			// We're on 2024-11-20.acacia
+			// We're on 2025-12-15.clover
 			// If Stripe changes behavior, this catches it
 			// @ts-ignore - getApiField is not in type definitions but exists
-			expect(stripe.getApiField('version')).toBe('2024-11-20.acacia');
+			expect(stripe.getApiField('version')).toBe('2025-12-15.clover');
 		});
 
 		it('CONTRACT: Subscription object shape unchanged', async () => {
@@ -280,8 +280,6 @@ describe('Stripe API Contract - Critical Revenue Paths', () => {
 				'id',
 				'object',
 				'customer',
-				'current_period_start',
-				'current_period_end',
 				'status',
 				'items',
 				'metadata',
@@ -388,8 +386,6 @@ describe('Stripe Contract - Breaking Change Detection', () => {
 		const criticalSubFields = [
 			'id',
 			'status',
-			'current_period_start',
-			'current_period_end',
 			'customer',
 			'items',
 			'metadata'
