@@ -52,13 +52,17 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 	// In Cloudflare Workers, secrets are in platform.env
 	if (event.platform?.env) {
 		const env = event.platform.env as ServerEnv;
-		// Apply Stripe Mode Logic for Cloudflare
-		const isTest = env.STRIPE_MODE === 'test';
+		// Apply Stripe Mode Logic for Cloudflare (trim to handle potential whitespace)
+		const mode = env.STRIPE_MODE?.trim().toLowerCase();
+		const isTest = mode === 'test';
+
+		console.log(`[Env] Stripe Mode: ${mode}, isTest: ${isTest}`);
+
 		const pick = (base: string, test?: string, live?: string) => {
-			if (isTest && test) return test;
-			if (live) return live;
-			return base;
+			if (isTest) return test || base;
+			return live || base;
 		};
+
 		return {
 			...env,
 			STRIPE_SECRET_KEY: pick(env.STRIPE_SECRET_KEY, env.STRIPE_SECRET_KEY_TEST, env.STRIPE_SECRET_KEY_LIVE),
@@ -104,22 +108,14 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 
 	// Apply Stripe Mode Logic
 	const env = localEnvCache as ServerEnv;
-	// Default to live if not specified, or if explicit 'live'
-	// But if STRIPE_MODE is 'test', use test keys IF they exist
-	const isTest = env.STRIPE_MODE === 'test';
+	const mode = env.STRIPE_MODE?.trim().toLowerCase();
+	const isTest = mode === 'test';
 
 	// Helper to pick key
 	const pick = (base: string, test?: string, live?: string) => {
-		if (isTest && test) return test;
-		if (live) return live;
-		return base; // Fallback to legacy/direct key
+		if (isTest) return test || base;
+		return live || base;
 	};
-
-	// Return a new object with the resolved keys overlaying the others
-	// We do this spread to ensure we don't mutate the cache if we share it (though checking above, we might want to cache the result?)
-	// Actually, for local dev we return the cached object. We should mutate a copy or just mutate it once?
-	// Mutating the cache is fine if the mode doesn't change at runtime (it doesn't usually).
-	// But for safety let's return a new object.
 
 	return {
 		...env,
