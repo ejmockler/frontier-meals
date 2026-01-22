@@ -1,20 +1,20 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import Stripe from 'stripe';
-import { STRIPE_SECRET_KEY, STRIPE_PRICE_ID, SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
+import { getEnv, getSupabaseAdmin } from '$lib/server/env';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
-import { createClient } from '@supabase/supabase-js';
-import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { checkRateLimit, RateLimitKeys } from '$lib/utils/rate-limit';
 
-const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+export const POST: RequestHandler = async (event) => {
+  const { request, url, getClientAddress } = event;
+  const env = await getEnv(event);
+  const supabase = await getSupabaseAdmin(event);
 
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: '2025-12-15.clover',
-  typescript: true
-});
+  const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
+    apiVersion: '2025-12-15.clover',
+    typescript: true
+  });
 
-export const POST: RequestHandler = async ({ url, request, getClientAddress }) => {
   // Get client IP address for rate limiting
   // Priority: CF-Connecting-IP (Cloudflare) > X-Forwarded-For > getClientAddress()
   const clientIp =
@@ -58,7 +58,7 @@ export const POST: RequestHandler = async ({ url, request, getClientAddress }) =
       mode: 'subscription',
       line_items: [
         {
-          price: STRIPE_PRICE_ID, // Use the configured Price ID
+          price: env.STRIPE_PRICE_ID, // Use the configured Price ID
           quantity: 1
         }
       ],

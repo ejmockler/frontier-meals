@@ -1,22 +1,21 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import Stripe from 'stripe';
-import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, SUPABASE_SERVICE_ROLE_KEY, TELEGRAM_BOT_TOKEN } from '$env/static/private';
-import { PUBLIC_SUPABASE_URL } from '$env/static/public';
-import { createClient } from '@supabase/supabase-js';
+import { getEnv, getSupabaseAdmin } from '$lib/server/env';
 import { sendEmail } from '$lib/email/send';
 import { getTelegramLinkEmail } from '$lib/email/templates/telegram-link';
 import { getDunningSoftEmail, getDunningRetryEmail, getDunningFinalEmail, getCanceledNoticeEmail } from '$lib/email/templates/dunning';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
 
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: '2025-12-15.clover',
-  typescript: true
-});
+export const POST: RequestHandler = async (event) => {
+  const { request } = event;
+  const env = await getEnv(event);
+  const supabase = await getSupabaseAdmin(event);
+  const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
+    apiVersion: '2025-12-15.clover',
+    typescript: true
+  });
 
-const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-export const POST: RequestHandler = async ({ request }) => {
   const body = await request.text();
   const signature = request.headers.get('stripe-signature');
 
@@ -24,17 +23,17 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'Missing signature' }, { status: 400 });
   }
 
-  let event: Stripe.Event;
+  let eventObj: Stripe.Event;
 
   try {
     // Use async version for Cloudflare Workers (SubtleCrypto is async-only)
-    event = await stripe.webhooks.constructEventAsync(body, signature, STRIPE_WEBHOOK_SECRET);
+    eventObj = await stripe.webhooks.constructEventAsync(body, signature, env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error('[Stripe Webhook] Signature verification failed:', err);
     return json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  console.log('[Stripe Webhook] Event verified:', { event_id: event.id, event_type: event.type });
+  console.log('[Stripe Webhook] Event verified:', { event_id: eventObj.id, event_type: eventObj.type });
 
   // Check for duplicate events (idempotency)
   // Try to insert event record. If it fails due to unique constraint, it's a duplicate.
@@ -42,8 +41,8 @@ export const POST: RequestHandler = async ({ request }) => {
     .from('webhook_events')
     .insert({
       source: 'stripe',
-      event_id: event.id,
-      event_type: event.type,
+      event_id: eventObj.id,
+      event_type: eventObj.type,
       status: 'processing'
     })
     .select()
@@ -51,7 +50,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
   // Check if insert failed due to unique constraint violation (PostgreSQL error code 23505)
   if (insertError?.code === '23505') {
-    console.log('[Webhook] Duplicate event, skipping:', event.id);
+    console.log('[Webhook] Duplicate event, skipping:', eventObj.id);
     return json({ received: true });
   }
 
@@ -61,36 +60,36 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   try {
-    switch (event.type) {
+    switch (eventObj.type) {
       case 'checkout.session.completed':
-        await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+        await handleCheckoutCompleted(eventObj.data.object as Stripe.Checkout.Session, stripe, supabase);
         break;
 
       case 'invoice.paid':
-        await handleInvoicePaid(event.data.object as Stripe.Invoice);
+        await handleInvoicePaid(eventObj.data.object as Stripe.Invoice, stripe, supabase);
         break;
 
       case 'invoice.payment_failed':
-        await handlePaymentFailed(event.data.object as Stripe.Invoice);
+        await handlePaymentFailed(eventObj.data.object as Stripe.Invoice, stripe, supabase);
         break;
 
       case 'customer.subscription.updated':
-        await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+        await handleSubscriptionUpdated(eventObj.data.object as Stripe.Subscription, stripe, supabase);
         break;
 
       case 'customer.subscription.deleted':
-        await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+        await handleSubscriptionDeleted(eventObj.data.object as Stripe.Subscription, stripe, supabase);
         break;
 
       default:
-        console.log('Unhandled event type:', event.type);
+        console.log('Unhandled event type:', eventObj.type);
     }
 
     // Mark event as processed
     await supabase
       .from('webhook_events')
       .update({ status: 'processed', processed_at: new Date().toISOString() })
-      .eq('event_id', event.id);
+      .eq('event_id', eventObj.id);
 
     return json({ received: true });
   } catch (error) {
@@ -103,13 +102,13 @@ export const POST: RequestHandler = async ({ request }) => {
         status: 'failed',
         error_message: error instanceof Error ? error.message : 'Unknown error'
       })
-      .eq('event_id', event.id);
+      .eq('event_id', eventObj.id);
 
     return json({ error: 'Webhook processing failed' }, { status: 500 });
   }
 };
 
-async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient) {
   const email = session.customer_details?.email;
   const name = session.customer_details?.name;
   const telegramHandle = session.custom_fields?.[0]?.text?.value;
@@ -307,7 +306,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 }
 
-async function handleInvoicePaid(invoice: Stripe.Invoice) {
+async function handleInvoicePaid(invoice: Stripe.Invoice, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient) {
   const stripeCustomerId = invoice.customer as string;
 
   // In Stripe API 2025-10-29.clover, the subscription field was moved to parent.subscription_details.subscription
@@ -529,7 +528,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
   console.log(`[handleInvoicePaid] Complete - period ${periodStartISO} to ${periodEndISO}`);
 }
 
-async function handlePaymentFailed(invoice: Stripe.Invoice) {
+async function handlePaymentFailed(invoice: Stripe.Invoice, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient) {
   const stripeCustomerId = invoice.customer as string;
 
   // Find customer
@@ -613,7 +612,7 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
   });
 }
 
-async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+async function handleSubscriptionUpdated(subscription: Stripe.Subscription, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient) {
   // In Stripe API 2025-10-29.clover (Basil 2025-03-31+), period dates moved to subscription items
   const firstItem = subscription.items?.data?.[0];
   const periodStart = firstItem?.current_period_start;
@@ -739,7 +738,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   }
 }
 
-async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+async function handleSubscriptionDeleted(subscription: Stripe.Subscription, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient) {
   const { data: sub } = await supabase
     .from('subscriptions')
     .select('customer_id, customers(name, email)')
