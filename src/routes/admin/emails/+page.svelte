@@ -11,7 +11,32 @@
   export let data: PageData;
   export let form;
 
-  let mode: 'list' | 'create' | 'edit' = 'list';
+  // Color scheme hex values for thumbnail rendering
+  const COLOR_HEX: Record<string, string> = {
+    orange: '#c2410c',
+    teal: '#0f766e',
+    green: '#15803d',
+    amber: '#b45309',
+    red: '#b91c1c',
+    gray: '#374151'
+  };
+
+  // Get visual metadata for a template (for thumbnails)
+  function getTemplateVisuals(slug: string): { color: string; emoji: string; title: string } {
+    // Try SYSTEM_TEMPLATE_BLOCKS first (uses underscores)
+    const blockDef = SYSTEM_TEMPLATE_BLOCKS[slug];
+    if (blockDef) {
+      return {
+        color: COLOR_HEX[blockDef.settings.colorScheme] || COLOR_HEX.orange,
+        emoji: blockDef.settings.emoji || '📧',
+        title: blockDef.settings.title || slug
+      };
+    }
+    // Fallback defaults
+    return { color: COLOR_HEX.orange, emoji: '📧', title: slug };
+  }
+
+  let mode: 'list' | 'edit' = 'list';
   let editorMode: 'blocks' | 'html' = 'blocks'; // Toggle between semantic and raw
   let selectedTemplate: any = null;
   let showPreview = true;
@@ -281,18 +306,6 @@
     }
   }
 
-  function createNew() {
-    mode = 'create';
-    editorMode = 'blocks';
-    slug = '';
-    subject = '';
-    htmlBody = '';
-    variables = '';
-    selectedTemplate = null;
-    // Reset block editor state
-    editorActions.reset();
-  }
-
   function editTemplate(template: any) {
     mode = 'edit';
     selectedTemplate = template;
@@ -323,25 +336,6 @@
       // Load the subject into block editor settings
       if (subject) {
         editorActions.updateSettings({ title: subject });
-      }
-    }
-  }
-
-  function loadRegisteredTemplate(templateSlug: string) {
-    // Find if this template already exists in the database
-    const existingTemplate = data.templates.find(t => t.slug === templateSlug);
-
-    if (existingTemplate) {
-      // Edit existing template
-      editTemplate(existingTemplate);
-    } else {
-      // Create new template
-      const template = EMAIL_TEMPLATES.find(t => t.slug === templateSlug);
-      if (template) {
-        mode = 'create';
-        editorMode = 'blocks';
-        slug = templateSlug;
-        // The block editor will be initialized from the template
       }
     }
   }
@@ -381,21 +375,11 @@
   <div class="flex items-center justify-between">
     <div>
       <h1 class="text-3xl font-extrabold tracking-tight text-[#1A1816]">Email Templates</h1>
-      <p class="text-[#5C5A56] mt-2">Create and manage email templates with the semantic block editor</p>
+      <p class="text-[#5C5A56] mt-2">Edit system email templates with the semantic block editor</p>
     </div>
-    {#if mode === 'list'}
+    {#if mode === 'edit'}
       <button
-        on:click={createNew}
-        class="px-6 py-3 bg-[#E67E50] border-2 border-[#D97F3E] text-white font-bold rounded-sm hover:bg-[#D97F3E] hover:shadow-xl shadow-lg transition-all flex items-center gap-2"
-      >
-        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        New Template
-      </button>
-    {:else}
-      <button
-        on:click={cancelEdit}
+        onclick={cancelEdit}
         class="px-6 py-3 text-[#1A1816] bg-[#D9D7D2] border-2 border-[#B8B6B1] hover:bg-[#B8B6B1] font-bold rounded-sm transition-colors"
       >
         ← Back to List
@@ -404,47 +388,31 @@
   </div>
 
   {#if mode === 'list'}
-    <!-- Registered Templates Section -->
-    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
-      <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-4">System Templates</h2>
-      <p class="text-sm text-[#5C5A56] mb-4">These templates are built into the codebase. Click to edit or create new variants.</p>
-
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-        {#each EMAIL_TEMPLATES as template}
-          <button
-            on:click={() => loadRegisteredTemplate(template.slug)}
-            class="p-4 text-left border-2 border-[#D9D7D2] rounded-sm hover:border-[#E67E50] hover:bg-[#E67E50]/5 transition-all group"
-          >
-            <div class="flex items-center gap-2 mb-1">
-              <span class="text-lg">{template.emoji || '📧'}</span>
-              <span class="font-bold text-[#1A1816] text-sm group-hover:text-[#E67E50]">{template.name}</span>
+    <!-- Templates Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {#each data.templates as template}
+        {@const registryInfo = EMAIL_TEMPLATES.find(t => t.slug === template.slug)}
+        {@const visuals = getTemplateVisuals(template.slug)}
+        <div class="group bg-white border-2 border-[#D9D7D2] hover:border-[#B8B6B1] rounded-sm overflow-hidden transition-all hover:shadow-lg">
+          <!-- Template Info (Top) -->
+          <div class="p-3">
+            <div class="flex items-start justify-between gap-2 mb-1">
+              <h3 class="font-bold text-[#1A1816] text-sm leading-tight">
+                {registryInfo?.name || template.slug}
+              </h3>
+              {#if template.is_system}
+                <span class="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#5C5A56] bg-[#E8E6E1] rounded flex-shrink-0">
+                  System
+                </span>
+              {/if}
             </div>
-            <p class="text-xs text-[#5C5A56]">{template.description || template.slug}</p>
-          </button>
-        {/each}
-      </div>
-    </div>
+            <p class="text-xs text-[#5C5A56] truncate mb-2">{template.subject}</p>
 
-    <!-- All Templates List -->
-    <div>
-      <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-4">All Templates</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {#each data.templates as template}
-          <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
-            <div class="flex items-start justify-between mb-4">
-              <div class="flex-1">
-                <h3 class="text-lg font-extrabold tracking-tight text-[#1A1816] mb-1">{template.slug}</h3>
-                <p class="text-sm text-[#5C5A56]">{template.subject}</p>
-              </div>
-              <span class="px-2 py-1 text-xs font-bold {template.is_system ? 'bg-[#E67E50] border-[#E67E50]/70' : 'bg-[#2D9B9B] border-[#2D9B9B]/70'} text-white border-2 rounded-sm">
-                {template.is_system ? 'System' : 'Custom'}
-              </span>
-            </div>
-
-            <div class="flex gap-2">
+            <!-- Actions -->
+            <div class="flex items-center gap-1">
               <button
-                on:click={() => editTemplate(template)}
-                class="flex-1 px-4 py-2 text-sm font-bold text-[#E67E50] hover:bg-[#E67E50]/10 border-2 border-transparent hover:border-[#E67E50]/20 rounded-sm transition-all"
+                onclick={() => editTemplate(template)}
+                class="flex-1 px-2 py-1 text-xs font-bold text-[#E67E50] hover:bg-[#E67E50]/10 border border-[#E67E50]/30 hover:border-[#E67E50] rounded transition-colors"
               >
                 Edit
               </button>
@@ -454,8 +422,8 @@
                   <input type="hidden" name="csrf_token" value={data.csrfToken} />
                   <button
                     type="submit"
-                    class="w-full px-4 py-2 text-sm font-bold text-[#52A675] hover:bg-[#52A675]/10 border-2 border-transparent hover:border-[#52A675]/20 rounded-sm transition-all"
-                    on:click={(e) => !confirm('Restore to original? This will create a new version.') && e.preventDefault()}
+                    class="w-full px-2 py-1 text-xs font-bold text-[#52A675] hover:bg-[#52A675]/10 border border-[#52A675]/30 hover:border-[#52A675] rounded transition-colors"
+                    onclick={(e) => !confirm('Restore to original? This will create a new version.') && e.preventDefault()}
                   >
                     Restore
                   </button>
@@ -466,8 +434,8 @@
                   <input type="hidden" name="csrf_token" value={data.csrfToken} />
                   <button
                     type="submit"
-                    class="w-full px-4 py-2 text-sm font-bold text-[#C85454] hover:bg-[#C85454]/10 border-2 border-transparent hover:border-[#C85454]/20 rounded-sm transition-all"
-                    on:click={(e) => !confirm('Delete this template?') && e.preventDefault()}
+                    class="w-full px-2 py-1 text-xs font-bold text-[#C85454] hover:bg-[#C85454]/10 border border-[#C85454]/30 hover:border-[#C85454] rounded transition-colors"
+                    onclick={(e) => !confirm('Delete this template?') && e.preventDefault()}
                   >
                     Delete
                   </button>
@@ -475,25 +443,64 @@
               {/if}
             </div>
           </div>
-        {/each}
 
-        {#if data.templates.length === 0}
-          <div class="col-span-full bg-white border-2 border-[#D9D7D2] rounded-sm p-12 text-center shadow-lg">
-            <svg class="w-16 h-16 mx-auto mb-4 text-[#D9D7D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-            <p class="font-bold text-[#1A1816] mb-1">No templates yet</p>
-            <p class="text-sm text-[#5C5A56]">Create your first email template to get started</p>
-          </div>
-        {/if}
-      </div>
+          <!-- Thumbnail Preview (Bottom) -->
+          <button
+            type="button"
+            onclick={() => editTemplate(template)}
+            class="w-full text-left focus:outline-none focus:ring-2 focus:ring-[#E67E50] focus:ring-inset"
+          >
+            <div class="relative bg-[#F5F5F4] p-3 border-t border-[#E8E6E1]">
+              <!-- Miniature Email Frame -->
+              <div class="bg-white rounded shadow-sm overflow-hidden" style="aspect-ratio: 4/3;">
+                <!-- Header bar with color -->
+                <div class="h-8 flex items-center justify-center" style="background-color: {visuals.color};">
+                  <span class="text-white text-lg">{visuals.emoji}</span>
+                </div>
+                <!-- Content preview -->
+                <div class="p-2 space-y-1.5">
+                  <!-- Title placeholder -->
+                  <div class="h-2 rounded-full bg-[#1A1816] w-3/4 mx-auto"></div>
+                  <div class="h-1.5 rounded-full bg-[#D9D7D2] w-1/2 mx-auto"></div>
+                  <!-- Content lines -->
+                  <div class="pt-1 space-y-1">
+                    <div class="h-1 rounded-full bg-[#E8E6E1] w-full"></div>
+                    <div class="h-1 rounded-full bg-[#E8E6E1] w-5/6"></div>
+                    <div class="h-1 rounded-full bg-[#E8E6E1] w-4/5"></div>
+                  </div>
+                  <!-- Button placeholder -->
+                  <div class="pt-1 flex justify-center">
+                    <div class="h-3 w-16 rounded-sm" style="background-color: {visuals.color};"></div>
+                  </div>
+                </div>
+              </div>
+              <!-- Hover overlay -->
+              <div class="absolute inset-0 bg-[#1A1816]/0 group-hover:bg-[#1A1816]/5 transition-colors flex items-center justify-center">
+                <span class="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 px-3 py-1.5 rounded text-sm font-bold text-[#1A1816] shadow">
+                  Edit Template
+                </span>
+              </div>
+            </div>
+          </button>
+        </div>
+      {/each}
+
+      {#if data.templates.length === 0}
+        <div class="col-span-full bg-white border-2 border-[#D9D7D2] rounded-sm p-12 text-center">
+          <svg class="w-16 h-16 mx-auto mb-4 text-[#D9D7D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          <p class="font-bold text-[#1A1816] mb-1">No templates yet</p>
+          <p class="text-sm text-[#5C5A56]">Create your first email template to get started</p>
+        </div>
+      {/if}
     </div>
   {:else}
     <!-- Editor Mode Toggle -->
     <div class="flex items-center gap-4 mb-6">
       <div class="flex bg-[#D9D7D2] rounded-sm p-1">
         <button
-          on:click={() => editorMode = 'blocks'}
+          onclick={() => editorMode = 'blocks'}
           class="px-4 py-2 text-sm font-bold rounded-sm transition-all {editorMode === 'blocks' ? 'bg-white text-[#1A1816] shadow' : 'text-[#5C5A56] hover:text-[#1A1816]'}"
         >
           <span class="flex items-center gap-2">
@@ -504,7 +511,7 @@
           </span>
         </button>
         <button
-          on:click={() => editorMode = 'html'}
+          onclick={() => editorMode = 'html'}
           class="px-4 py-2 text-sm font-bold rounded-sm transition-all {editorMode === 'html' ? 'bg-white text-[#1A1816] shadow' : 'text-[#5C5A56] hover:text-[#1A1816]'}"
         >
           <span class="flex items-center gap-2">
@@ -522,7 +529,7 @@
 
     {#if editorMode === 'blocks'}
       <!-- Block Editor -->
-      <form method="POST" action={mode === 'create' ? '?/createTemplate' : '?/updateTemplate'} use:enhance={() => {
+      <form method="POST" action="?/updateTemplate" use:enhance={() => {
         // Serialize blocks right before submission
         const blocksJsonInput = document.querySelector('input[name="blocksJson"]') as HTMLInputElement;
         if (blocksJsonInput) {
@@ -532,9 +539,7 @@
           await update();
         };
       }}>
-        {#if mode === 'edit'}
-          <input type="hidden" name="id" value={selectedTemplate?.id} />
-        {/if}
+        <input type="hidden" name="id" value={selectedTemplate?.id} />
         <input type="hidden" name="slug" value={slug} />
         <input type="hidden" name="subject" value={$editorState.settings.title} />
         <input type="hidden" name="htmlBody" value={$previewHTML} />
@@ -546,14 +551,14 @@
             <div class="flex items-center justify-between">
               <div>
                 <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816]">
-                  {mode === 'create' ? 'Create Template' : 'Edit Template'}
+                  Edit Template
                 </h2>
                 <p class="text-sm text-[#5C5A56]">Compose your email using semantic content blocks</p>
               </div>
               <div class="flex gap-2">
                 <button
                   type="button"
-                  on:click={() => showTestModal = true}
+                  onclick={() => showTestModal = true}
                   class="px-4 py-2 text-sm text-[#1A1816] bg-[#D9D7D2] border-2 border-[#B8B6B1] hover:bg-[#B8B6B1] font-bold rounded-sm transition-colors"
                 >
                   Send Test
@@ -572,37 +577,18 @@
       </form>
     {:else}
       <!-- Raw HTML Editor (original) -->
-      <form method="POST" action={mode === 'create' ? '?/createTemplate' : '?/updateTemplate'} use:enhance class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <form method="POST" action="?/updateTemplate" use:enhance class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Left column: Editor -->
         <div class="space-y-6">
           <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
             <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-6">
-              {mode === 'create' ? 'Create Template' : 'Edit Template'}
+              Edit Template
             </h2>
 
-            {#if mode === 'edit'}
-              <input type="hidden" name="id" value={selectedTemplate?.id} />
-            {/if}
+            <input type="hidden" name="id" value={selectedTemplate?.id} />
             <input type="hidden" name="csrf_token" value={data.csrfToken} />
 
             <div class="space-y-4">
-              {#if mode === 'create'}
-                <div>
-                  <label for="slug" class="block text-sm font-bold text-[#1A1816] mb-2">
-                    Slug (unique identifier)
-                  </label>
-                  <input
-                    id="slug"
-                    name="slug"
-                    type="text"
-                    bind:value={slug}
-                    required
-                    placeholder="welcome_email"
-                    class="w-full px-4 py-2 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none font-medium text-[#1A1816] bg-white"
-                  />
-                </div>
-              {/if}
-
               <div>
                 <label for="subject" class="block text-sm font-bold text-[#1A1816] mb-2">
                   Subject Line
@@ -655,18 +641,18 @@
                 type="submit"
                 class="flex-1 px-6 py-3 bg-[#E67E50] border-2 border-[#D97F3E] text-white font-bold rounded-sm hover:bg-[#D97F3E] hover:shadow-xl shadow-lg transition-all"
               >
-                {mode === 'create' ? 'Create Template' : 'Save Changes'}
+                Save Changes
               </button>
               <button
                 type="button"
-                on:click={() => showPreview = !showPreview}
+                onclick={() => showPreview = !showPreview}
                 class="px-6 py-3 text-[#E67E50] bg-[#E67E50]/10 border-2 border-[#E67E50]/20 hover:bg-[#E67E50]/20 font-bold rounded-sm transition-colors"
               >
                 {showPreview ? 'Hide' : 'Show'} Preview
               </button>
               <button
                 type="button"
-                on:click={() => showTestModal = true}
+                onclick={() => showTestModal = true}
                 class="px-6 py-3 text-[#1A1816] bg-[#D9D7D2] border-2 border-[#B8B6B1] hover:bg-[#B8B6B1] font-bold rounded-sm transition-colors"
               >
                 Send Test
@@ -725,8 +711,10 @@
 
 <!-- Test Email Modal -->
 {#if showTestModal}
-  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" on:click={() => showTestModal = false}>
-    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm shadow-2xl max-w-md w-full p-6" on:click|stopPropagation>
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onclick={() => showTestModal = false}>
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm shadow-2xl max-w-md w-full p-6" onclick={(e) => e.stopPropagation()}>
       <h3 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-4">Send Test Email</h3>
 
       <form method="POST" action="?/sendTest" use:enhance>
@@ -752,7 +740,7 @@
         <div class="flex gap-3">
           <button
             type="button"
-            on:click={() => showTestModal = false}
+            onclick={() => showTestModal = false}
             class="flex-1 px-4 py-2 text-[#1A1816] bg-[#D9D7D2] border-2 border-[#B8B6B1] hover:bg-[#B8B6B1] rounded-sm font-bold transition-colors"
           >
             Cancel
