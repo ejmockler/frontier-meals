@@ -81,7 +81,7 @@ export const POST: RequestHandler = async (event) => {
       },
       custom_text: {
         terms_of_service_acceptance: {
-          message: `By subscribing to Frontier Meals, you agree to receive daily QR codes via email and manage your subscription through our Telegram bot.`
+          message: `I have read and agree to the [Subscription Agreement](${url.origin}/terms-and-privacy), including the liability waiver and privacy policy.`
         }
       },
       metadata: {
