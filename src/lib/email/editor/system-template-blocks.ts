@@ -32,6 +32,8 @@ export interface SystemTemplateDefinition {
 export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = {
   // ============================================================================
   // 1. QR Daily - Daily meal QR code
+  // Source: src/lib/email/templates/qr-daily.ts
+  // Variables: customer_name, day_name, date_formatted, qr_code_base64
   // ============================================================================
   qr_daily: {
     settings: {
@@ -72,16 +74,17 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
         type: 'divider'
       },
       {
-        id: 'qr_daily-paragraph-2',
-        type: 'paragraph',
-        text: 'Need to skip a day? Use /skip in Telegram',
-        style: 'muted'
+        id: 'qr_daily-codeInline-1',
+        type: 'codeInline',
+        text: 'Need to skip a day? Use /skip in Telegram'
       }
     ]
   },
 
   // ============================================================================
   // 2. Telegram Link - Welcome email with Telegram connection
+  // Source: src/lib/email/templates/telegram-link.ts
+  // Variables: customer_name, telegram_handle, deep_link
   // ============================================================================
   telegram_link: {
     settings: {
@@ -107,6 +110,12 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
         type: 'button',
         label: '📱 Connect on Telegram',
         urlVariable: 'deep_link'
+      },
+      {
+        id: 'telegram_link-paragraph-2',
+        type: 'paragraph',
+        text: 'What happens next:',
+        style: 'lead'
       },
       {
         id: 'telegram_link-stepList-1',
@@ -135,10 +144,9 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
         ] as Step[]
       },
       {
-        id: 'telegram_link-paragraph-2',
-        type: 'paragraph',
-        text: 'Your Telegram Handle: {{telegram_handle}}',
-        style: 'normal'
+        id: 'telegram_link-codeInline-1',
+        type: 'codeInline',
+        text: 'Your Telegram Handle: {{telegram_handle}}'
       },
       {
         id: 'telegram_link-infoBox-1',
@@ -152,6 +160,8 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
 
   // ============================================================================
   // 3. Telegram Correction - Fix mistyped username
+  // Source: src/lib/email/templates/telegram-correction.ts
+  // Variables: customer_name, handle_update_link, deep_link
   // ============================================================================
   telegram_correction: {
     settings: {
@@ -189,7 +199,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
         type: 'infoBox',
         boxType: 'success',
         title: 'This will let you:',
-        text: '• Receive daily meal QR codes\n• Set dietary preferences\n• Skip dates when you\'re away\n• Manage your meal schedule'
+        text: 'Receive daily meal QR codes, Set dietary preferences, Skip dates when you\'re away, Manage your meal schedule'
       },
       {
         id: 'telegram_correction-divider-1',
@@ -206,7 +216,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
         type: 'button',
         label: '📱 Connect on Telegram',
         urlVariable: 'deep_link',
-        colorOverride: '#16a34a' // Green for secondary action
+        colorOverride: '#16a34a'
       },
       {
         id: 'telegram_correction-infoBox-2',
@@ -386,6 +396,10 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
         style: 'normal'
       },
       {
+        id: 'canceled_notice-divider-1',
+        type: 'divider'
+      },
+      {
         id: 'canceled_notice-paragraph-2',
         type: 'paragraph',
         text: 'Want to come back?',
@@ -396,6 +410,10 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
         type: 'paragraph',
         text: "You're always welcome to resubscribe at frontiermeals.com",
         style: 'muted'
+      },
+      {
+        id: 'canceled_notice-divider-2',
+        type: 'divider'
       },
       {
         id: 'canceled_notice-paragraph-4',
@@ -491,18 +509,24 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
       {
         id: 'schedule_change-paragraph-2',
         type: 'paragraph',
-        text: 'Affected Dates:\n{{affected_dates_list}}',
+        text: 'Affected Dates:',
+        style: 'lead'
+      },
+      {
+        id: 'schedule_change-paragraph-3',
+        type: 'paragraph',
+        text: '{{affected_dates_list}}',
         style: 'normal'
       },
       {
         id: 'schedule_change-infoBox-1',
         type: 'infoBox',
         boxType: 'info',
-        title: 'Effective Date',
+        title: 'Effective',
         text: '{{effective_date}}'
       },
       {
-        id: 'schedule_change-paragraph-3',
+        id: 'schedule_change-paragraph-4',
         type: 'paragraph',
         text: 'If you have questions about this change, message @noahchonlee on Telegram.',
         style: 'muted'
