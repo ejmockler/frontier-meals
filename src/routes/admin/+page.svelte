@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { invalidate } from '$app/navigation';
+  import { invalidate, pushState } from '$app/navigation';
+  import { page } from '$app/stores';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -61,6 +62,19 @@
   $effect(() => {
     if (!testQRDate) {
       testQRDate = getTodayString();
+    }
+  });
+
+  // Open test QR modal with shallow routing (enables back button to close)
+  function openTestQRModal() {
+    showTestQRModal = true;
+    pushState('', { testQR: true });
+  }
+
+  // React to back button - close modal when state is cleared
+  $effect(() => {
+    if (!$page.state.testQR && showTestQRModal) {
+      showTestQRModal = false;
     }
   });
 
@@ -165,10 +179,16 @@
         </div>
       </div>
       <div class="mt-4 flex items-center text-sm">
-        <span class="text-[#5C5A56]">
-          {data.metrics.statusCounts.past_due || 0} past due,
-          {data.metrics.statusCounts.canceled || 0} canceled
-        </span>
+        {#await data.statusCounts}
+          <span class="text-[#8E8C87] animate-pulse">Loading status...</span>
+        {:then statusCounts}
+          <span class="text-[#5C5A56]">
+            {statusCounts.past_due || 0} past due,
+            {statusCounts.canceled || 0} canceled
+          </span>
+        {:catch}
+          <span class="text-[#C85454]">Failed to load</span>
+        {/await}
       </div>
     </div>
 
@@ -229,7 +249,7 @@
       </a>
 
       <button
-        onclick={() => showTestQRModal = true}
+        onclick={openTestQRModal}
         class="bg-white/10 border-2 border-white/20 hover:bg-white/20 rounded-sm p-4 transition-all cursor-pointer"
       >
         <div class="flex items-center gap-3">
@@ -249,52 +269,68 @@
       <p class="text-sm text-[#5C5A56] mt-1">Latest events from the system</p>
     </div>
     <div class="divide-y-2 divide-[#D9D7D2]">
-      {#if data.recentActivity.length === 0}
-        <div class="p-8 text-center text-[#5C5A56]">
-          <svg class="w-12 h-12 mx-auto mb-4 text-[#D9D7D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-          </svg>
-          <p class="font-bold">No recent activity</p>
-          <p class="text-sm mt-1">Activity will appear here as events occur</p>
+      {#await data.recentActivity}
+        <div class="p-8 text-center text-[#8E8C87]">
+          <div class="w-12 h-12 mx-auto mb-4 border-4 border-[#D9D7D2] border-t-[#2D9B9B] rounded-full animate-spin"></div>
+          <p class="font-bold">Loading activity...</p>
         </div>
-      {:else}
-        {#each data.recentActivity as activity}
-          <div class="p-4 hover:bg-white transition-colors">
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex items-start gap-3 flex-1">
-                <span class="px-2 py-1 text-xs font-bold rounded-sm {getActionColor(activity.action)}">
-                  {formatAction(activity.action)}
-                </span>
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm text-[#1A1816] font-bold">
-                    {activity.customerName || 'Unknown customer'}
-                  </p>
-                  {#if activity.metadata?.kiosk_location}
-                    <p class="text-xs text-[#5C5A56] mt-1">
-                      at {activity.metadata.kiosk_location}
-                    </p>
-                  {/if}
-                  {#if activity.metadata?.telegram_username}
-                    <p class="text-xs mt-1">
-                      <a
-                        href="https://t.me/{activity.metadata.telegram_username}"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="text-[#2D9B9B] hover:text-[#E67E50] font-medium transition-colors hover:underline"
-                      >
-                        @{activity.metadata.telegram_username}
-                      </a>
-                    </p>
-                  {/if}
-                </div>
-              </div>
-              <span class="text-xs text-[#8E8C87] whitespace-nowrap">
-                {formatTime(activity.created_at)}
-              </span>
-            </div>
+      {:then recentActivity}
+        {#if recentActivity.length === 0}
+          <div class="p-8 text-center text-[#5C5A56]">
+            <svg class="w-12 h-12 mx-auto mb-4 text-[#D9D7D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            </svg>
+            <p class="font-bold">No recent activity</p>
+            <p class="text-sm mt-1">Activity will appear here as events occur</p>
           </div>
-        {/each}
-      {/if}
+        {:else}
+          {#each recentActivity as activity}
+            <div class="p-4 hover:bg-white transition-colors">
+              <div class="flex items-start justify-between gap-4">
+                <div class="flex items-start gap-3 flex-1">
+                  <span class="px-2 py-1 text-xs font-bold rounded-sm {getActionColor(activity.action)}">
+                    {formatAction(activity.action)}
+                  </span>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm text-[#1A1816] font-bold">
+                      {activity.customerName || 'Unknown customer'}
+                    </p>
+                    {#if activity.metadata?.kiosk_location}
+                      <p class="text-xs text-[#5C5A56] mt-1">
+                        at {activity.metadata.kiosk_location}
+                      </p>
+                    {/if}
+                    {#if activity.metadata?.telegram_username}
+                      <p class="text-xs mt-1">
+                        <a
+                          href="https://t.me/{activity.metadata.telegram_username}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="text-[#2D9B9B] hover:text-[#E67E50] font-medium transition-colors hover:underline"
+                          data-sveltekit-preload-data="false"
+                        >
+                          @{activity.metadata.telegram_username}
+                        </a>
+                      </p>
+                    {/if}
+                  </div>
+                </div>
+                <span class="text-xs text-[#8E8C87] whitespace-nowrap">
+                  {formatTime(activity.created_at)}
+                </span>
+              </div>
+            </div>
+          {/each}
+        {/if}
+      {:catch error}
+        <div class="p-8 text-center text-[#C85454]">
+          <svg class="w-12 h-12 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p class="font-bold">Failed to load activity</p>
+          <p class="text-sm text-[#5C5A56] mt-1">Please refresh the page to try again</p>
+        </div>
+      {/await}
     </div>
   </div>
 </div>

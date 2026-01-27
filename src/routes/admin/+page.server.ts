@@ -2,30 +2,17 @@ import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 import type { PageServerLoad } from './$types';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-export const load: PageServerLoad = async ({ depends }) => {
-  depends('admin:dashboard'); // Mark for selective invalidation
-
-  const today = new Date().toISOString().split('T')[0];
-
-  // Fetch dashboard metrics and activity log
-  const [
-    { count: totalCustomers },
-    { count: activeSubscriptions },
-    { count: todayRedemptions },
-    { data: rawActivity }
-  ] = await Promise.all([
-    supabase.from('customers').select('*', { count: 'exact', head: true }),
-    supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-    supabase.from('redemptions').select('*', { count: 'exact', head: true }).eq('service_date', today),
-    supabase
-      .from('audit_log')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10)
-  ]);
+// Helper function to fetch and enrich activity log (for streaming)
+async function enrichActivityLog(supabase: SupabaseClient) {
+  const { data: rawActivity } = await supabase
+    .from('audit_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(10);
 
   // Extract all customer IDs from activity (batch operation)
   const customerIds = Array.from(new Set(
@@ -48,7 +35,7 @@ export const load: PageServerLoad = async ({ depends }) => {
   );
 
   // Enrich activity with customer names (no async, pure mapping)
-  const recentActivity = (rawActivity || []).map(activity => {
+  return (rawActivity || []).map(activity => {
     const customerIdMatch = activity.subject?.match(/customer:([a-f0-9-]+)/);
     const customerId = customerIdMatch?.[1];
     return {
@@ -56,24 +43,45 @@ export const load: PageServerLoad = async ({ depends }) => {
       customerName: customerId ? customerMap.get(customerId) || null : null
     };
   });
+}
 
-  // Get subscription status breakdown
+// Helper function to get subscription status breakdown (for streaming)
+async function getStatusCounts(supabase: SupabaseClient) {
   const { data: subscriptionStats } = await supabase
     .from('subscriptions')
     .select('status');
 
-  const statusCounts = subscriptionStats?.reduce((acc, sub) => {
+  return subscriptionStats?.reduce((acc, sub) => {
     acc[sub.status] = (acc[sub.status] || 0) + 1;
     return acc;
   }, {} as Record<string, number>) || {};
+}
 
+export const load: PageServerLoad = async ({ depends }) => {
+  depends('admin:dashboard'); // Mark for selective invalidation
+
+  const today = new Date().toISOString().split('T')[0];
+
+  // Fetch only critical metrics (block rendering on these)
+  const [
+    { count: totalCustomers },
+    { count: activeSubscriptions },
+    { count: todayRedemptions }
+  ] = await Promise.all([
+    supabase.from('customers').select('*', { count: 'exact', head: true }),
+    supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+    supabase.from('redemptions').select('*', { count: 'exact', head: true }).eq('service_date', today)
+  ]);
+
+  // Return critical data immediately, stream secondary data
   return {
     metrics: {
       totalCustomers: totalCustomers || 0,
       activeSubscriptions: activeSubscriptions || 0,
-      todayRedemptions: todayRedemptions || 0,
-      statusCounts
+      todayRedemptions: todayRedemptions || 0
     },
-    recentActivity: recentActivity || []
+    // These will stream - no await
+    recentActivity: enrichActivityLog(supabase),
+    statusCounts: getStatusCounts(supabase)
   };
 };
