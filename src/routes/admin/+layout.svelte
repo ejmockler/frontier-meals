@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { LayoutData } from './$types';
   import { page } from '$app/stores';
+  import { enhance } from '$app/forms';
   import { toasts } from '$lib/stores/toast';
   import { fly } from 'svelte/transition';
 
@@ -37,7 +38,7 @@
               <p class="text-sm font-medium text-gray-900">{data.session?.email}</p>
               <p class="text-xs text-gray-500">Administrator</p>
             </div>
-            <form action="/api/admin/auth/logout" method="POST">
+            <form action="/api/admin/auth/logout" method="POST" use:enhance>
               {#if data.csrfToken}
                 <input type="hidden" name="csrf_token" value={data.csrfToken} />
               {/if}
@@ -59,7 +60,7 @@
         <nav class="flex gap-1 -mb-px" aria-label="Tabs">
           <a
             href="/admin"
-            data-sveltekit-preload-data="hover"
+            data-sveltekit-preload-data="tap"
             data-sveltekit-preload-code="eager"
             class="px-4 py-3 text-sm font-medium border-b-2 transition-colors
               {$page.url.pathname === '/admin'
@@ -70,7 +71,7 @@
           </a>
           <a
             href="/admin/customers"
-            data-sveltekit-preload-data="hover"
+            data-sveltekit-preload-data="tap"
             data-sveltekit-preload-code="eager"
             class="px-4 py-3 text-sm font-medium border-b-2 transition-colors
               {$page.url.pathname.startsWith('/admin/customers')
@@ -81,7 +82,7 @@
           </a>
           <a
             href="/admin/schedule"
-            data-sveltekit-preload-data="hover"
+            data-sveltekit-preload-data="tap"
             data-sveltekit-preload-code="eager"
             class="px-4 py-3 text-sm font-medium border-b-2 transition-colors
               {$page.url.pathname.startsWith('/admin/schedule')
@@ -92,7 +93,7 @@
           </a>
           <a
             href="/admin/emails"
-            data-sveltekit-preload-data="hover"
+            data-sveltekit-preload-data="tap"
             data-sveltekit-preload-code="eager"
             class="px-4 py-3 text-sm font-medium border-b-2 transition-colors
               {$page.url.pathname.startsWith('/admin/emails')
@@ -103,7 +104,7 @@
           </a>
           <a
             href="/admin/kiosk"
-            data-sveltekit-preload-data="hover"
+            data-sveltekit-preload-data="tap"
             data-sveltekit-preload-code="eager"
             class="px-4 py-3 text-sm font-medium border-b-2 transition-colors
               {$page.url.pathname.startsWith('/admin/kiosk')
