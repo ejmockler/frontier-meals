@@ -395,24 +395,24 @@
         {@const visuals = getTemplateVisuals(template.slug)}
         <div class="group bg-white border-2 border-[#D9D7D2] hover:border-[#B8B6B1] rounded-sm overflow-hidden transition-all hover:shadow-lg">
           <!-- Template Info (Top) -->
-          <div class="p-3">
+          <div class="p-4">
             <div class="flex items-start justify-between gap-2 mb-1">
-              <h3 class="font-bold text-[#1A1816] text-sm leading-tight">
+              <h3 class="font-bold text-[#1A1816] text-base leading-tight">
                 {registryInfo?.name || template.slug}
               </h3>
               {#if template.is_system}
-                <span class="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#5C5A56] bg-[#E8E6E1] rounded flex-shrink-0">
+                <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5C5A56] bg-[#E8E6E1] rounded flex-shrink-0">
                   System
                 </span>
               {/if}
             </div>
-            <p class="text-xs text-[#5C5A56] truncate mb-2">{template.subject}</p>
+            <p class="text-sm text-[#5C5A56] truncate mb-3">{template.subject}</p>
 
             <!-- Actions -->
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-2">
               <button
                 onclick={() => editTemplate(template)}
-                class="flex-1 px-2 py-1 text-xs font-bold text-[#E67E50] hover:bg-[#E67E50]/10 border border-[#E67E50]/30 hover:border-[#E67E50] rounded transition-colors"
+                class="flex-1 px-3 py-2 text-sm font-bold text-[#E67E50] hover:bg-[#E67E50]/10 border-2 border-[#E67E50]/30 hover:border-[#E67E50] rounded transition-colors"
               >
                 Edit
               </button>
@@ -422,7 +422,7 @@
                   <input type="hidden" name="csrf_token" value={data.csrfToken} />
                   <button
                     type="submit"
-                    class="w-full px-2 py-1 text-xs font-bold text-[#52A675] hover:bg-[#52A675]/10 border border-[#52A675]/30 hover:border-[#52A675] rounded transition-colors"
+                    class="w-full px-3 py-2 text-sm font-bold text-[#52A675] hover:bg-[#52A675]/10 border-2 border-[#52A675]/30 hover:border-[#52A675] rounded transition-colors"
                     onclick={(e) => !confirm('Restore to original? This will create a new version.') && e.preventDefault()}
                   >
                     Restore
@@ -434,7 +434,7 @@
                   <input type="hidden" name="csrf_token" value={data.csrfToken} />
                   <button
                     type="submit"
-                    class="w-full px-2 py-1 text-xs font-bold text-[#C85454] hover:bg-[#C85454]/10 border border-[#C85454]/30 hover:border-[#C85454] rounded transition-colors"
+                    class="w-full px-3 py-2 text-sm font-bold text-[#C85454] hover:bg-[#C85454]/10 border-2 border-[#C85454]/30 hover:border-[#C85454] rounded transition-colors"
                     onclick={(e) => !confirm('Delete this template?') && e.preventDefault()}
                   >
                     Delete
@@ -450,34 +450,34 @@
             onclick={() => editTemplate(template)}
             class="w-full text-left focus:outline-none focus:ring-2 focus:ring-[#E67E50] focus:ring-inset"
           >
-            <div class="relative bg-[#F5F5F4] p-3 border-t border-[#E8E6E1]">
+            <div class="relative bg-[#F5F5F4] p-2 border-t border-[#E8E6E1]">
               <!-- Miniature Email Frame -->
-              <div class="bg-white rounded shadow-sm overflow-hidden" style="aspect-ratio: 4/3;">
+              <div class="bg-white rounded shadow-sm overflow-hidden max-w-[140px] mx-auto" style="aspect-ratio: 3/4;">
                 <!-- Header bar with color -->
-                <div class="h-8 flex items-center justify-center" style="background-color: {visuals.color};">
-                  <span class="text-white text-lg">{visuals.emoji}</span>
+                <div class="h-5 flex items-center justify-center" style="background-color: {visuals.color};">
+                  <span class="text-white text-xs">{visuals.emoji}</span>
                 </div>
                 <!-- Content preview -->
-                <div class="p-2 space-y-1.5">
+                <div class="p-1.5 space-y-1">
                   <!-- Title placeholder -->
-                  <div class="h-2 rounded-full bg-[#1A1816] w-3/4 mx-auto"></div>
-                  <div class="h-1.5 rounded-full bg-[#D9D7D2] w-1/2 mx-auto"></div>
+                  <div class="h-1 rounded-full bg-[#1A1816] w-3/4 mx-auto"></div>
+                  <div class="h-0.5 rounded-full bg-[#D9D7D2] w-1/2 mx-auto"></div>
                   <!-- Content lines -->
-                  <div class="pt-1 space-y-1">
-                    <div class="h-1 rounded-full bg-[#E8E6E1] w-full"></div>
-                    <div class="h-1 rounded-full bg-[#E8E6E1] w-5/6"></div>
-                    <div class="h-1 rounded-full bg-[#E8E6E1] w-4/5"></div>
+                  <div class="pt-0.5 space-y-0.5">
+                    <div class="h-0.5 rounded-full bg-[#E8E6E1] w-full"></div>
+                    <div class="h-0.5 rounded-full bg-[#E8E6E1] w-5/6"></div>
+                    <div class="h-0.5 rounded-full bg-[#E8E6E1] w-4/5"></div>
                   </div>
                   <!-- Button placeholder -->
-                  <div class="pt-1 flex justify-center">
-                    <div class="h-3 w-16 rounded-sm" style="background-color: {visuals.color};"></div>
+                  <div class="pt-0.5 flex justify-center">
+                    <div class="h-2 w-10 rounded-sm" style="background-color: {visuals.color};"></div>
                   </div>
                 </div>
               </div>
               <!-- Hover overlay -->
               <div class="absolute inset-0 bg-[#1A1816]/0 group-hover:bg-[#1A1816]/5 transition-colors flex items-center justify-center">
-                <span class="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 px-3 py-1.5 rounded text-sm font-bold text-[#1A1816] shadow">
-                  Edit Template
+                <span class="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 px-2 py-1 rounded text-xs font-bold text-[#1A1816] shadow">
+                  Edit
                 </span>
               </div>
             </div>
