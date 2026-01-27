@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import type { Snapshot } from './$types';
   import { enhance } from '$app/forms';
-  import { invalidateAll } from '$app/navigation';
+  import { invalidate, pushState, replaceState } from '$app/navigation';
+  import { page } from '$app/stores';
   import { get } from 'svelte/store';
   import { BlockEditor, editorState, editorActions, previewHTML } from '$lib/components/admin/email';
   import { EMAIL_TEMPLATES } from '$lib/email/editor/registry';
@@ -48,6 +50,110 @@
   let htmlBody = '';
   let variables = '';
   let testEmail = '';
+
+  // ============================================
+  // SNAPSHOT: Preserve state across navigation
+  // ============================================
+  interface SnapshotData {
+    mode: 'list' | 'edit';
+    editorMode: 'blocks' | 'html';
+    slug: string;
+    subject: string;
+    htmlBody: string;
+    variables: string;
+    testEmail: string;
+  }
+
+  export const snapshot: Snapshot<SnapshotData> = {
+    capture: () => ({
+      mode,
+      editorMode,
+      slug,
+      subject,
+      htmlBody,
+      variables,
+      testEmail
+    }),
+    restore: (value) => {
+      mode = value.mode;
+      editorMode = value.editorMode;
+      slug = value.slug;
+      subject = value.subject;
+      htmlBody = value.htmlBody;
+      variables = value.variables;
+      testEmail = value.testEmail;
+
+      // If restoring to edit mode, try to find and set the selected template
+      if (mode === 'edit' && slug) {
+        const template = data.templates.find(t => t.slug === slug);
+        if (template) {
+          selectedTemplate = template;
+          // Reload blocks if in block editor mode
+          if (editorMode === 'blocks' && template.blocks_json) {
+            loadBlocksIntoEditor(template.blocks_json);
+          } else if (editorMode === 'blocks' && template.is_system && SYSTEM_TEMPLATE_BLOCKS[template.slug]) {
+            const systemDef = SYSTEM_TEMPLATE_BLOCKS[template.slug];
+            editorState.set({
+              settings: systemDef.settings,
+              blocks: systemDef.blocks,
+              variables: {}
+            });
+          }
+        }
+      }
+    }
+  };
+
+  // ============================================
+  // SHALLOW ROUTING: URL-persistent UI state
+  // ============================================
+  interface PageState {
+    editing?: string;      // Template slug being edited
+    editorMode?: 'blocks' | 'html';
+  }
+
+  // React to back/forward navigation by restoring state from page.state
+  $: {
+    const state = $page.state as PageState;
+    if (state?.editing) {
+      // User navigated back/forward to an editing state
+      const template = data.templates.find(t => t.slug === state.editing) as any;
+      if (template && (mode !== 'edit' || slug !== state.editing)) {
+        // Restore the editing state without pushing new history
+        selectedTemplate = template;
+        slug = template.slug;
+        subject = template.subject;
+        htmlBody = template.html_body;
+        variables = template.variables ? JSON.stringify(template.variables, null, 2) : '';
+        mode = 'edit';
+
+        if (state.editorMode) {
+          editorMode = state.editorMode;
+        }
+
+        // Load blocks if needed
+        if (editorMode === 'blocks') {
+          if (template.blocks_json) {
+            loadBlocksIntoEditor(template.blocks_json);
+          } else if (template.is_system && SYSTEM_TEMPLATE_BLOCKS[template.slug]) {
+            const systemDef = SYSTEM_TEMPLATE_BLOCKS[template.slug];
+            editorState.set({
+              settings: systemDef.settings,
+              blocks: systemDef.blocks,
+              variables: {}
+            });
+          }
+        }
+      }
+    } else if (state && 'editing' in state && state.editing === undefined) {
+      // User navigated back to list state (editing was explicitly set to undefined)
+      if (mode !== 'list') {
+        mode = 'list';
+        selectedTemplate = null;
+        editorActions.reset();
+      }
+    }
+  }
 
   // Preview with variable replacement (raw HTML mode)
   $: previewHtml = editorMode === 'html'
@@ -314,13 +420,18 @@
     htmlBody = template.html_body;
     variables = template.variables ? JSON.stringify(template.variables, null, 2) : '';
 
+    // Determine editor mode
+    let newEditorMode: 'blocks' | 'html' = 'html';
+
     // Check if template has saved block data
     if (template.blocks_json) {
       // Template was created/edited with Block Editor - load blocks
+      newEditorMode = 'blocks';
       editorMode = 'blocks';
       loadBlocksIntoEditor(template.blocks_json);
     } else if (template.is_system && SYSTEM_TEMPLATE_BLOCKS[template.slug]) {
       // System template without blocks_json - load from code definitions
+      newEditorMode = 'blocks';
       editorMode = 'blocks';
       const systemDef = SYSTEM_TEMPLATE_BLOCKS[template.slug];
       editorState.set({
@@ -338,12 +449,18 @@
         editorActions.updateSettings({ title: subject });
       }
     }
+
+    // Push state for shallow routing (back button support)
+    pushState('', { editing: template.slug, editorMode: newEditorMode } as PageState);
   }
 
   function cancelEdit() {
     mode = 'list';
     selectedTemplate = null;
     editorActions.reset();
+
+    // Push state for shallow routing (back button support)
+    pushState('', { editing: undefined } as PageState);
   }
 
   // Get HTML from block editor
@@ -359,7 +476,7 @@
   $: if (form?.success || form?.deleted || form?.restored) {
     mode = 'list';
     selectedTemplate = null;
-    invalidateAll();
+    invalidate('app:email-templates');
   } else if (form?.testSent) {
     showTestModal = false;
     testEmail = '';
@@ -500,7 +617,11 @@
     <div class="flex items-center gap-4 mb-6">
       <div class="flex bg-[#D9D7D2] rounded-sm p-1">
         <button
-          onclick={() => editorMode = 'blocks'}
+          onclick={() => {
+            editorMode = 'blocks';
+            // Update URL state for back button support
+            replaceState('', { editing: slug, editorMode: 'blocks' } as PageState);
+          }}
           class="px-4 py-2 text-sm font-bold rounded-sm transition-all {editorMode === 'blocks' ? 'bg-white text-[#1A1816] shadow' : 'text-[#5C5A56] hover:text-[#1A1816]'}"
         >
           <span class="flex items-center gap-2">
@@ -511,7 +632,11 @@
           </span>
         </button>
         <button
-          onclick={() => editorMode = 'html'}
+          onclick={() => {
+            editorMode = 'html';
+            // Update URL state for back button support
+            replaceState('', { editing: slug, editorMode: 'html' } as PageState);
+          }}
           class="px-4 py-2 text-sm font-bold rounded-sm transition-all {editorMode === 'html' ? 'bg-white text-[#1A1816] shadow' : 'text-[#5C5A56] hover:text-[#1A1816]'}"
         >
           <span class="flex items-center gap-2">

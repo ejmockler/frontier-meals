@@ -23,7 +23,9 @@ async function getStaffIdFromSession(email: string): Promise<string | null> {
   return data?.id || null;
 }
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ depends }) => {
+  depends('app:email-templates');
+
   // Get only active templates for the main view
   // Include blocks_json for Block Editor support
   const { data: templates } = await supabase
