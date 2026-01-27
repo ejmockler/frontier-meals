@@ -6,6 +6,7 @@
  */
 
 import { writable, derived } from 'svelte/store';
+import { buildEmailHTML, brandColors } from '$lib/email/templates/base';
 import type { EmailColorScheme } from '$lib/email/templates/base';
 
 export type BlockType =
@@ -305,6 +306,153 @@ function createDefaultBlock(type: BlockType): Block {
 
     default:
       throw new Error(`Unknown block type: ${type}`);
+  }
+}
+
+// Generate preview HTML from editor state
+export const previewHTML = derived(editorState, $state => {
+  const scheme = brandColors[$state.settings.colorScheme];
+
+  const headerContent = `
+    <div style="font-size: 48px; margin-bottom: 12px;">${$state.settings.emoji}</div>
+    <h1>${$state.settings.title}</h1>
+    <p>${$state.settings.subtitle}</p>
+  `;
+
+  const bodyContent = blocksToHTML($state.blocks, $state.variables, $state.settings.colorScheme);
+
+  return buildEmailHTML({
+    colorScheme: scheme,
+    title: $state.settings.title,
+    preheader: $state.settings.subtitle,
+    headerContent,
+    bodyContent,
+  });
+});
+
+// Convert blocks to HTML
+function blocksToHTML(blocks: Block[], vars: Record<string, string>, colorScheme: string): string {
+  return blocks.map(block => blockToHTML(block, vars, colorScheme)).join('\n');
+}
+
+function blockToHTML(block: Block, vars: Record<string, string>, colorScheme: string): string {
+  // Replace variables in text
+  const replaceVars = (text: string) => {
+    let result = text;
+    for (const [key, value] of Object.entries(vars)) {
+      result = result.replace(new RegExp(`{{${key}}}`, 'g'), value || `{{${key}}}`);
+    }
+    return result;
+  };
+
+  const styles = {
+    p: `margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #1f2937; font-family: -apple-system, sans-serif;`,
+    pLead: `margin: 0 0 16px; font-size: 18px; font-weight: 500; line-height: 1.5; color: #111827; font-family: -apple-system, sans-serif;`,
+    pMuted: `margin: 0; font-size: 14px; line-height: 1.5; color: #4b5563; font-family: -apple-system, sans-serif;`,
+    pSmall: `margin: 0; font-size: 12px; line-height: 1.5; color: #4b5563; font-family: -apple-system, sans-serif;`,
+    code: `background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 14px; color: #111827;`,
+    codeBlock: `display: block; background: #f3f4f6; padding: 16px; border-radius: 8px; word-break: break-all; font-family: monospace; font-size: 12px; color: #111827;`,
+  };
+
+  const scheme = brandColors[colorScheme as keyof typeof brandColors] || brandColors.orange;
+
+  switch (block.type) {
+    case 'greeting':
+      return `<p style="${styles.pLead}">Hi ${vars[block.variableName] || `{{${block.variableName}}}`}!</p>`;
+
+    case 'paragraph': {
+      const pStyle = {
+        lead: styles.pLead,
+        normal: styles.p,
+        muted: styles.pMuted,
+        small: styles.pSmall,
+      }[block.style];
+      return `<p style="${pStyle}">${replaceVars(block.text)}</p>`;
+    }
+
+    case 'infoBox': {
+      const boxColors = {
+        success: { bg: '#dcfce7', border: '#16a34a', text: '#14532d' },
+        warning: { bg: '#fef3c7', border: '#d97706', text: '#78350f' },
+        error: { bg: '#fee2e2', border: '#dc2626', text: '#7f1d1d' },
+        info: { bg: '#dbeafe', border: '#2563eb', text: '#1e3a8a' },
+      }[block.boxType];
+      return `
+        <div style="padding: 16px; margin: 24px 0; border-radius: 8px; border-left: 4px solid ${boxColors.border}; background-color: ${boxColors.bg};">
+          <p style="margin: 0; font-size: 14px; font-weight: 600; color: ${boxColors.text};">${replaceVars(block.title)}</p>
+          <p style="margin: 8px 0 0; font-size: 14px; color: ${boxColors.text}; line-height: 1.5;">${replaceVars(block.text)}</p>
+        </div>
+      `;
+    }
+
+    case 'button': {
+      const btnColor = block.colorOverride || scheme.primary;
+      const url = vars[block.urlVariable] || `{{${block.urlVariable}}}`;
+      return `
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0;">
+          <tr>
+            <td align="center">
+              <a href="${url}" style="display: inline-block; padding: 14px 32px; background-color: ${btnColor}; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                ${replaceVars(block.label)}
+              </a>
+            </td>
+          </tr>
+        </table>
+      `;
+    }
+
+    case 'stepList': {
+      const stepsHTML = block.steps.map((step, i) => `
+        <tr>
+          <td style="padding: 12px 0; vertical-align: top;">
+            <div style="display: inline-block; width: 28px; height: 28px; background: #e5e7eb; border-radius: 50%; text-align: center; line-height: 28px; font-weight: 600; color: #374151; margin-right: 12px;">
+              ${i + 1}
+            </div>
+          </td>
+          <td style="padding: 12px 0;">
+            <p style="margin: 0 0 4px; font-weight: 600; color: #111827;">${replaceVars(step.title)}</p>
+            <p style="margin: 0; font-size: 14px; color: #4b5563;">${replaceVars(step.description)}</p>
+          </td>
+        </tr>
+      `).join('');
+      return `
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 24px 0;">
+          ${stepsHTML}
+        </table>
+      `;
+    }
+
+    case 'codeInline':
+      return `<p style="${styles.p}"><code style="${styles.code}">${replaceVars(block.text)}</code></p>`;
+
+    case 'codeBlock':
+      return `<pre style="${styles.codeBlock}">${replaceVars(block.code)}</pre>`;
+
+    case 'image':
+      return `
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 32px 0;">
+          <tr>
+            <td align="center">
+              <img
+                src="cid:${block.cidReference}"
+                alt="${block.alt}"
+                style="width: ${block.width || 280}px; height: ${block.height || 280}px; display: block;"
+                width="${block.width || 280}"
+                height="${block.height || 280}"
+              >
+            </td>
+          </tr>
+        </table>
+      `;
+
+    case 'divider':
+      return `<hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0;">`;
+
+    case 'spacer':
+      return `<div style="height: 32px;"></div>`;
+
+    default:
+      return '';
   }
 }
 

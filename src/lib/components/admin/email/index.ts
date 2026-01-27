@@ -13,6 +13,7 @@ export {
   editorState,
   editorActions,
   detectedVariables,
+  previewHTML,
   settings,
   blocks,
   variables,

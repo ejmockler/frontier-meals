@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
-  import { BlockEditor, editorState, editorActions } from '$lib/components/admin/email';
+  import { BlockEditor, editorState, editorActions, previewHTML } from '$lib/components/admin/email';
   import { EMAIL_TEMPLATES } from '$lib/email/editor/registry';
 
   export let data: PageData;
@@ -59,16 +59,31 @@
     subject = template.subject;
     htmlBody = template.html_body;
     variables = template.variables ? JSON.stringify(template.variables, null, 2) : '';
+
+    // Reset block editor (in case user switches to block mode later)
+    editorActions.reset();
+    // Load the subject into block editor settings
+    if (subject) {
+      editorActions.updateSettings({ title: subject });
+    }
   }
 
   function loadRegisteredTemplate(templateSlug: string) {
-    // Load a registered template into the block editor
-    const template = EMAIL_TEMPLATES.find(t => t.slug === templateSlug);
-    if (template) {
-      mode = 'create';
-      editorMode = 'blocks';
-      slug = templateSlug + '_custom';
-      // The block editor will be initialized from the template
+    // Find if this template already exists in the database
+    const existingTemplate = data.templates.find(t => t.slug === templateSlug);
+
+    if (existingTemplate) {
+      // Edit existing template
+      editTemplate(existingTemplate);
+    } else {
+      // Create new template
+      const template = EMAIL_TEMPLATES.find(t => t.slug === templateSlug);
+      if (template) {
+        mode = 'create';
+        editorMode = 'blocks';
+        slug = templateSlug;
+        // The block editor will be initialized from the template
+      }
     }
   }
 
@@ -88,7 +103,7 @@
   }
 
   // Handle form submission success
-  $: if (form?.success || form?.deleted) {
+  $: if (form?.success || form?.deleted || form?.restored) {
     mode = 'list';
     selectedTemplate = null;
     invalidateAll();
@@ -133,7 +148,7 @@
     <!-- Registered Templates Section -->
     <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
       <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-4">System Templates</h2>
-      <p class="text-sm text-[#5C5A56] mb-4">These templates are built into the codebase. Click to create a custom variant.</p>
+      <p class="text-sm text-[#5C5A56] mb-4">These templates are built into the codebase. Click to edit or create new variants.</p>
 
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {#each EMAIL_TEMPLATES as template}
@@ -151,9 +166,9 @@
       </div>
     </div>
 
-    <!-- Custom Templates List -->
+    <!-- All Templates List -->
     <div>
-      <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-4">Custom Templates</h2>
+      <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-4">All Templates</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {#each data.templates as template}
           <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
@@ -162,8 +177,8 @@
                 <h3 class="text-lg font-extrabold tracking-tight text-[#1A1816] mb-1">{template.slug}</h3>
                 <p class="text-sm text-[#5C5A56]">{template.subject}</p>
               </div>
-              <span class="px-2 py-1 text-xs font-bold bg-[#2D9B9B] text-white border-2 border-[#2D9B9B]/70 rounded-sm">
-                Custom
+              <span class="px-2 py-1 text-xs font-bold {template.is_system ? 'bg-[#E67E50] border-[#E67E50]/70' : 'bg-[#2D9B9B] border-[#2D9B9B]/70'} text-white border-2 rounded-sm">
+                {template.is_system ? 'System' : 'Custom'}
               </span>
             </div>
 
@@ -174,17 +189,31 @@
               >
                 Edit
               </button>
-              <form method="POST" action="?/deleteTemplate" use:enhance class="flex-1">
-                <input type="hidden" name="id" value={template.id} />
-                <input type="hidden" name="csrf_token" value={data.csrfToken} />
-                <button
-                  type="submit"
-                  class="w-full px-4 py-2 text-sm font-bold text-[#C85454] hover:bg-[#C85454]/10 border-2 border-transparent hover:border-[#C85454]/20 rounded-sm transition-all"
-                  on:click={(e) => !confirm('Delete this template?') && e.preventDefault()}
-                >
-                  Delete
-                </button>
-              </form>
+              {#if template.is_system}
+                <form method="POST" action="?/restoreOriginal" use:enhance class="flex-1">
+                  <input type="hidden" name="slug" value={template.slug} />
+                  <input type="hidden" name="csrf_token" value={data.csrfToken} />
+                  <button
+                    type="submit"
+                    class="w-full px-4 py-2 text-sm font-bold text-[#52A675] hover:bg-[#52A675]/10 border-2 border-transparent hover:border-[#52A675]/20 rounded-sm transition-all"
+                    on:click={(e) => !confirm('Restore to original? This will create a new version.') && e.preventDefault()}
+                  >
+                    Restore
+                  </button>
+                </form>
+              {:else}
+                <form method="POST" action="?/deleteTemplate" use:enhance class="flex-1">
+                  <input type="hidden" name="id" value={template.id} />
+                  <input type="hidden" name="csrf_token" value={data.csrfToken} />
+                  <button
+                    type="submit"
+                    class="w-full px-4 py-2 text-sm font-bold text-[#C85454] hover:bg-[#C85454]/10 border-2 border-transparent hover:border-[#C85454]/20 rounded-sm transition-all"
+                    on:click={(e) => !confirm('Delete this template?') && e.preventDefault()}
+                  >
+                    Delete
+                  </button>
+                </form>
+              {/if}
             </div>
           </div>
         {/each}
@@ -194,8 +223,8 @@
             <svg class="w-16 h-16 mx-auto mb-4 text-[#D9D7D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
-            <p class="font-bold text-[#1A1816] mb-1">No custom templates yet</p>
-            <p class="text-sm text-[#5C5A56]">Create your first custom email template or customize a system template</p>
+            <p class="font-bold text-[#1A1816] mb-1">No templates yet</p>
+            <p class="text-sm text-[#5C5A56]">Create your first email template to get started</p>
           </div>
         {/if}
       </div>
@@ -234,34 +263,44 @@
 
     {#if editorMode === 'blocks'}
       <!-- Block Editor -->
-      <div class="bg-white border-2 border-[#D9D7D2] rounded-sm shadow-lg overflow-hidden">
-        <div class="p-4 border-b-2 border-[#D9D7D2] bg-[#FAFAF9]">
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816]">
-                {mode === 'create' ? 'Create Template' : 'Edit Template'}
-              </h2>
-              <p class="text-sm text-[#5C5A56]">Compose your email using semantic content blocks</p>
-            </div>
-            <div class="flex gap-2">
-              <button
-                type="button"
-                on:click={() => showTestModal = true}
-                class="px-4 py-2 text-sm text-[#1A1816] bg-[#D9D7D2] border-2 border-[#B8B6B1] hover:bg-[#B8B6B1] font-bold rounded-sm transition-colors"
-              >
-                Send Test
-              </button>
-              <button
-                type="button"
-                class="px-4 py-2 text-sm text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] font-bold rounded-sm transition-colors"
-              >
-                Save Template
-              </button>
+      <form method="POST" action={mode === 'create' ? '?/createTemplate' : '?/updateTemplate'} use:enhance>
+        {#if mode === 'edit'}
+          <input type="hidden" name="id" value={selectedTemplate?.id} />
+        {/if}
+        <input type="hidden" name="slug" value={slug} />
+        <input type="hidden" name="subject" value={$editorState.settings.title} />
+        <input type="hidden" name="htmlBody" value={$previewHTML} />
+        <input type="hidden" name="csrf_token" value={data.csrfToken} />
+
+        <div class="bg-white border-2 border-[#D9D7D2] rounded-sm shadow-lg overflow-hidden">
+          <div class="p-4 border-b-2 border-[#D9D7D2] bg-[#FAFAF9]">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xl font-extrabold tracking-tight text-[#1A1816]">
+                  {mode === 'create' ? 'Create Template' : 'Edit Template'}
+                </h2>
+                <p class="text-sm text-[#5C5A56]">Compose your email using semantic content blocks</p>
+              </div>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  on:click={() => showTestModal = true}
+                  class="px-4 py-2 text-sm text-[#1A1816] bg-[#D9D7D2] border-2 border-[#B8B6B1] hover:bg-[#B8B6B1] font-bold rounded-sm transition-colors"
+                >
+                  Send Test
+                </button>
+                <button
+                  type="submit"
+                  class="px-4 py-2 text-sm text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] font-bold rounded-sm transition-colors"
+                >
+                  Save Template
+                </button>
+              </div>
             </div>
           </div>
+          <BlockEditor />
         </div>
-        <BlockEditor />
-      </div>
+      </form>
     {:else}
       <!-- Raw HTML Editor (original) -->
       <form method="POST" action={mode === 'create' ? '?/createTemplate' : '?/updateTemplate'} use:enhance class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -422,8 +461,8 @@
       <h3 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-4">Send Test Email</h3>
 
       <form method="POST" action="?/sendTest" use:enhance>
-        <input type="hidden" name="subject" value={subject} />
-        <input type="hidden" name="htmlBody" value={previewHtml} />
+        <input type="hidden" name="subject" value={editorMode === 'blocks' ? $editorState.settings.title : subject} />
+        <input type="hidden" name="htmlBody" value={editorMode === 'blocks' ? $previewHTML : previewHtml} />
         <input type="hidden" name="csrf_token" value={data.csrfToken} />
 
         <div class="mb-6">
