@@ -81,6 +81,8 @@
             <img
               src={image.src}
               alt={image.alt}
+              width={i === 0 ? 800 : 600}
+              height={i === 0 ? 600 : 600}
               class="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
               loading="lazy"
               decoding="async"

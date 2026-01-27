@@ -74,6 +74,8 @@
 					<img
 						src="/images/landing/hero-community-lunch.jpg"
 						alt="Community lunch at Frontier Tower"
+						width="1200"
+						height="800"
 						class="w-full h-full object-cover"
 						loading="eager"
 						decoding="async"

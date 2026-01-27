@@ -15,7 +15,9 @@
       <img
         src="/images/landing/large-gathering.jpg"
         alt="Large community gathering at Frontier Tower lunch"
-        class="w-full h-auto"
+        width="1200"
+        height="800"
+        class="w-full"
         loading="lazy"
         decoding="async"
       />

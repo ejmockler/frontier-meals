@@ -40,6 +40,8 @@
 					<img
 						src={image.src}
 						alt={image.alt}
+						width={image.aspect === 'landscape' ? 800 : 600}
+						height={image.aspect === 'landscape' ? 600 : 800}
 						class="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
 						loading="lazy"
 						decoding="async"
