@@ -82,7 +82,7 @@
           oninput={(e) => updateBlock({ text: e.currentTarget.value })}
           placeholder="Write your paragraph here... Use {{variable_name}} syntax"
         ></textarea>
-        <p class="field-hint">Insert variables using {'{{variable_name}}'} syntax</p>
+        <p class="field-hint">Insert variables using {"{{variable_name}}"} syntax</p>
       </div>
       <div class="field">
         <label class="field-label">Insert Variable</label>

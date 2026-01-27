@@ -164,7 +164,7 @@
       <div class="feature">
         <div class="feature-icon">🔤</div>
         <h3 class="feature-title">Auto Variable Detection</h3>
-        <p class="feature-desc">Automatically finds {'{{variables}}'} in your content</p>
+        <p class="feature-desc">Automatically finds {"{{variables}}"} in your content</p>
       </div>
       <div class="feature">
         <div class="feature-icon">👁️</div>
