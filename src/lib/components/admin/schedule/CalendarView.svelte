@@ -55,18 +55,32 @@
 		return holidayMap.get(dateStr) || eventMap.get(dateStr);
 	}
 
-	// Group days by week
-	function groupByWeeks(days: Date[]): Date[][] {
-		const weeks: Date[][] = [];
-		let currentWeek: Date[] = [];
+	// Group days into calendar-aligned weeks (Sun=0 start)
+	function groupByWeeks(days: Date[]): (Date | null)[][] {
+		const weeks: (Date | null)[][] = [];
+		let currentWeek: (Date | null)[] = [];
 
-		days.forEach((day, index) => {
+		// Pad the first week with nulls so days align to correct columns
+		const firstDayOfWeek = days[0].getDay(); // 0=Sun, 1=Mon, etc.
+		for (let i = 0; i < firstDayOfWeek; i++) {
+			currentWeek.push(null);
+		}
+
+		days.forEach((day) => {
 			currentWeek.push(day);
-			if (currentWeek.length === 7 || index === days.length - 1) {
+			if (currentWeek.length === 7) {
 				weeks.push(currentWeek);
 				currentWeek = [];
 			}
 		});
+
+		// Pad the last week with nulls
+		if (currentWeek.length > 0) {
+			while (currentWeek.length < 7) {
+				currentWeek.push(null);
+			}
+			weeks.push(currentWeek);
+		}
 
 		return weeks;
 	}
@@ -86,11 +100,15 @@
 	<div class="calendar-grid">
 		{#each weeks as week}
 			{#each week as day}
-				<DayBox
-					date={day}
-					isService={isServiceDay(day)}
-					exception={getException(day)}
-				/>
+				{#if day}
+					<DayBox
+						date={day}
+						isService={isServiceDay(day)}
+						exception={getException(day)}
+					/>
+				{:else}
+					<div class="empty-day"></div>
+				{/if}
 			{/each}
 		{/each}
 	</div>
@@ -122,5 +140,9 @@
 		display: grid;
 		grid-template-columns: repeat(7, 1fr);
 		gap: 0.5rem;
+	}
+
+	.empty-day {
+		min-height: 4rem;
 	}
 </style>
