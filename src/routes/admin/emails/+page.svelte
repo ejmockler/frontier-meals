@@ -621,7 +621,7 @@
               <div>
                 <label for="htmlBody" class="block text-sm font-bold text-[#1A1816] mb-2">
                   HTML Body
-                  <span class="text-xs text-[#5C5A56] ml-2">Use {'{{'}variable_name{'}}' } for dynamic content</span>
+                  <span class="text-xs text-[#5C5A56] ml-2">Use {"{{variable_name}}"} for dynamic content</span>
                 </label>
                 <textarea
                   id="htmlBody"
