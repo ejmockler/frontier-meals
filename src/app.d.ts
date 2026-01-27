@@ -16,7 +16,20 @@ declare global {
 			session: Session | null;
 			user: User | null;
 		}
-		// interface PageState {}
+		interface PageState {
+			// Schedule page - exception panel state
+			exceptionPanel?: boolean;
+			type?: 'holiday' | 'special_event';
+			editingId?: string | null;
+			// Customers page - QR confirmation modal
+			qrConfirm?: boolean;
+			customerId?: string;
+			// Dashboard page - test QR modal
+			testQR?: boolean;
+			// Email editor page
+			editing?: string;
+			editorMode?: 'blocks' | 'html';
+		}
 		interface Platform {
 			env: {
 				SUPABASE_SERVICE_ROLE_KEY: string;
