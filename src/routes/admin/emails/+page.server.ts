@@ -292,11 +292,33 @@ export const actions: Actions = {
       return fail(400, { error: 'Missing required fields' });
     }
 
+    // Sample values for common template variables
+    const sampleVariables: Record<string, string> = {
+      customer_name: 'Jane Doe',
+      service_date: new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }),
+      qr_code_base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', // 1x1 placeholder
+      amount_due: '$29.99',
+      update_payment_url: 'https://example.com/update-payment',
+      telegram_handle: '@FrontierMealsBot',
+      deep_link: 'https://t.me/FrontierMealsBot?start=test123',
+      email: email,
+      magic_link: 'https://example.com/auth/verify?token=sample-token',
+      message: 'This is a sample notification message for testing purposes.'
+    };
+
+    // Replace {{variable}} placeholders with sample values
+    const fillVariables = (text: string): string => {
+      return text.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
+        const trimmed = varName.trim();
+        return sampleVariables[trimmed] ?? match;
+      });
+    };
+
     try {
       await sendEmail({
         to: email,
-        subject: `[TEST] ${subject}`,
-        html: htmlBody,
+        subject: `[TEST] ${fillVariables(subject)}`,
+        html: fillVariables(htmlBody),
         tags: [{ name: 'category', value: 'test_email' }]
       });
 
