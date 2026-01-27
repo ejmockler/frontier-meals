@@ -16,3 +16,4 @@ export * from './render-server';
 export * from './parser';
 export * from './registry';
 export * from './system-template-blocks';
+export * from './convert';

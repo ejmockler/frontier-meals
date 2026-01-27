@@ -8,6 +8,7 @@
   import { BlockEditor, editorState, editorActions, previewHTML } from '$lib/components/admin/email';
   import { EMAIL_TEMPLATES } from '$lib/email/editor/registry';
   import { SYSTEM_TEMPLATE_BLOCKS } from '$lib/email/editor/system-template-blocks';
+  import { convertEditorBlocks } from '$lib/email/editor/convert';
   import type { EmailTemplate } from '$lib/email/editor';
 
   export let data: PageData;
@@ -178,7 +179,7 @@
         title: state.settings.title,
         subtitle: state.settings.subtitle
       },
-      blocks: convertEditorBlocksToEmailBlocks(state.blocks),
+      blocks: convertEditorBlocks(state.blocks),
       footer: { type: 'support' },
       variables: Object.entries(state.variables).map(([name, testValue]) => ({
         name,
@@ -189,89 +190,6 @@
     };
 
     return JSON.stringify(template);
-  }
-
-  // Convert editor-store blocks to EmailTemplate blocks format
-  function convertEditorBlocksToEmailBlocks(editorBlocks: any[]): any[] {
-    return editorBlocks.map(block => {
-      switch (block.type) {
-        case 'greeting':
-          return {
-            type: 'greeting',
-            id: block.id,
-            nameVariable: `{{${block.variableName}}}`,
-            prefix: 'Hi'
-          };
-        case 'paragraph':
-          return {
-            type: 'paragraph',
-            id: block.id,
-            content: block.text,
-            style: block.style
-          };
-        case 'infoBox':
-          return {
-            type: 'infobox',
-            id: block.id,
-            boxType: block.boxType,
-            title: block.title,
-            content: block.text
-          };
-        case 'button':
-          return {
-            type: 'button',
-            id: block.id,
-            label: block.label,
-            urlVariable: `{{${block.urlVariable}}}`
-          };
-        case 'stepList':
-          return {
-            type: 'steplist',
-            id: block.id,
-            steps: block.steps.map((s: any) => ({
-              title: s.title,
-              description: s.description
-            }))
-          };
-        case 'codeInline':
-          return {
-            type: 'code',
-            id: block.id,
-            content: block.text,
-            style: 'inline'
-          };
-        case 'codeBlock':
-          return {
-            type: 'code',
-            id: block.id,
-            content: block.code,
-            style: 'block'
-          };
-        case 'image':
-          return {
-            type: 'image',
-            id: block.id,
-            cid: block.cidReference,
-            alt: block.alt,
-            width: block.width || 280,
-            height: block.height || 280
-          };
-        case 'divider':
-          return {
-            type: 'divider',
-            id: block.id,
-            style: 'light'
-          };
-        case 'spacer':
-          return {
-            type: 'spacer',
-            id: block.id,
-            size: 'lg'
-          };
-        default:
-          return block;
-      }
-    });
   }
 
   // Load blocks from stored JSON into the editor

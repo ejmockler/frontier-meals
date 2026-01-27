@@ -6,7 +6,7 @@ import { fail } from '@sveltejs/kit';
 import { sendEmail } from '$lib/email/send';
 import { validateCSRFFromFormData } from '$lib/auth/csrf';
 import { getAdminSession } from '$lib/auth/session';
-import { renderTemplate, type EmailTemplate} from '$lib/email/editor';
+import { renderBlocksToHTML } from '$lib/email/editor/render-server';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -96,16 +96,24 @@ export const actions: Actions = {
       const staffId = await getStaffIdFromSession(session.email);
 
       // If blocksJson is provided, regenerate HTML from blocks
+      // blocksJson is an EmailTemplate structure; blocks are already in renderer format
+      // (converted by the client via convertEditorBlocks before submission)
       let finalHtmlBody = htmlBody;
       if (blocksJson) {
         try {
-          const templateData = JSON.parse(blocksJson) as EmailTemplate;
-          // Render HTML from blocks using empty data (keeps {{variables}} intact)
-          const rendered = renderTemplate(templateData, {});
-          finalHtmlBody = rendered.html;
+          const parsed = JSON.parse(blocksJson);
+          finalHtmlBody = renderBlocksToHTML({
+            settings: {
+              colorScheme: parsed.colorScheme,
+              emoji: parsed.header?.emoji || '📧',
+              title: parsed.header?.title || parsed.subject || '',
+              subtitle: parsed.header?.subtitle || '',
+            },
+            blocks: parsed.blocks,
+          });
         } catch (e) {
           console.error('[Admin] Error rendering blocks to HTML:', e);
-          // Fall back to provided htmlBody if rendering fails
+          return fail(500, { error: 'Failed to render template blocks to HTML' });
         }
       }
 
