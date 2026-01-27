@@ -363,14 +363,14 @@ export const actions: Actions = {
 
     // Template mapping: slug → code template function
     const CODE_TEMPLATES: Record<string, () => Promise<any>> = {
-      'qr-daily': () => import('$lib/email/templates/qr-daily').then(m => m.getQRDailyEmail),
-      'dunning-soft': () => import('$lib/email/templates/dunning').then(m => m.getDunningSoftEmail),
-      'dunning-retry': () => import('$lib/email/templates/dunning').then(m => m.getDunningRetryEmail),
-      'dunning-final': () => import('$lib/email/templates/dunning').then(m => m.getDunningFinalEmail),
-      'dunning-canceled': () => import('$lib/email/templates/dunning').then(m => m.getCanceledNoticeEmail),
-      'telegram-link': () => import('$lib/email/templates/telegram-link').then(m => m.getTelegramLinkEmail),
-      'admin-magic-link': () => import('$lib/email/templates/admin-magic-link').then(m => m.getAdminMagicLinkEmail),
-      'schedule-change': () => import('$lib/email/templates/schedule-change').then(m => m.getScheduleChangeEmail),
+      'qr_daily': () => import('$lib/email/templates/qr-daily').then(m => m.getQRDailyEmail),
+      'dunning_soft': () => import('$lib/email/templates/dunning').then(m => m.getDunningSoftEmail),
+      'dunning_retry': () => import('$lib/email/templates/dunning').then(m => m.getDunningRetryEmail),
+      'dunning_final': () => import('$lib/email/templates/dunning').then(m => m.getDunningFinalEmail),
+      'canceled_notice': () => import('$lib/email/templates/dunning').then(m => m.getCanceledNoticeEmail),
+      'telegram_link': () => import('$lib/email/templates/telegram-link').then(m => m.getTelegramLinkEmail),
+      'admin_magic_link': () => import('$lib/email/templates/admin-magic-link').then(m => m.getAdminMagicLinkEmail),
+      'schedule_change': () => import('$lib/email/templates/schedule-change').then(m => m.getScheduleChangeEmail),
     };
 
     if (!CODE_TEMPLATES[slug]) {
@@ -385,7 +385,7 @@ export const actions: Actions = {
       let result: { subject: string; html: string };
 
       switch (slug) {
-        case 'qr-daily':
+        case 'qr_daily':
           result = templateFn({
             customer_name: '{{customer_name}}',
             service_date: '2026-01-27',
@@ -393,7 +393,7 @@ export const actions: Actions = {
           });
           break;
 
-        case 'dunning-soft':
+        case 'dunning_soft':
           result = templateFn({
             customer_name: '{{customer_name}}',
             amount_due: '{{amount_due}}',
@@ -401,14 +401,14 @@ export const actions: Actions = {
           });
           break;
 
-        case 'dunning-retry':
+        case 'dunning_retry':
           result = templateFn({
             customer_name: '{{customer_name}}',
             update_payment_url: '{{update_payment_url}}'
           });
           break;
 
-        case 'dunning-final':
+        case 'dunning_final':
           result = templateFn({
             customer_name: '{{customer_name}}',
             amount_due: '{{amount_due}}',
@@ -416,13 +416,13 @@ export const actions: Actions = {
           });
           break;
 
-        case 'dunning-canceled':
+        case 'canceled_notice':
           result = templateFn({
             customer_name: '{{customer_name}}'
           });
           break;
 
-        case 'telegram-link':
+        case 'telegram_link':
           result = templateFn({
             customer_name: '{{customer_name}}',
             telegram_handle: '{{telegram_handle}}',
@@ -430,14 +430,14 @@ export const actions: Actions = {
           });
           break;
 
-        case 'admin-magic-link':
+        case 'admin_magic_link':
           result = templateFn({
             email: '{{email}}',
             magic_link: '{{magic_link}}'
           });
           break;
 
-        case 'schedule-change':
+        case 'schedule_change':
           result = templateFn({
             customer_name: '{{customer_name}}',
             message: '{{message}}',

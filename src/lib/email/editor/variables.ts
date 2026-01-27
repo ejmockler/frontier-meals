@@ -36,14 +36,14 @@ export type VariableCategory = 'customer' | 'payment' | 'service' | 'actions';
  * Maps to the EMAIL_TEMPLATES registry slugs
  */
 export type TemplateContext =
-  | 'qr-daily'
-  | 'telegram-link'
-  | 'dunning-soft'
-  | 'dunning-retry'
-  | 'dunning-final'
-  | 'canceled-notice'
-  | 'schedule-change'
-  | 'admin-magic-link'
+  | 'qr_daily'
+  | 'telegram_link'
+  | 'dunning_soft'
+  | 'dunning_retry'
+  | 'dunning_final'
+  | 'canceled_notice'
+  | 'schedule_change'
+  | 'admin_magic_link'
   | 'custom'; // Custom templates can use any variable
 
 /**
@@ -156,13 +156,13 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     example: 'Sarah Chen',
     description: 'Full name from customer record',
     availableIn: [
-      'qr-daily',
-      'telegram-link',
-      'dunning-soft',
-      'dunning-retry',
-      'dunning-final',
-      'canceled-notice',
-      'schedule-change',
+      'qr_daily',
+      'telegram_link',
+      'dunning_soft',
+      'dunning_retry',
+      'dunning_final',
+      'canceled_notice',
+      'schedule_change',
       'custom'
     ]
   },
@@ -182,7 +182,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'customer',
     example: '@sarahchen',
     description: 'Telegram username (or "Not provided")',
-    availableIn: ['telegram-link', 'custom']
+    availableIn: ['telegram_link', 'custom']
   },
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -195,7 +195,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'payment',
     example: '$15.00',
     description: 'Outstanding invoice amount (formatted)',
-    availableIn: ['dunning-soft', 'dunning-final', 'custom']
+    availableIn: ['dunning_soft', 'dunning_final', 'custom']
   },
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'service',
     example: '2025-01-20',
     description: 'Date of service (YYYY-MM-DD format)',
-    availableIn: ['qr-daily', 'custom']
+    availableIn: ['qr_daily', 'custom']
   },
   {
     name: 'day_name',
@@ -217,7 +217,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'service',
     example: 'Monday',
     description: 'Day of week for service date',
-    availableIn: ['qr-daily', 'custom']
+    availableIn: ['qr_daily', 'custom']
   },
   {
     name: 'date_formatted',
@@ -226,7 +226,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'service',
     example: 'January 20, 2025',
     description: 'Human-readable date format',
-    availableIn: ['qr-daily', 'schedule-change', 'custom']
+    availableIn: ['qr_daily', 'schedule_change', 'custom']
   },
   {
     name: 'qr_code_base64',
@@ -235,7 +235,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'service',
     example: '[QR Code]',
     description: 'Base64-encoded QR code image (use with Image block)',
-    availableIn: ['qr-daily', 'custom']
+    availableIn: ['qr_daily', 'custom']
   },
   {
     name: 'affected_dates',
@@ -244,7 +244,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'service',
     example: 'Mon Jan 20, Wed Jan 22',
     description: 'List of dates affected by schedule change',
-    availableIn: ['schedule-change', 'custom']
+    availableIn: ['schedule_change', 'custom']
   },
   {
     name: 'effective_date',
@@ -253,7 +253,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'service',
     example: 'January 15, 2025',
     description: 'When schedule change takes effect',
-    availableIn: ['schedule-change', 'custom']
+    availableIn: ['schedule_change', 'custom']
   },
   {
     name: 'change_message',
@@ -262,7 +262,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'service',
     example: 'We will be closed for the holiday.',
     description: 'Admin-written message about schedule change',
-    availableIn: ['schedule-change', 'custom']
+    availableIn: ['schedule_change', 'custom']
   },
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -275,7 +275,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'actions',
     example: 'https://billing.stripe.com/p/session/...',
     description: 'Stripe customer portal link to update payment method',
-    availableIn: ['dunning-soft', 'dunning-retry', 'dunning-final', 'custom']
+    availableIn: ['dunning_soft', 'dunning_retry', 'dunning_final', 'custom']
   },
   {
     name: 'deep_link',
@@ -284,7 +284,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'actions',
     example: 'https://t.me/FrontierMealsBot?start=abc123',
     description: 'One-time link to connect Telegram account',
-    availableIn: ['telegram-link', 'custom']
+    availableIn: ['telegram_link', 'custom']
   },
   {
     name: 'magic_link',
@@ -293,7 +293,7 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     category: 'actions',
     example: 'https://frontiermeals.com/admin/auth/verify?token=...',
     description: 'One-time login link for admin authentication',
-    availableIn: ['admin-magic-link', 'custom']
+    availableIn: ['admin_magic_link', 'custom']
   },
   {
     name: 'support_url',
@@ -303,13 +303,13 @@ export const VARIABLE_REGISTRY: VariableDefinition[] = [
     example: 'https://t.me/FrontierMealsBot',
     description: 'Link to customer support (Telegram bot)',
     availableIn: [
-      'qr-daily',
-      'telegram-link',
-      'dunning-soft',
-      'dunning-retry',
-      'dunning-final',
-      'canceled-notice',
-      'schedule-change',
+      'qr_daily',
+      'telegram_link',
+      'dunning_soft',
+      'dunning_retry',
+      'dunning_final',
+      'canceled_notice',
+      'schedule_change',
       'custom'
     ]
   }

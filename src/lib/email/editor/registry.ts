@@ -40,49 +40,49 @@ interface TemplateEntry {
  */
 export const EMAIL_TEMPLATES: TemplateEntry[] = [
   {
-    slug: 'qr-daily',
+    slug: 'qr_daily',
     name: 'Daily QR Code',
     description: 'Daily QR code email sent to active customers at 12 PM PT',
     module: () => import('../templates/qr-daily'),
   },
   {
-    slug: 'telegram-link',
+    slug: 'telegram_link',
     name: 'Telegram Welcome',
     description: 'Onboarding email with Telegram bot connection link',
     module: () => import('../templates/telegram-link'),
   },
   {
-    slug: 'dunning-soft',
+    slug: 'dunning_soft',
     name: 'Payment Issue (Soft)',
     description: 'First payment failure notice',
     module: () => import('../templates/dunning'),
   },
   {
-    slug: 'dunning-retry',
+    slug: 'dunning_retry',
     name: 'Payment Reminder',
     description: 'Second payment failure notice',
     module: () => import('../templates/dunning'),
   },
   {
-    slug: 'dunning-final',
+    slug: 'dunning_final',
     name: 'Payment Final Notice',
     description: 'Final payment failure notice before cancellation',
     module: () => import('../templates/dunning'),
   },
   {
-    slug: 'canceled-notice',
+    slug: 'canceled_notice',
     name: 'Subscription Canceled',
     description: 'Confirmation of subscription cancellation',
     module: () => import('../templates/dunning'),
   },
   {
-    slug: 'schedule-change',
+    slug: 'schedule_change',
     name: 'Schedule Change Notification',
     description: 'Notification sent when service schedule is modified',
     module: () => import('../templates/schedule-change'),
   },
   {
-    slug: 'admin-magic-link',
+    slug: 'admin_magic_link',
     name: 'Admin Login Link',
     description: 'Magic link for admin authentication',
     module: () => import('../templates/admin-magic-link'),
@@ -161,14 +161,14 @@ export async function loadTemplateMetadata(slug: string): Promise<TemplateInfo |
  */
 function getFunctionName(slug: string): string {
   const functionMap: Record<string, string> = {
-    'qr-daily': 'getQRDailyEmail',
-    'telegram-link': 'getTelegramLinkEmail',
-    'dunning-soft': 'getDunningSoftEmail',
-    'dunning-retry': 'getDunningRetryEmail',
-    'dunning-final': 'getDunningFinalEmail',
-    'canceled-notice': 'getCanceledNoticeEmail',
-    'schedule-change': 'getScheduleChangeEmail',
-    'admin-magic-link': 'getAdminMagicLinkEmail',
+    'qr_daily': 'getQRDailyEmail',
+    'telegram_link': 'getTelegramLinkEmail',
+    'dunning_soft': 'getDunningSoftEmail',
+    'dunning_retry': 'getDunningRetryEmail',
+    'dunning_final': 'getDunningFinalEmail',
+    'canceled_notice': 'getCanceledNoticeEmail',
+    'schedule_change': 'getScheduleChangeEmail',
+    'admin_magic_link': 'getAdminMagicLinkEmail',
   };
 
   return functionMap[slug] || `get${toPascalCase(slug)}Email`;
@@ -179,7 +179,7 @@ function getFunctionName(slug: string): string {
  */
 function toPascalCase(str: string): string {
   return str
-    .split('-')
+    .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join('');
 }
