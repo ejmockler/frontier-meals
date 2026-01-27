@@ -6,6 +6,7 @@ import { fail } from '@sveltejs/kit';
 import { sendEmail } from '$lib/email/send';
 import { validateCSRFFromFormData } from '$lib/auth/csrf';
 import { getAdminSession } from '$lib/auth/session';
+import { renderTemplate, type EmailTemplate} from '$lib/email/editor';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -24,9 +25,10 @@ async function getStaffIdFromSession(email: string): Promise<string | null> {
 
 export const load: PageServerLoad = async () => {
   // Get only active templates for the main view
+  // Include blocks_json for Block Editor support
   const { data: templates } = await supabase
     .from('email_templates')
-    .select('*')
+    .select('id, slug, version, subject, html_body, blocks_json, variables_schema, is_active, is_system, created_at, created_by')
     .eq('is_active', true)
     .order('created_at', { ascending: false });
 
@@ -35,7 +37,8 @@ export const load: PageServerLoad = async () => {
       ...t,
       // Ensure these fields are included
       is_system: t.is_system ?? false,
-      variables_schema: t.variables_schema ?? {}
+      variables_schema: t.variables_schema ?? {},
+      blocks_json: t.blocks_json ?? null
     }))
   };
 };
@@ -54,6 +57,7 @@ export const actions: Actions = {
     const subject = formData.get('subject') as string;
     const htmlBody = formData.get('htmlBody') as string;
     const variables = formData.get('variables') as string;
+    const blocksJson = formData.get('blocksJson') as string | null;
 
     if (!slug || !subject || !htmlBody) {
       return fail(400, { error: 'Missing required fields' });
@@ -73,13 +77,28 @@ export const actions: Actions = {
 
     const staffId = await getStaffIdFromSession(session.email);
 
+    // If blocksJson is provided, regenerate HTML from blocks
+    let finalHtmlBody = htmlBody;
+    if (blocksJson) {
+      try {
+        const templateData = JSON.parse(blocksJson) as EmailTemplate;
+        // Render HTML from blocks using empty data (keeps {{variables}} intact)
+        const rendered = renderTemplate(templateData, {});
+        finalHtmlBody = rendered.html;
+      } catch (e) {
+        console.error('[Admin] Error rendering blocks to HTML:', e);
+        // Fall back to provided htmlBody if rendering fails
+      }
+    }
+
     const { error } = await supabase
       .from('email_templates')
       .insert({
         slug,
         version: 1,
         subject,
-        html_body: htmlBody,
+        html_body: finalHtmlBody,
+        blocks_json: blocksJson || null,
         variables_schema: variables ? JSON.parse(variables) : {},
         is_active: true,
         is_system: false,
@@ -107,6 +126,7 @@ export const actions: Actions = {
     const subject = formData.get('subject') as string;
     const htmlBody = formData.get('htmlBody') as string;
     const variables = formData.get('variables') as string;
+    const blocksJson = formData.get('blocksJson') as string | null;
 
     if (!id || !subject || !htmlBody) {
       return fail(400, { error: 'Missing required fields' });
@@ -116,7 +136,7 @@ export const actions: Actions = {
       // Get the current template to find its slug and other metadata
       const { data: currentTemplate, error: fetchError } = await supabase
         .from('email_templates')
-        .select('slug, is_system, variables_schema')
+        .select('slug, is_system, variables_schema, blocks_json')
         .eq('id', id)
         .single();
 
@@ -142,6 +162,20 @@ export const actions: Actions = {
       const newVersion = (maxVersionData?.version || 0) + 1;
       const staffId = await getStaffIdFromSession(session.email);
 
+      // If blocksJson is provided, regenerate HTML from blocks
+      let finalHtmlBody = htmlBody;
+      if (blocksJson) {
+        try {
+          const templateData = JSON.parse(blocksJson) as EmailTemplate;
+          // Render HTML from blocks using empty data (keeps {{variables}} intact)
+          const rendered = renderTemplate(templateData, {});
+          finalHtmlBody = rendered.html;
+        } catch (e) {
+          console.error('[Admin] Error rendering blocks to HTML:', e);
+          // Fall back to provided htmlBody if rendering fails
+        }
+      }
+
       // Start transaction: deactivate current active version and insert new version
       // First, deactivate all active versions for this slug
       const { error: deactivateError } = await supabase
@@ -156,13 +190,15 @@ export const actions: Actions = {
       }
 
       // Insert new version with is_active = true
+      // If blocksJson is provided, store it; otherwise preserve existing blocks_json
       const { error: insertError } = await supabase
         .from('email_templates')
         .insert({
           slug: currentTemplate.slug,
           version: newVersion,
           subject,
-          html_body: htmlBody,
+          html_body: finalHtmlBody,
+          blocks_json: blocksJson || currentTemplate.blocks_json || null,
           variables_schema: variables ? JSON.parse(variables) : currentTemplate.variables_schema,
           is_active: true,
           is_system: currentTemplate.is_system,

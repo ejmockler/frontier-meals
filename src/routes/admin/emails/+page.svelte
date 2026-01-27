@@ -2,8 +2,11 @@
   import type { PageData } from './$types';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import { get } from 'svelte/store';
   import { BlockEditor, editorState, editorActions, previewHTML } from '$lib/components/admin/email';
   import { EMAIL_TEMPLATES } from '$lib/email/editor/registry';
+  import { SYSTEM_TEMPLATE_BLOCKS } from '$lib/email/editor/system-template-blocks';
+  import type { EmailTemplate } from '$lib/email/editor';
 
   export let data: PageData;
   export let form;
@@ -25,6 +28,245 @@
   $: previewHtml = editorMode === 'html'
     ? replaceVariables(htmlBody, variables)
     : ''; // Block editor handles its own preview
+
+  // Serialize editor state to JSON for form submission (Block Editor mode)
+  // This creates a full EmailTemplate structure for storage
+  function getBlocksJson(): string | null {
+    if (editorMode !== 'blocks') return null;
+
+    const state = get(editorState);
+
+    // Build a full EmailTemplate structure from editor state
+    const template: EmailTemplate = {
+      slug: slug,
+      name: state.settings.title || slug,
+      subject: state.settings.title,
+      colorScheme: state.settings.colorScheme,
+      header: {
+        emoji: state.settings.emoji,
+        title: state.settings.title,
+        subtitle: state.settings.subtitle
+      },
+      blocks: convertEditorBlocksToEmailBlocks(state.blocks),
+      footer: { type: 'support' },
+      variables: Object.entries(state.variables).map(([name, testValue]) => ({
+        name,
+        label: name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        type: 'string' as const,
+        exampleValue: testValue
+      }))
+    };
+
+    return JSON.stringify(template);
+  }
+
+  // Convert editor-store blocks to EmailTemplate blocks format
+  function convertEditorBlocksToEmailBlocks(editorBlocks: any[]): any[] {
+    return editorBlocks.map(block => {
+      switch (block.type) {
+        case 'greeting':
+          return {
+            type: 'greeting',
+            id: block.id,
+            nameVariable: `{{${block.variableName}}}`,
+            prefix: 'Hi'
+          };
+        case 'paragraph':
+          return {
+            type: 'paragraph',
+            id: block.id,
+            content: block.text,
+            style: block.style
+          };
+        case 'infoBox':
+          return {
+            type: 'infobox',
+            id: block.id,
+            boxType: block.boxType,
+            title: block.title,
+            content: block.text
+          };
+        case 'button':
+          return {
+            type: 'button',
+            id: block.id,
+            label: block.label,
+            urlVariable: `{{${block.urlVariable}}}`
+          };
+        case 'stepList':
+          return {
+            type: 'steplist',
+            id: block.id,
+            steps: block.steps.map((s: any) => ({
+              title: s.title,
+              description: s.description
+            }))
+          };
+        case 'codeInline':
+          return {
+            type: 'code',
+            id: block.id,
+            content: block.text,
+            style: 'inline'
+          };
+        case 'codeBlock':
+          return {
+            type: 'code',
+            id: block.id,
+            content: block.code,
+            style: 'block'
+          };
+        case 'image':
+          return {
+            type: 'image',
+            id: block.id,
+            cid: block.cidReference,
+            alt: block.alt,
+            width: block.width || 280,
+            height: block.height || 280
+          };
+        case 'divider':
+          return {
+            type: 'divider',
+            id: block.id,
+            style: 'light'
+          };
+        case 'spacer':
+          return {
+            type: 'spacer',
+            id: block.id,
+            size: 'lg'
+          };
+        default:
+          return block;
+      }
+    });
+  }
+
+  // Load blocks from stored JSON into the editor
+  function loadBlocksIntoEditor(blocksJson: string) {
+    try {
+      const template = JSON.parse(blocksJson) as EmailTemplate;
+
+      // Convert EmailTemplate to editor state format
+      editorState.set({
+        settings: {
+          colorScheme: template.colorScheme || 'orange',
+          emoji: template.header?.emoji || '📧',
+          title: template.header?.title || template.subject || '',
+          subtitle: template.header?.subtitle || ''
+        },
+        blocks: convertEmailBlocksToEditorBlocks(template.blocks || []),
+        variables: (template.variables || []).reduce((acc, v) => {
+          acc[v.name] = v.exampleValue;
+          return acc;
+        }, {} as Record<string, string>)
+      });
+    } catch (e) {
+      console.error('[Admin] Error loading blocks into editor:', e);
+      // Reset to initial state if parsing fails
+      editorActions.reset();
+    }
+  }
+
+  // Convert EmailTemplate blocks to editor-store blocks format
+  function convertEmailBlocksToEditorBlocks(templateBlocks: any[]): any[] {
+    return templateBlocks.map(block => {
+      switch (block.type) {
+        case 'greeting':
+          return {
+            type: 'greeting',
+            id: block.id,
+            // Extract variable name from {{variable}} syntax
+            variableName: block.nameVariable?.replace(/^\{\{|\}\}$/g, '') || 'customer_name'
+          };
+        case 'paragraph':
+          return {
+            type: 'paragraph',
+            id: block.id,
+            text: block.content,
+            style: block.style || 'normal'
+          };
+        case 'infobox':
+          return {
+            type: 'infoBox',
+            id: block.id,
+            boxType: block.boxType,
+            title: block.title || '',
+            text: block.content
+          };
+        case 'button':
+          return {
+            type: 'button',
+            id: block.id,
+            label: block.label,
+            // Extract variable name from {{variable}} syntax
+            urlVariable: block.urlVariable?.replace(/^\{\{|\}\}$/g, '') || 'button_url',
+            colorOverride: block.colorScheme ? undefined : undefined
+          };
+        case 'steplist':
+          return {
+            type: 'stepList',
+            id: block.id,
+            steps: (block.steps || []).map((s: any, i: number) => ({
+              id: `step_${block.id}_${i}`,
+              title: s.title,
+              description: s.description
+            }))
+          };
+        case 'code':
+          if (block.style === 'inline') {
+            return {
+              type: 'codeInline',
+              id: block.id,
+              text: block.content
+            };
+          } else {
+            return {
+              type: 'codeBlock',
+              id: block.id,
+              code: block.content
+            };
+          }
+        case 'image':
+          return {
+            type: 'image',
+            id: block.id,
+            cidReference: block.cid,
+            alt: block.alt,
+            width: block.width,
+            height: block.height
+          };
+        case 'divider':
+          return {
+            type: 'divider',
+            id: block.id
+          };
+        case 'spacer':
+          return {
+            type: 'spacer',
+            id: block.id
+          };
+        case 'heading':
+          return {
+            type: 'paragraph',
+            id: block.id,
+            text: block.content,
+            style: 'lead'
+          };
+        case 'list':
+          // Convert list to paragraph for now (editor doesn't have list block)
+          return {
+            type: 'paragraph',
+            id: block.id,
+            text: (block.items || []).join('\n'),
+            style: 'normal'
+          };
+        default:
+          return block;
+      }
+    });
+  }
 
   function replaceVariables(html: string, varsJson: string): string {
     try {
@@ -53,18 +295,35 @@
 
   function editTemplate(template: any) {
     mode = 'edit';
-    editorMode = 'html'; // Existing templates start in HTML mode
     selectedTemplate = template;
     slug = template.slug;
     subject = template.subject;
     htmlBody = template.html_body;
     variables = template.variables ? JSON.stringify(template.variables, null, 2) : '';
 
-    // Reset block editor (in case user switches to block mode later)
-    editorActions.reset();
-    // Load the subject into block editor settings
-    if (subject) {
-      editorActions.updateSettings({ title: subject });
+    // Check if template has saved block data
+    if (template.blocks_json) {
+      // Template was created/edited with Block Editor - load blocks
+      editorMode = 'blocks';
+      loadBlocksIntoEditor(template.blocks_json);
+    } else if (template.is_system && SYSTEM_TEMPLATE_BLOCKS[template.slug]) {
+      // System template without blocks_json - load from code definitions
+      editorMode = 'blocks';
+      const systemDef = SYSTEM_TEMPLATE_BLOCKS[template.slug];
+      editorState.set({
+        settings: systemDef.settings,
+        blocks: systemDef.blocks,
+        variables: {}
+      });
+    } else {
+      // No block data - use HTML mode
+      editorMode = 'html';
+      // Reset block editor (in case user switches to block mode later)
+      editorActions.reset();
+      // Load the subject into block editor settings
+      if (subject) {
+        editorActions.updateSettings({ title: subject });
+      }
     }
   }
 
@@ -263,13 +522,23 @@
 
     {#if editorMode === 'blocks'}
       <!-- Block Editor -->
-      <form method="POST" action={mode === 'create' ? '?/createTemplate' : '?/updateTemplate'} use:enhance>
+      <form method="POST" action={mode === 'create' ? '?/createTemplate' : '?/updateTemplate'} use:enhance={() => {
+        // Serialize blocks right before submission
+        const blocksJsonInput = document.querySelector('input[name="blocksJson"]') as HTMLInputElement;
+        if (blocksJsonInput) {
+          blocksJsonInput.value = getBlocksJson() || '';
+        }
+        return async ({ update }) => {
+          await update();
+        };
+      }}>
         {#if mode === 'edit'}
           <input type="hidden" name="id" value={selectedTemplate?.id} />
         {/if}
         <input type="hidden" name="slug" value={slug} />
         <input type="hidden" name="subject" value={$editorState.settings.title} />
         <input type="hidden" name="htmlBody" value={$previewHTML} />
+        <input type="hidden" name="blocksJson" value="" />
         <input type="hidden" name="csrf_token" value={data.csrfToken} />
 
         <div class="bg-white border-2 border-[#D9D7D2] rounded-sm shadow-lg overflow-hidden">
