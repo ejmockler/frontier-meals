@@ -13,7 +13,8 @@ import { getAdminSession } from '$lib/auth/session';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, depends }) => {
+  depends('app:customers');
   const search = url.searchParams.get('search') || '';
   const status = url.searchParams.get('status') || 'all';
 

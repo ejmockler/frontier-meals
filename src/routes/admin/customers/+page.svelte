@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { enhance } from '$app/forms';
-  import { invalidateAll, goto } from '$app/navigation';
+  import { invalidate, goto, pushState } from '$app/navigation';
+  import { page } from '$app/stores';
   import { toasts } from '$lib/stores/toast';
 
   export let data: PageData;
@@ -54,10 +55,32 @@
     }
   }
 
+  // Open QR confirmation modal with shallow routing
+  function confirmRegenerate(customer: any) {
+    selectedCustomer = customer;
+    showQRConfirm = true;
+    pushState('', { qrConfirm: true, customerId: customer.id });
+  }
+
+  // Close modal and clear state
+  function closeModal() {
+    showQRConfirm = false;
+    selectedCustomer = null;
+    history.back();
+  }
+
+  // Handle back button - close modal when navigating back
+  $: if ($page.state.qrConfirm === undefined && showQRConfirm) {
+    showQRConfirm = false;
+    selectedCustomer = null;
+  }
+
   // Handle QR regeneration
   async function regenerateQR() {
     isRegenerating = true;
     showQRConfirm = false;
+    // Navigate back to clear the shallow routing state
+    history.back();
 
     // Submit form programmatically
     const formElement = document.getElementById('regenerate-form') as HTMLFormElement;
@@ -69,11 +92,20 @@
     isRegenerating = false;
     selectedCustomer = null;
     toasts.show('QR code sent successfully!', 'success');
-    setTimeout(() => invalidateAll(), 500);
+    setTimeout(() => invalidate('app:customers'), 500);
   } else if (form?.error) {
     isRegenerating = false;
     toasts.show(form.error, 'error', 5000);
   }
+
+  // Snapshot for preserving form state across navigation
+  export const snapshot = {
+    capture: () => ({ search, status }),
+    restore: (value) => {
+      search = value.search;
+      status = value.status;
+    }
+  };
 </script>
 
 <svelte:head>
@@ -187,7 +219,7 @@
               </div>
 
               <button
-                on:click={() => { selectedCustomer = customer; showQRConfirm = true; }}
+                on:click={() => confirmRegenerate(customer)}
                 class="px-4 py-2 text-sm font-bold text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] hover:shadow-xl shadow-lg rounded-sm transition-all"
               >
                 Regenerate QR
@@ -202,7 +234,7 @@
 
 <!-- QR Regeneration Confirmation Modal -->
 {#if showQRConfirm && selectedCustomer}
-  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" on:click={() => showQRConfirm = false}>
+  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" on:click={closeModal}>
     <div class="bg-white border-2 border-[#D9D7D2] rounded-sm shadow-2xl max-w-md w-full p-6" on:click|stopPropagation>
       <div class="text-center mb-6">
         <div class="inline-flex items-center justify-center w-16 h-16 bg-[#E67E50] border-2 border-[#D97F3E] rounded-sm mb-4">
@@ -218,7 +250,7 @@
 
       <div class="flex gap-3">
         <button
-          on:click={() => showQRConfirm = false}
+          on:click={closeModal}
           class="flex-1 px-4 py-2 text-[#1A1816] bg-[#D9D7D2] border-2 border-[#B8B6B1] hover:bg-[#B8B6B1] rounded-sm font-bold transition-colors"
         >
           Cancel
