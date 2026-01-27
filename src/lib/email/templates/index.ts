@@ -13,6 +13,7 @@ import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { getQRDailyEmail } from './qr-daily';
 import { getTelegramLinkEmail } from './telegram-link';
+import { getTelegramCorrectionEmail } from './telegram-correction';
 import { getDunningSoftEmail, getDunningRetryEmail, getDunningFinalEmail, getCanceledNoticeEmail } from './dunning';
 import { getAdminMagicLinkEmail } from './admin-magic-link';
 import { getScheduleChangeEmail, type ScheduleChangeEmailData } from './schedule-change';
@@ -35,6 +36,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const CODE_TEMPLATES: Record<string, (data: any) => { subject: string; html: string }> = {
   'qr_daily': getQRDailyEmail,
   'telegram_link': getTelegramLinkEmail,
+  'telegram_correction': getTelegramCorrectionEmail,
   'dunning_soft': getDunningSoftEmail,
   'dunning_retry': getDunningRetryEmail,
   'dunning_final': getDunningFinalEmail,
