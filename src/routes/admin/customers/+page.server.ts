@@ -122,12 +122,19 @@ export const actions: Actions = {
         }, { onConflict: 'customer_id,service_date' });
 
       // Send email with QR code as inline attachment (CID)
+      // Derive day_name and date_formatted for DB template compatibility
+      const parsedDate = new Date(today);
+      const dayName = parsedDate.toLocaleDateString('en-US', { weekday: 'long' });
+      const dateFormatted = parsedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
       const { subject, html } = await renderTemplate(
         'qr_daily',
         {
           customer_name: customer.name,
           service_date: today,
-          qr_code_base64: base64Content
+          qr_code_base64: base64Content,
+          day_name: dayName,
+          date_formatted: dateFormatted
         },
         SUPABASE_SERVICE_ROLE_KEY
       );

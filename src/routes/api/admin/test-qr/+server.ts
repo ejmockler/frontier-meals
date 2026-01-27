@@ -142,12 +142,19 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
     const base64Content = qrCodeDataUrl.split(',')[1];
 
     // Send QR code via email (same as production)
+    // Derive day_name and date_formatted for DB template compatibility
+    const parsedDate = new Date(serviceDate);
+    const dayName = parsedDate.toLocaleDateString('en-US', { weekday: 'long' });
+    const dateFormatted = parsedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
     const { subject, html } = await renderTemplate(
       'qr_daily',
       {
         customer_name: testCustomer.name || 'there',
         service_date: serviceDate,
-        qr_code_base64: base64Content
+        qr_code_base64: base64Content,
+        day_name: dayName,
+        date_formatted: dateFormatted
       },
       SUPABASE_SERVICE_ROLE_KEY
     );

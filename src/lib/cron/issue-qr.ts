@@ -302,12 +302,20 @@ export async function issueDailyQRCodes(config: {
       // Send QR code via email using template service
       try {
         // Render template (checks DB first, falls back to code)
+        // Derive day_name and date_formatted for DB template compatibility
+        // (code template derives these internally, but DB templates need them as variables)
+        const serviceDate = new Date(today);
+        const dayName = serviceDate.toLocaleDateString('en-US', { weekday: 'long' });
+        const dateFormatted = serviceDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
         const { subject, html } = await renderTemplate(
           'qr_daily',
           {
             customer_name: customer.name || 'there',
             service_date: today,
-            qr_code_base64: base64Content
+            qr_code_base64: base64Content,
+            day_name: dayName,
+            date_formatted: dateFormatted
           },
           config.supabaseServiceKey
         );
