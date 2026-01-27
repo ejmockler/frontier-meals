@@ -71,6 +71,14 @@
 			isLoading = false;
 		}
 	}
+
+	// Snapshot for preserving form state across navigation
+	export const snapshot = {
+		capture: () => handle,
+		restore: (value) => {
+			handle = value;
+		}
+	};
 </script>
 
 <svelte:head>

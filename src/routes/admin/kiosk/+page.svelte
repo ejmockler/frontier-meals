@@ -96,6 +96,30 @@
       localStorage.setItem('frontiermeals_saved_kiosks', JSON.stringify(savedKiosks));
     }
   }
+
+  // Snapshot for preserving form state across navigation
+  export const snapshot = {
+    capture: () => ({
+      kioskId,
+      location,
+      sessionUrl,
+      createdKioskId,
+      createdLocation,
+      newKioskId,
+      newKioskLocation,
+      showAddKiosk
+    }),
+    restore: (value) => {
+      kioskId = value.kioskId;
+      location = value.location;
+      sessionUrl = value.sessionUrl;
+      createdKioskId = value.createdKioskId;
+      createdLocation = value.createdLocation;
+      newKioskId = value.newKioskId;
+      newKioskLocation = value.newKioskLocation;
+      showAddKiosk = value.showAddKiosk;
+    }
+  };
 </script>
 
 <svelte:head>
