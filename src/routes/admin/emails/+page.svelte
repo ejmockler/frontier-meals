@@ -302,6 +302,10 @@
     variables = template.variables ? JSON.stringify(template.variables, null, 2) : '';
 
     // Check if template has saved block data
+    console.log('[EditTemplate] slug:', template.slug, 'is_system:', template.is_system, 'blocks_json:', !!template.blocks_json);
+    console.log('[EditTemplate] SYSTEM_TEMPLATE_BLOCKS keys:', Object.keys(SYSTEM_TEMPLATE_BLOCKS));
+    console.log('[EditTemplate] lookup result:', SYSTEM_TEMPLATE_BLOCKS[template.slug]);
+
     if (template.blocks_json) {
       // Template was created/edited with Block Editor - load blocks
       editorMode = 'blocks';
@@ -310,12 +314,14 @@
       // System template without blocks_json - load from code definitions
       editorMode = 'blocks';
       const systemDef = SYSTEM_TEMPLATE_BLOCKS[template.slug];
+      console.log('[EditTemplate] Loading system blocks:', systemDef);
       editorState.set({
         settings: systemDef.settings,
         blocks: systemDef.blocks,
         variables: {}
       });
     } else {
+      console.log('[EditTemplate] Falling back to HTML mode');
       // No block data - use HTML mode
       editorMode = 'html';
       // Reset block editor (in case user switches to block mode later)
