@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
-	import type { PageData } from './$types';
+	import { invalidate, pushState, replaceState } from '$app/navigation';
+	import { page } from '$app/stores';
+	import type { PageData, Snapshot } from './$types';
 	import ServicePatternEditor from '$lib/components/admin/schedule/ServicePatternEditor.svelte';
 	import CalendarView from '$lib/components/admin/schedule/CalendarView.svelte';
 	import HolidayList from '$lib/components/admin/schedule/HolidayList.svelte';
@@ -11,6 +12,26 @@
 	import { calculateAffectedDatesForPatternChange } from '$lib/utils/schedule-dates';
 
 	export let data: PageData;
+
+	// Snapshot for preserving exception panel state across navigation
+	interface ExceptionPanelSnapshot {
+		showExceptionPanel: boolean;
+		editingException: any;
+		exceptionType: 'holiday' | 'special_event';
+	}
+
+	export const snapshot: Snapshot<ExceptionPanelSnapshot> = {
+		capture: () => ({
+			showExceptionPanel,
+			editingException,
+			exceptionType
+		}),
+		restore: (value) => {
+			showExceptionPanel = value.showExceptionPanel;
+			editingException = value.editingException;
+			exceptionType = value.exceptionType;
+		}
+	};
 
 	let showExceptionPanel = false;
 	let editingException: any = null;
@@ -32,15 +53,28 @@
 		exceptionType = type;
 		editingException = null;
 		showExceptionPanel = true;
+		// Push state for shallow routing - back button will close panel
+		pushState('', { exceptionPanel: true, type, editingId: null });
 	}
 
 	function openEditException(exception: any) {
 		exceptionType = exception.type;
 		editingException = exception;
 		showExceptionPanel = true;
+		// Push state for shallow routing - back button will close panel
+		pushState('', { exceptionPanel: true, type: exception.type, editingId: exception.id });
 	}
 
 	function closeExceptionPanel() {
+		showExceptionPanel = false;
+		editingException = null;
+		// Clear URL state when closing panel
+		replaceState('', {});
+	}
+
+	// Handle back navigation - close panel when URL state changes
+	$: if ($page.state.exceptionPanel === undefined && showExceptionPanel) {
+		// Back button pressed, close panel without pushing new state
 		showExceptionPanel = false;
 		editingException = null;
 	}
@@ -86,14 +120,14 @@
 		// Close modal and refresh data
 		showChangeModal = false;
 		pendingChange = null;
-		await invalidateAll();
+		await invalidate('app:schedule-exceptions');
 	}
 
 	function handleNotificationCancel() {
 		showChangeModal = false;
 		pendingChange = null;
 		// Still refresh to show the saved change
-		invalidateAll();
+		invalidate('app:schedule-exceptions');
 	}
 </script>
 
@@ -214,17 +248,19 @@
 
 <!-- Schedule Change Notification Modal -->
 {#if showChangeModal && pendingChange}
-	<ScheduleChangeModal
-		changeType={pendingChange.type}
-		changeAction={pendingChange.action}
-		changeSummary={pendingChange.summary}
-		affectedDates={pendingChange.affectedDates}
-		activeCustomerCount={data.activeCustomerCount}
-		previousValue={pendingChange.previousValue}
-		newValue={pendingChange.newValue}
-		on:confirm={handleNotificationConfirm}
-		on:cancel={handleNotificationCancel}
-	/>
+	{#await data.activeCustomerCount then activeCustomerCount}
+		<ScheduleChangeModal
+			changeType={pendingChange.type}
+			changeAction={pendingChange.action}
+			changeSummary={pendingChange.summary}
+			affectedDates={pendingChange.affectedDates}
+			{activeCustomerCount}
+			previousValue={pendingChange.previousValue}
+			newValue={pendingChange.newValue}
+			on:confirm={handleNotificationConfirm}
+			on:cancel={handleNotificationCancel}
+		/>
+	{/await}
 {/if}
 
 <style>

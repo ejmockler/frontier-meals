@@ -6,7 +6,10 @@ import {
 } from '$lib/email/schedule-notifications';
 import { getAdminSession } from '$lib/auth/session';
 
-export const load: PageServerLoad = async ({ locals: { supabase }, parent }) => {
+export const load: PageServerLoad = async ({ locals: { supabase }, parent, depends }) => {
+	depends('app:schedule-config');
+	depends('app:schedule-exceptions');
+
 	// Session already validated by parent layout - just get it
 	const { session } = await parent();
 
@@ -22,9 +25,6 @@ export const load: PageServerLoad = async ({ locals: { supabase }, parent }) => 
 		.select('*')
 		.order('date', { ascending: true });
 
-	// Get active customer count for notification preview
-	const activeCustomerCount = await getActiveCustomerCount(supabase);
-
 	// Separate holidays and special events
 	const holidays = exceptions?.filter((e) => e.type === 'holiday') || [];
 	const specialEvents = exceptions?.filter((e) => e.type === 'special_event') || [];
@@ -33,7 +33,8 @@ export const load: PageServerLoad = async ({ locals: { supabase }, parent }) => 
 		config: config || { service_days: [1, 2, 3, 4, 5] },
 		holidays,
 		specialEvents,
-		activeCustomerCount
+		// Stream this - don't await (only used for display in notification modal)
+		activeCustomerCount: getActiveCustomerCount(supabase)
 	};
 };
 
