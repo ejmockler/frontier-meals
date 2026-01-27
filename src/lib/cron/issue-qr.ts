@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as jose from 'jose';
 import qrcode from 'qrcode-generator';
 import { sendEmail } from '$lib/email/send';
-import { getQRDailyEmail } from '$lib/email/templates/qr-daily';
+import { renderTemplate } from '$lib/email/templates';
 import { todayInPT, endOfDayPT, startOfDayPT } from '$lib/utils/timezone';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
 import { isServiceDay } from '$lib/utils/service-calendar';
@@ -299,13 +299,18 @@ export async function issueDailyQRCodes(config: {
       // Extract base64 content from data URL (format: "data:image/gif;base64,...")
       const base64Content = qrCodeDataUrl.split(',')[1];
 
-      // Send QR code via email
+      // Send QR code via email using template service
       try {
-        const { subject, html } = getQRDailyEmail({
-          customer_name: customer.name || 'there',
-          service_date: today,
-          qr_code_base64: base64Content
-        });
+        // Render template (checks DB first, falls back to code)
+        const { subject, html } = await renderTemplate(
+          'qr_daily',
+          {
+            customer_name: customer.name || 'there',
+            service_date: today,
+            qr_code_base64: base64Content
+          },
+          config.supabaseServiceKey
+        );
 
         await sendEmail({
           to: customer.email,
