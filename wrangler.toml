@@ -8,7 +8,7 @@ pages_build_output_dir = ".svelte-kit/cloudflare"
 PUBLIC_SITE_URL = "https://frontier-meals.pages.dev"
 PUBLIC_SUPABASE_URL = "https://pfnzaluegtxyfsspjmof.supabase.co"
 PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_rnrAvb3tthXs5WEEgqiPIw_LGVhhXWL"
-PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_51SMiPY4YmLzzuEydJ24OPjIBEhVbwPZXZrMKwbP6HvS8K0d8H6SMqJfxBwqD9YmwAyz1JwUbt5SgDn2Ia1ZfTJpF00jnYVUe24"
+PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_51SXVLZLerddLeJrdfyxRaTL6uHayv9q4I0dWumvTs14UfvXIvDDYkZeWHYqGjcmrwIc72NKCvkwhrbW6Z5mVIcsX00XOSw2HqS"
 
 # Runtime secrets (set via: npx wrangler pages secret put <NAME> --project-name frontier-meals)
 # - SUPABASE_SERVICE_ROLE_KEY
