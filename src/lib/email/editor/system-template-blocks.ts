@@ -35,7 +35,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
   // Source: src/lib/email/templates/qr-daily.ts
   // Variables: customer_name, day_name, date_formatted, qr_code_base64
   // ============================================================================
-  qr_daily: {
+  'qr_daily': {
     settings: {
       colorScheme: 'green',
       emoji: '🍽️',
@@ -86,7 +86,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
   // Source: src/lib/email/templates/telegram-link.ts
   // Variables: customer_name, telegram_handle, deep_link
   // ============================================================================
-  telegram_link: {
+  'telegram_link': {
     settings: {
       colorScheme: 'teal',
       emoji: '🍽️',
@@ -163,7 +163,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
   // Source: src/lib/email/templates/telegram-correction.ts
   // Variables: customer_name, handle_update_link, deep_link
   // ============================================================================
-  telegram_correction: {
+  'telegram_correction': {
     settings: {
       colorScheme: 'orange',
       emoji: '✏️',
@@ -231,7 +231,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
   // ============================================================================
   // 4. Dunning Soft - First payment failure
   // ============================================================================
-  dunning_soft: {
+  'dunning_soft': {
     settings: {
       colorScheme: 'amber',
       emoji: '💳',
@@ -281,7 +281,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
   // ============================================================================
   // 5. Dunning Retry - Second payment failure
   // ============================================================================
-  dunning_retry: {
+  'dunning_retry': {
     settings: {
       colorScheme: 'amber',
       emoji: '⚠️',
@@ -325,7 +325,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
   // ============================================================================
   // 6. Dunning Final - Final payment warning
   // ============================================================================
-  dunning_final: {
+  'dunning_final': {
     settings: {
       colorScheme: 'red',
       emoji: '🚨',
@@ -376,7 +376,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
   // ============================================================================
   // 7. Canceled Notice - Subscription canceled
   // ============================================================================
-  canceled_notice: {
+  'canceled_notice': {
     settings: {
       colorScheme: 'gray',
       emoji: '👋',
@@ -427,7 +427,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
   // ============================================================================
   // 8. Admin Magic Link - Admin login
   // ============================================================================
-  admin_magic_link: {
+  'admin_magic_link': {
     settings: {
       colorScheme: 'orange',
       emoji: '🔐',
@@ -487,7 +487,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
   // ============================================================================
   // 9. Schedule Change - Service schedule update
   // ============================================================================
-  schedule_change: {
+  'schedule_change': {
     settings: {
       colorScheme: 'teal',
       emoji: '📅',
