@@ -3,8 +3,7 @@ import type { RequestHandler } from './$types';
 import Stripe from 'stripe';
 import { getEnv, getSupabaseAdmin } from '$lib/server/env';
 import { sendEmail } from '$lib/email/send';
-import { getTelegramLinkEmail } from '$lib/email/templates/telegram-link';
-import { getDunningSoftEmail, getDunningRetryEmail, getDunningFinalEmail, getCanceledNoticeEmail } from '$lib/email/templates/dunning';
+import { renderTemplate } from '$lib/email/templates';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
 
 export const POST: RequestHandler = async (event) => {
@@ -62,7 +61,7 @@ export const POST: RequestHandler = async (event) => {
   try {
     switch (eventObj.type) {
       case 'checkout.session.completed':
-        await handleCheckoutCompleted(eventObj.data.object as Stripe.Checkout.Session, stripe, supabase);
+        await handleCheckoutCompleted(eventObj.data.object as Stripe.Checkout.Session, stripe, supabase, env);
         break;
 
       case 'invoice.paid':
@@ -70,7 +69,7 @@ export const POST: RequestHandler = async (event) => {
         break;
 
       case 'invoice.payment_failed':
-        await handlePaymentFailed(eventObj.data.object as Stripe.Invoice, stripe, supabase);
+        await handlePaymentFailed(eventObj.data.object as Stripe.Invoice, stripe, supabase, env);
         break;
 
       case 'customer.subscription.updated':
@@ -78,7 +77,7 @@ export const POST: RequestHandler = async (event) => {
         break;
 
       case 'customer.subscription.deleted':
-        await handleSubscriptionDeleted(eventObj.data.object as Stripe.Subscription, stripe, supabase);
+        await handleSubscriptionDeleted(eventObj.data.object as Stripe.Subscription, stripe, supabase, env);
         break;
 
       default:
@@ -108,7 +107,7 @@ export const POST: RequestHandler = async (event) => {
   }
 };
 
-async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient) {
+async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient, env: import('$lib/server/env').ServerEnv) {
   const email = session.customer_details?.email;
   const name = session.customer_details?.name;
   const telegramHandle = session.custom_fields?.[0]?.text?.value;
@@ -253,14 +252,18 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe:
   console.log('[DB SUCCESS] Telegram deep link token created');
 
   // Send Telegram link email
-  const emailTemplate = getTelegramLinkEmail({
-    customer_name: name,
-    telegram_handle: telegramHandle || 'Not provided',
-    deep_link: deepLink
-  });
-
   console.log('[EMAIL] Sending telegram link email:', { to: email, customer_id: customer.id });
   try {
+    const emailTemplate = await renderTemplate(
+      'telegram_link',
+      {
+        customer_name: name,
+        telegram_handle: telegramHandle || 'Not provided',
+        deep_link: deepLink
+      },
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
     await sendEmail({
       to: email,
       subject: emailTemplate.subject,
@@ -528,7 +531,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice, stripe: Stripe, supaba
   console.log(`[handleInvoicePaid] Complete - period ${periodStartISO} to ${periodEndISO}`);
 }
 
-async function handlePaymentFailed(invoice: Stripe.Invoice, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient) {
+async function handlePaymentFailed(invoice: Stripe.Invoice, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient, env: import('$lib/server/env').ServerEnv) {
   const stripeCustomerId = invoice.customer as string;
 
   // Find customer
@@ -564,30 +567,36 @@ async function handlePaymentFailed(invoice: Stripe.Invoice, stripe: Stripe, supa
   const attemptCount = invoice.attempt_count || 1;
   const amountDue = `$${(invoice.amount_due / 100).toFixed(2)}`;
 
-  let emailTemplate;
-  let emailSlug;
+  let emailSlug: string;
+  let templateVariables: Record<string, string>;
 
   if (attemptCount === 1) {
-    emailTemplate = getDunningSoftEmail({
-      customer_name: customer.name,
-      amount_due: amountDue,
-      update_payment_url: portalSession.url
-    });
     emailSlug = 'dunning_soft';
-  } else if (attemptCount === 2) {
-    emailTemplate = getDunningRetryEmail({
-      customer_name: customer.name,
-      update_payment_url: portalSession.url
-    });
-    emailSlug = 'dunning_retry';
-  } else {
-    emailTemplate = getDunningFinalEmail({
+    templateVariables = {
       customer_name: customer.name,
       amount_due: amountDue,
       update_payment_url: portalSession.url
-    });
+    };
+  } else if (attemptCount === 2) {
+    emailSlug = 'dunning_retry';
+    templateVariables = {
+      customer_name: customer.name,
+      update_payment_url: portalSession.url
+    };
+  } else {
     emailSlug = 'dunning_final';
+    templateVariables = {
+      customer_name: customer.name,
+      amount_due: amountDue,
+      update_payment_url: portalSession.url
+    };
   }
+
+  const emailTemplate = await renderTemplate(
+    emailSlug,
+    templateVariables,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
 
   await sendEmail({
     to: customer.email,
@@ -738,7 +747,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription, stri
   }
 }
 
-async function handleSubscriptionDeleted(subscription: Stripe.Subscription, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient) {
+async function handleSubscriptionDeleted(subscription: Stripe.Subscription, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient, env: import('$lib/server/env').ServerEnv) {
   const { data: sub } = await supabase
     .from('subscriptions')
     .select('customer_id, customers(name, email)')
@@ -753,7 +762,11 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription, stri
 
     // Send cancellation email
     const customer = Array.isArray(sub.customers) ? sub.customers[0] : sub.customers;
-    const emailTemplate = getCanceledNoticeEmail({ customer_name: customer.name });
+    const emailTemplate = await renderTemplate(
+      'canceled_notice',
+      { customer_name: customer.name },
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
 
     await sendEmail({
       to: customer.email,

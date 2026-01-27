@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '$lib/email/send';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
-import { buildEmailHTML, brandColors, getSupportFooter } from '$lib/email/templates/base';
+import { renderTemplate } from '$lib/email/templates';
 import { sendAdminAlert, formatJobErrorAlert } from '$lib/utils/alerts';
 
 /**
@@ -84,69 +84,16 @@ export async function checkTelegramLinks(config: {
       // Build handle update link
       const handleUpdateLink = `${config.siteUrl}/handle/update/${handleToken}`;
 
-      // Send correction email with handle update link (primary) and deep link (backup)
-      const subject = 'Action needed: Correct your Telegram username';
-
-      const headerContent = `
-        <div style="font-size: 48px; margin-bottom: 12px;">✏️</div>
-        <h1 style="margin: 0 0 8px;">Correct Your Telegram Username</h1>
-        <p style="margin: 0; opacity: 0.95;">Let's fix this and get you connected</p>
-      `;
-
-      const bodyContent = `
-        <p style="font-size: 18px; font-weight: 500; color: #111827;">Hi ${customer.name},</p>
-
-        <p>We noticed you haven't connected your Telegram account yet. This might be because your username was mistyped during signup.</p>
-
-        <p><strong style="color: #111827;">Please correct your Telegram username to activate your account:</strong></p>
-
-        <!-- Primary CTA -->
-        <div class="text-center">
-          <a href="${handleUpdateLink}" class="email-button" style="background-color: #E67E50;">
-            ✏️ Update My Username
-          </a>
-        </div>
-
-        <!-- Benefits Box -->
-        <div class="info-box info-box-success">
-          <p style="margin: 0; font-weight: 600; color: #065f46;">This will let you:</p>
-          <ul style="margin: 8px 0 0; padding-left: 20px; color: #065f46;">
-            <li>Receive daily meal QR codes</li>
-            <li>Set dietary preferences</li>
-            <li>Skip dates when you're away</li>
-            <li>Manage your meal schedule</li>
-          </ul>
-        </div>
-
-        <!-- Divider -->
-        <div style="border-top: 2px solid #e5e7eb; margin: 32px 0;"></div>
-
-        <!-- Alternative Option -->
-        <p class="text-muted" style="margin-bottom: 16px;">
-          <strong>Alternative:</strong> If you don't know your Telegram username, you can also connect directly:
-        </p>
-
-        <div class="text-center">
-          <a href="${newDeepLink}" class="email-button email-button-secondary" style="background-color: #52A675;">
-            📱 Connect on Telegram
-          </a>
-        </div>
-
-        <!-- Expiry Warning -->
-        <div class="info-box info-box-warning">
-          <p style="margin: 0; font-weight: 600; color: #92400e;">⏰ Links expire in 48 hours</p>
-          <p style="margin: 8px 0 0; color: #78350f;">Need help? Message <a href="https://t.me/noahchonlee" style="color: #E67E50; text-decoration: underline;">@noahchonlee</a> on Telegram.</p>
-        </div>
-      `;
-
-      const html = buildEmailHTML({
-        colorScheme: brandColors.orange,
-        title: subject,
-        preheader: 'Update your Telegram username to start receiving your daily QR codes.',
-        headerContent,
-        bodyContent,
-        footerContent: getSupportFooter(brandColors.orange)
-      });
+      // Render correction email using unified template service
+      const { subject, html } = await renderTemplate(
+        'telegram_correction',
+        {
+          customer_name: customer.name,
+          handle_update_link: handleUpdateLink,
+          deep_link: newDeepLink
+        },
+        config.supabaseServiceKey
+      );
 
       await sendEmail({
         to: customer.email,

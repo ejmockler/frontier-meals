@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { generateMagicLinkToken, isAdminEmail } from '$lib/auth/admin';
 import { sendEmail } from '$lib/email/send';
-import { getAdminMagicLinkEmail } from '$lib/email/templates/admin-magic-link';
+import { renderTemplate } from '$lib/email/templates';
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
@@ -58,16 +58,17 @@ export const POST: RequestHandler = async ({ request, url }) => {
     console.log('[Admin Auth] Magic link generated for:', normalizedEmail);
 
     // Send email
-    const emailTemplate = getAdminMagicLinkEmail({
-      email: normalizedEmail,
-      magic_link: magicLink
-    });
+    const { subject, html } = await renderTemplate(
+      'admin_magic_link',
+      { email: normalizedEmail, magic_link: magicLink },
+      SUPABASE_SERVICE_ROLE_KEY
+    );
 
     console.log('[Admin Auth] Sending email to:', normalizedEmail);
     const emailResult = await sendEmail({
       to: normalizedEmail,
-      subject: emailTemplate.subject,
-      html: emailTemplate.html,
+      subject,
+      html,
       tags: [
         { name: 'category', value: 'admin_magic_link' }
       ],

@@ -7,7 +7,7 @@ import * as jose from 'jose';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
 import qrcode from 'qrcode-generator';
 import { sendEmail } from '$lib/email/send';
-import { getQRDailyEmail } from '$lib/email/templates/qr-daily';
+import { renderTemplate } from '$lib/email/templates';
 import { validateCSRFFromFormData } from '$lib/auth/csrf';
 import { getAdminSession } from '$lib/auth/session';
 
@@ -121,16 +121,20 @@ export const actions: Actions = {
         }, { onConflict: 'customer_id,service_date' });
 
       // Send email with QR code as inline attachment (CID)
-      const emailTemplate = getQRDailyEmail({
-        customer_name: customer.name,
-        service_date: today,
-        qr_code_base64: base64Content
-      });
+      const { subject, html } = await renderTemplate(
+        'qr_daily',
+        {
+          customer_name: customer.name,
+          service_date: today,
+          qr_code_base64: base64Content
+        },
+        SUPABASE_SERVICE_ROLE_KEY
+      );
 
       await sendEmail({
         to: customer.email,
-        subject: emailTemplate.subject,
-        html: emailTemplate.html,
+        subject,
+        html,
         attachments: [
           {
             filename: 'qr-code.gif',

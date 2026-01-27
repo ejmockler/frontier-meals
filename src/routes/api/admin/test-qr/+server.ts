@@ -10,7 +10,7 @@ import { randomUUID } from '$lib/utils/crypto';
 import { todayInPT, endOfDayPT } from '$lib/utils/timezone';
 import qrcode from 'qrcode-generator';
 import { sendEmail } from '$lib/email/send';
-import { getQRDailyEmail } from '$lib/email/templates/qr-daily';
+import { renderTemplate } from '$lib/email/templates';
 import { generateShortCode } from '$lib/utils/short-code';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
@@ -142,11 +142,15 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
     const base64Content = qrCodeDataUrl.split(',')[1];
 
     // Send QR code via email (same as production)
-    const { subject, html } = getQRDailyEmail({
-      customer_name: testCustomer.name || 'there',
-      service_date: serviceDate,
-      qr_code_base64: base64Content
-    });
+    const { subject, html } = await renderTemplate(
+      'qr_daily',
+      {
+        customer_name: testCustomer.name || 'there',
+        service_date: serviceDate,
+        qr_code_base64: base64Content
+      },
+      SUPABASE_SERVICE_ROLE_KEY
+    );
 
     await sendEmail({
       to: testCustomer.email,
