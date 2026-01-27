@@ -119,12 +119,15 @@
   <!-- Footer -->
   <footer class="bg-[#1A1816] py-8">
     <Container>
-      <div class="text-center">
+      <div class="text-center space-y-2">
         <Text color="inverse" size="sm" align="center" as="p">
           © 2025 Frontier Meals. Serving Frontier Tower weekdays at noon.
         </Text>
-        <Text color="tertiary" size="sm" align="center" as="p" class="mt-2">
+        <Text color="tertiary" size="sm" align="center" as="p">
           Questions? Message <a href="https://t.me/noahchonlee" class="text-[#E67E50] hover:underline focus:outline-none focus:ring-2 focus:ring-[#E67E50] focus:ring-offset-2 focus:ring-offset-[#1A1816] rounded cursor-pointer" aria-label="Contact Noah on Telegram">@noahchonlee</a> on Telegram
+        </Text>
+        <Text color="tertiary" size="sm" align="center" as="p">
+          <a href="/terms-and-privacy" class="text-[#8E8C87] hover:text-[#E67E50] hover:underline focus:outline-none focus:ring-2 focus:ring-[#E67E50] focus:ring-offset-2 focus:ring-offset-[#1A1816] rounded cursor-pointer transition-colors duration-150">Terms & Privacy</a>
         </Text>
       </div>
     </Container>
