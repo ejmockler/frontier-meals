@@ -15,12 +15,20 @@
   let loading = $state(false);
   let error = $state('');
 
-  async function handleSubscribe() {
+  function handleScrollToCheckout() {
+    // Smooth scroll to checkout section
+    document.getElementById('checkout')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center'
+    });
+  }
+
+  async function handleCheckout() {
     loading = true;
     error = '';
 
     try {
-      const response = await fetch('/api/stripe/create-checkout', {
+      const response = await fetch('/api/paypal/create-subscription', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -29,10 +37,10 @@
 
       const data = await response.json();
 
-      if (data.url) {
-        window.location.href = data.url;
+      if (data.approvalUrl) {
+        window.location.href = data.approvalUrl;
       } else {
-        error = 'Failed to create checkout session';
+        error = data.error || 'Failed to create subscription';
       }
     } catch (err) {
       error = 'An error occurred. Please try again.';
@@ -83,9 +91,8 @@
   <main id="main-content">
     <!-- Hero: Identity + Value Proposition -->
     <HeroSection
-      onSubscribe={handleSubscribe}
+      onSubscribe={handleScrollToCheckout}
       onLearnMore={handleLearnMore}
-      {loading}
     />
 
     <!-- Community: Emotional resonance + Social proof -->
@@ -108,9 +115,9 @@
     <!-- Social Proof: Trust + Belonging -->
     <SocialProof />
 
-    <!-- Final CTA: Decision capture -->
+    <!-- Final CTA: Decision capture with Commitment Threshold -->
     <FinalCTA
-      onSubscribe={handleSubscribe}
+      onCheckout={handleCheckout}
       onContact={handleContact}
       {loading}
     />

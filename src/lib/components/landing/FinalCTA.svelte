@@ -1,49 +1,55 @@
 <script lang="ts">
   import { Section, Container, Heading, Text } from '$lib/components/landing';
+  import SubscriptionCheckout from './SubscriptionCheckout.svelte';
   import Button from '$lib/components/ui/button.svelte';
 
   interface Props {
-    onSubscribe: () => void;
+    onCheckout: () => void;
     onContact: () => void;
     loading?: boolean;
+    price?: string;
   }
 
-  let { onSubscribe, onContact, loading = false }: Props = $props();
+  let { onCheckout, onContact, loading = false, price = '$500/month' }: Props = $props();
 </script>
 
 <Section background="recessed" spacing="spacious">
   <Container size="narrow">
-    <div class="text-center">
+    <div class="text-center mb-8">
       <Heading level={2} align="center" class="mb-4">
         Ready to simplify your lunch routine?
       </Heading>
 
-      <Text size="lg" align="center" class="mb-8 max-w-xl mx-auto">
+      <Text size="lg" align="center" class="max-w-xl mx-auto">
         Join Frontier Meals today and never think about lunch again.
         Healthy meals, great community, zero hassle.
       </Text>
+    </div>
 
-      <div class="flex flex-wrap justify-center gap-4 mb-6">
-        <Button
-          onclick={onSubscribe}
-          disabled={loading}
-          size="lg"
-          aria-label="Subscribe to Frontier Meals"
-        >
-          {loading ? 'Loading...' : 'Subscribe Now'}
-        </Button>
+    <!-- Checkout Component with Commitment Threshold -->
+    <div id="checkout">
+      <SubscriptionCheckout
+        onPayPalCheckout={onCheckout}
+        {loading}
+        {price}
+      />
+    </div>
 
-        <Button
-          variant="outline"
-          onclick={onContact}
-          size="lg"
-          aria-label="Contact us on Telegram"
-        >
-          Contact Us
-        </Button>
-      </div>
+    <div class="text-center mt-8">
+      <Text size="sm" color="tertiary" align="center" class="mb-4">
+        Questions before subscribing?
+      </Text>
 
-      <Text size="sm" color="tertiary" align="center">
+      <Button
+        variant="outline"
+        onclick={onContact}
+        size="default"
+        aria-label="Contact us on Telegram"
+      >
+        Contact Us
+      </Button>
+
+      <Text size="sm" color="tertiary" align="center" class="mt-6">
         Available exclusively at Frontier Tower
       </Text>
     </div>

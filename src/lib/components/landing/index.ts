@@ -12,3 +12,4 @@ export { default as FoodShowcase } from './FoodShowcase.svelte';
 export { default as BenefitsGrid } from './BenefitsGrid.svelte';
 export { default as SocialProof } from './SocialProof.svelte';
 export { default as FinalCTA } from './FinalCTA.svelte';
+export { default as SubscriptionCheckout } from './SubscriptionCheckout.svelte';
