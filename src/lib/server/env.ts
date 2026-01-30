@@ -39,6 +39,12 @@ export interface ServerEnv {
 	STRIPE_WEBHOOK_SECRET_TEST?: string;
 	STRIPE_PRICE_ID_LIVE?: string;
 	STRIPE_PRICE_ID_TEST?: string;
+	// PayPal Config
+	PAYPAL_CLIENT_ID?: string;
+	PAYPAL_CLIENT_SECRET?: string;
+	PAYPAL_WEBHOOK_ID?: string;
+	PAYPAL_PLAN_ID?: string;
+	PAYPAL_MODE?: 'sandbox' | 'live';
 }
 
 // Cache for local dev env
@@ -102,7 +108,13 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 			STRIPE_WEBHOOK_SECRET_LIVE: (privateEnv as any).STRIPE_WEBHOOK_SECRET_LIVE,
 			STRIPE_WEBHOOK_SECRET_TEST: (privateEnv as any).STRIPE_WEBHOOK_SECRET_TEST,
 			STRIPE_PRICE_ID_LIVE: (privateEnv as any).STRIPE_PRICE_ID_LIVE,
-			STRIPE_PRICE_ID_TEST: (privateEnv as any).STRIPE_PRICE_ID_TEST
+			STRIPE_PRICE_ID_TEST: (privateEnv as any).STRIPE_PRICE_ID_TEST,
+			// PayPal Config
+			PAYPAL_CLIENT_ID: (privateEnv as any).PAYPAL_CLIENT_ID,
+			PAYPAL_CLIENT_SECRET: (privateEnv as any).PAYPAL_CLIENT_SECRET,
+			PAYPAL_WEBHOOK_ID: (privateEnv as any).PAYPAL_WEBHOOK_ID,
+			PAYPAL_PLAN_ID: (privateEnv as any).PAYPAL_PLAN_ID,
+			PAYPAL_MODE: (privateEnv as any).PAYPAL_MODE as 'sandbox' | 'live'
 		};
 	}
 

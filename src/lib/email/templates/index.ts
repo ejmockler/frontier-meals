@@ -14,7 +14,7 @@ import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { getQRDailyEmail } from './qr-daily';
 import { getTelegramLinkEmail } from './telegram-link';
 import { getTelegramCorrectionEmail } from './telegram-correction';
-import { getDunningSoftEmail, getDunningRetryEmail, getDunningFinalEmail, getCanceledNoticeEmail } from './dunning';
+import { getDunningSoftEmail, getDunningRetryEmail, getDunningFinalEmail, getCanceledNoticeEmail, getSubscriptionSuspendedEmail } from './dunning';
 import { getAdminMagicLinkEmail } from './admin-magic-link';
 import { getScheduleChangeEmail, type ScheduleChangeEmailData } from './schedule-change';
 
@@ -41,6 +41,7 @@ const CODE_TEMPLATES: Record<string, (data: any) => { subject: string; html: str
   'dunning_retry': getDunningRetryEmail,
   'dunning_final': getDunningFinalEmail,
   'canceled_notice': getCanceledNoticeEmail,
+  'subscription_suspended': getSubscriptionSuspendedEmail,
   'admin_magic_link': getAdminMagicLinkEmail,
   'schedule_change': getScheduleChangeEmail,
 };

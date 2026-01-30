@@ -198,6 +198,7 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
   const token = parts.length > 1 ? parts[1] : null;
   const telegramUserId = message.from.id;
   const telegramUsername = message.from.username;
+  const telegramFirstName = message.from.first_name;
   const chatId = message.chat.id;
 
   // Check if already linked
@@ -214,14 +215,29 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
   });
 
   if (existingCustomer) {
-    // Already linked - update last seen
+    // Already linked - update last seen and potentially update telegram_handle if it was missing
+    // (This handles PayPal customers who didn't have handle at signup)
+    const updateData: { is_linked: boolean; last_seen_at: string } = {
+      is_linked: true,
+      last_seen_at: new Date().toISOString()
+    };
+
     await ctx.supabase
       .from('telegram_link_status')
       .upsert({
         customer_id: existingCustomer.id,
-        is_linked: true,
-        last_seen_at: new Date().toISOString()
+        ...updateData
       });
+
+    // If telegram_handle was null (PayPal customer), update it now
+    if (!existingCustomer.telegram_handle && telegramUsername) {
+      const extractedHandle = `@${telegramUsername}`;
+      await ctx.supabase
+        .from('customers')
+        .update({ telegram_handle: extractedHandle })
+        .eq('id', existingCustomer.id);
+      console.log('[Telegram] Updated missing telegram_handle for existing customer:', extractedHandle);
+    }
 
     await sendMessage(ctx, chatId, 'Hey again! You\'re all set.\n\n/skip to manage dates\n/status to see what\'s coming\n/help for everything else');
     return;
@@ -274,11 +290,44 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
     return;
   }
 
-  // Link the account
-  console.log('[DB] Linking telegram account:', { customer_id: deepLinkToken.customer_id, telegram_user_id: telegramUserId });
+  // ============================================================================
+  // EXTRACT TELEGRAM HANDLE FROM message.from.username
+  // This is the key change for PayPal support - we no longer require
+  // telegram_handle from checkout, we extract it here from the bot interaction
+  // ============================================================================
+  const extractedHandle = telegramUsername ? `@${telegramUsername}` : null;
+
+  if (!extractedHandle) {
+    // User has no Telegram username set - prompt them to set one
+    console.log('[Telegram] User has no username set, prompting:', { telegram_user_id: telegramUserId, first_name: telegramFirstName });
+    await sendMessage(
+      ctx,
+      chatId,
+      `Hey ${telegramFirstName}! Looks like you don\'t have a Telegram username set.\n\n` +
+      'To use Frontier Meals, please:\n\n' +
+      '1. Go to Settings > Edit Profile\n' +
+      '2. Set a username\n' +
+      '3. Come back and click the link again\n\n' +
+      'Questions? Message @noahchonlee'
+    );
+    return;
+  }
+
+  // Link the account: set BOTH telegram_user_id AND telegram_handle
+  // For Stripe customers, telegram_handle may already be set from checkout
+  // For PayPal customers, telegram_handle will be null and we set it here
+  console.log('[DB] Linking telegram account:', {
+    customer_id: deepLinkToken.customer_id,
+    telegram_user_id: telegramUserId,
+    telegram_handle: extractedHandle
+  });
+
   const { error: linkError } = await ctx.supabase
     .from('customers')
-    .update({ telegram_user_id: telegramUserId })
+    .update({
+      telegram_user_id: telegramUserId,
+      telegram_handle: extractedHandle  // Set handle from message.from.username
+    })
     .eq('id', deepLinkToken.customer_id);
 
   if (linkError) {
@@ -293,7 +342,7 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
     return;
   }
 
-  console.log('[DB SUCCESS] Telegram account linked');
+  console.log('[DB SUCCESS] Telegram account linked with handle:', extractedHandle);
 
   // Mark token as used
   console.log('[DB] Marking token as used');
@@ -333,13 +382,18 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
 
   console.log('[DB SUCCESS] Telegram link status updated');
 
-  // Log audit event
+  // Log audit event (include extracted handle)
   console.log('[DB] Creating audit_log entry for telegram_linked');
   const { error: auditError } = await ctx.supabase.from('audit_log').insert({
     actor: `customer:${deepLinkToken.customer_id}`,
     action: 'telegram_linked',
     subject: `customer:${deepLinkToken.customer_id}`,
-    metadata: { telegram_user_id: telegramUserId, telegram_username: telegramUsername }
+    metadata: {
+      telegram_user_id: telegramUserId,
+      telegram_username: telegramUsername,
+      telegram_handle: extractedHandle,
+      source: 'deep_link'
+    }
   });
 
   if (auditError) {

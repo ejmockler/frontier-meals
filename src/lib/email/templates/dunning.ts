@@ -194,3 +194,53 @@ export function getCanceledNoticeEmail(data: { customer_name: string }) {
 
   return { subject, html };
 }
+
+export function getSubscriptionSuspendedEmail(data: { customer_name: string; reactivate_url: string }) {
+  const subject = 'Your Frontier Meals Subscription is Suspended';
+
+  const headerContent = `
+    <div style="font-size: 48px; margin-bottom: 12px;">⚠️</div>
+    <h1>Subscription Suspended</h1>
+    <p>Action required to resume service</p>
+  `;
+
+  const bodyContent = `
+    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+
+    <p style="${styles.p}">Your Frontier Meals subscription has been suspended due to payment issues.</p>
+
+    <!-- Warning Box -->
+    <div style="${infoBoxStyle('error')}">
+      <p style="${infoBoxTitleStyle('error')}">⚠️ What this means</p>
+      <p style="${infoBoxTextStyle('error')}">You won't receive daily QR codes until your payment method is updated and the subscription is reactivated.</p>
+    </div>
+
+    <p style="${styles.p}">To resume your meal service, please update your payment method and reactivate your subscription.</p>
+
+    <!-- CTA Button -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: ${tokens.spacing.lg} 0;">
+      <tr>
+        <td align="center">
+          <a href="${data.reactivate_url}" style="${buttonStyle(brandColors.gray)}">
+            Update Payment Method
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <div style="background: ${tokens.bg.subtle}; padding: ${tokens.spacing.lg}; border-radius: ${tokens.radius.md}; margin-top: ${tokens.spacing.xl};">
+      <p style="${styles.pMuted}">Questions? Reach out to <a href="https://t.me/noahchonlee" style="${linkStyle(brandColors.amber)}">@noahchonlee</a> on Telegram—we're here to help.</p>
+    </div>
+  `;
+
+  const html = buildEmailHTML({
+    colorScheme: brandColors.amber,
+    title: subject,
+    preheader: 'Action required: update your payment method to resume service.',
+    headerContent,
+    bodyContent,
+    footerContent: getSupportFooter(brandColors.amber)
+  });
+
+  return { subject, html };
+}
