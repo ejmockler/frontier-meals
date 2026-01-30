@@ -290,7 +290,7 @@
                   Security
                 </h3>
                 <p class="text-[#5C5A56] leading-relaxed pl-6">
-                  We utilize secure payment processing through <mark class="bg-[#2D9B9B]/20 px-1 rounded text-[#1A1816]">Stripe</mark> to protect your financial and personal data.
+                  We utilize secure payment processing through <mark class="bg-[#2D9B9B]/20 px-1 rounded text-[#1A1816]">PayPal</mark> to protect your financial and personal data.
                 </p>
               </div>
             </div>

@@ -5,7 +5,7 @@
 	const steps = [
 		{
 			number: 1,
-			title: 'Subscribe on Stripe',
+			title: 'Subscribe',
 			description:
 				'Sign up for a monthly subscription. Unlimited weekday lunches with one simple payment.',
 			icon: '💳'
