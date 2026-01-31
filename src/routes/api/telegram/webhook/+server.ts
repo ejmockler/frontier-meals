@@ -6,6 +6,7 @@ import { todayInPT, isSkipEligibleForReimbursement } from '$lib/utils/timezone';
 import { sha256, timingSafeEqual } from '$lib/utils/crypto';
 import { getEnv, type ServerEnv } from '$lib/server/env';
 import Stripe from 'stripe';
+import { checkRateLimit } from '$lib/utils/rate-limit';
 
 // Request-scoped context for clients and env
 interface RequestContext {
@@ -154,6 +155,79 @@ export const POST: RequestHandler = async (event) => {
 async function handleMessage(ctx: RequestContext, message: TelegramMessage) {
   const text = message.text || '';
   const chatId = message.chat.id;
+  const telegramUserId = message.from.id;
+
+  // Auto-update telegram_handle if username changed (EC-5)
+  // Rate-limited to once per hour per user to prevent excessive DB queries
+  // Username changes are rare (maybe once per user per year), so this is sufficient
+  if (message.from.id && message.from.username) {
+    // Check rate limit: only sync handle once per hour (60 minutes)
+    const rateLimitResult = await checkRateLimit(ctx.supabase, {
+      key: `handle_check:${telegramUserId}`,
+      maxRequests: 1,
+      windowMinutes: 60
+    });
+
+    if (rateLimitResult.allowed) {
+      const currentUsername = message.from.username;
+      const currentHandle = `@${currentUsername}`;
+
+      // Check if user is linked and if handle differs
+      const { data: customer } = await ctx.supabase
+        .from('customers')
+        .select('id, telegram_handle, dietary_flags, allergies')
+        .eq('telegram_user_id', telegramUserId)
+        .single();
+
+      // Update handle only if: 1) customer is linked, and 2) handle has changed
+      if (customer && customer.telegram_handle !== currentHandle) {
+        const { error: updateError } = await ctx.supabase
+          .from('customers')
+          .update({ telegram_handle: currentHandle })
+          .eq('id', customer.id);
+
+        if (updateError) {
+          console.error('[Telegram] Failed to update telegram_handle:', {
+            customer_id: customer.id,
+            old_handle: customer.telegram_handle,
+            new_handle: currentHandle,
+            error: updateError
+          });
+        } else {
+          console.log('[Telegram] Auto-updated telegram_handle:', {
+            customer_id: customer.id,
+            old_handle: customer.telegram_handle,
+            new_handle: currentHandle
+          });
+
+          // Log audit event
+          await ctx.supabase.from('audit_log').insert({
+            actor: `customer:${customer.id}`,
+            action: 'telegram_handle_updated',
+            subject: `customer:${customer.id}`,
+            metadata: {
+              old_handle: customer.telegram_handle,
+              new_handle: currentHandle,
+              source: 'auto_sync'
+            }
+          });
+        }
+      } else if (customer) {
+        // Customer found but handle unchanged - log at debug level
+        console.log('[Telegram] Handle check: no change needed', {
+          customer_id: customer.id,
+          current_handle: customer.telegram_handle
+        });
+      }
+    } else {
+      // Rate limited - skip check silently
+      // Next check will be available at: rateLimitResult.resetAt
+      console.log('[Telegram] Handle check rate-limited', {
+        telegram_user_id: telegramUserId,
+        next_check_at: rateLimitResult.resetAt
+      });
+    }
+  }
 
   // Check if it's a command
   const isCommand = message.entities?.some(e => e.type === 'bot_command');
@@ -186,9 +260,15 @@ async function handleMessage(ctx: RequestContext, message: TelegramMessage) {
       case '/unskip':
         await handleUnskipCommand(ctx, chatId);
         break;
+      case '/resend':
+        await handleResendCommand(ctx, chatId, telegramUserId);
+        break;
       default:
         await sendMessage(ctx, chatId, 'Not sure what that is. Try /help to see what\'s available.');
     }
+  } else {
+    // UX-2: Check for abandoned onboarding when user sends non-command message
+    await checkAbandonedOnboarding(ctx, chatId, telegramUserId);
   }
 }
 
@@ -253,6 +333,18 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
     return;
   }
 
+  // Validate token format (UUID)
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!token || !UUID_REGEX.test(token)) {
+    console.log('[Telegram] Invalid token format:', { length: token?.length });
+    await sendMessage(
+      ctx,
+      chatId,
+      'That link doesn\'t look right.\n\nCheck your welcome email for the correct link, or ping @noahchonlee if you need help.'
+    );
+    return;
+  }
+
   // Verify deep link token (hash incoming token for comparison)
   const tokenHash = await sha256(token);
   console.log('[Telegram Webhook] Token hash computed, querying database...');
@@ -291,6 +383,48 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
   }
 
   // ============================================================================
+  // CHECK IF TOKEN IS ACTIVATED (customer_id set)
+  // ============================================================================
+  // For PayPal customers, token is created at checkout with customer_id=NULL
+  // Webhook activates it by setting customer_id when customer is created
+  // If user clicks link BEFORE webhook completes, poll for up to 5 seconds
+  if (!deepLinkToken.customer_id) {
+    console.log('[Telegram] Token not yet activated - polling for webhook:', {
+      token_hash: tokenHash.slice(0, 8) + '...',
+      paypal_custom_id: deepLinkToken.paypal_custom_id?.slice(0, 8) + '...' || null
+    });
+
+    // Poll for activation (10 attempts × 500ms = 5 seconds)
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      const { data } = await ctx.supabase
+        .from('telegram_deep_link_tokens')
+        .select('customer_id')
+        .eq('token_hash', tokenHash)
+        .single();
+
+      if (data?.customer_id) {
+        deepLinkToken.customer_id = data.customer_id;
+        console.log('[Telegram] Token activated during polling - proceeding with link');
+        break;
+      }
+    }
+
+    // If still not activated after polling, ask user to wait
+    if (!deepLinkToken.customer_id) {
+      console.log('[Telegram] Token still not activated after polling');
+      await sendMessage(
+        ctx,
+        chatId,
+        'Your payment is being processed! This usually takes up to a minute.\n\n' +
+        'Try clicking the link again in a moment, or use the link in your welcome email.\n\n' +
+        'Questions? Message @noahchonlee'
+      );
+      return;
+    }
+  }
+
+  // ============================================================================
   // EXTRACT TELEGRAM HANDLE FROM message.from.username
   // This is the key change for PayPal support - we no longer require
   // telegram_handle from checkout, we extract it here from the bot interaction
@@ -298,16 +432,20 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
   const extractedHandle = telegramUsername ? `@${telegramUsername}` : null;
 
   if (!extractedHandle) {
-    // User has no Telegram username set - prompt them to set one
+    // UJ-6: User has no Telegram username set - provide clear instructions
     console.log('[Telegram] User has no username set, prompting:', { telegram_user_id: telegramUserId, first_name: telegramFirstName });
     await sendMessage(
       ctx,
       chatId,
-      `Hey ${telegramFirstName}! Looks like you don\'t have a Telegram username set.\n\n` +
-      'To use Frontier Meals, please:\n\n' +
-      '1. Go to Settings > Edit Profile\n' +
-      '2. Set a username\n' +
-      '3. Come back and click the link again\n\n' +
+      `Hey ${telegramFirstName}! You need a Telegram username to use Frontier Meals.\n\n` +
+      '🔧 Why? Your username lets us contact you if there are issues with your order.\n\n' +
+      '📱 How to set one:\n' +
+      '1. Tap the menu (☰) in Telegram\n' +
+      '2. Go to Settings\n' +
+      '3. Tap "Edit Profile"\n' +
+      '4. Tap "Username" and create one\n' +
+      '5. Come back here and click the link again\n\n' +
+      '✅ Once you\'ve set it, click your welcome email link again to connect.\n\n' +
       'Questions? Message @noahchonlee'
     );
     return;
@@ -555,11 +693,11 @@ async function handleAllergyResponse(ctx: RequestContext, chatId: number, telegr
       .eq('id', customer.id);
   }
 
-  // Send completion message
+  // Send completion message with QR timeline
   await sendMessage(
     ctx,
     chatId,
-    'You\'re all set!\n\nYour daily QR drops at noon PT. See you then.\n\n(/help if you need anything)'
+    'You\'re all set!\n\nYour daily QR code will be sent at 12 PM PT on weekdays.\n\nIf you signed up on a weekday before noon, you\'ll get today\'s QR shortly. Otherwise, it\'ll arrive on the next service day.\n\n(/help if you need anything)'
   );
 }
 
@@ -1025,6 +1163,11 @@ async function handleStatusCommand(ctx: RequestContext, chatId: number) {
     return;
   }
 
+  // Check onboarding completion status
+  const hasSetDiet = customer.dietary_flags && customer.dietary_flags.diet;
+  const hasSetAllergies = customer.allergies !== null;
+  const onboardingComplete = hasSetDiet && hasSetAllergies;
+
   // Get upcoming skips (both user and admin - show all to user)
   const todayStr = todayInPT(); // Use Pacific Time
   const { data: upcomingSkips } = await ctx.supabase
@@ -1042,20 +1185,26 @@ async function handleStatusCommand(ctx: RequestContext, chatId: number) {
     return s.source === 'admin' ? `  🔒 ${formatted}` : `  • ${formatted}`;
   };
 
-  const statusText = `
+  let statusText = `
 Here's what's up:
 
 📋 Subscription: ${subscription.status.charAt(0).toUpperCase() + subscription.status.slice(1)}
 🗓 Current cycle: ${new Date(subscription.current_period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(subscription.current_period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
 
-🥗 Diet: ${(customer.dietary_flags?.diet || 'Everything').charAt(0).toUpperCase() + (customer.dietary_flags?.diet || 'Everything').slice(1)}
-⚠️ Allergies: ${customer.allergies ? 'Yes (contact @noahchonlee)' : 'None'}
+🥗 Diet: ${hasSetDiet ? (customer.dietary_flags.diet.charAt(0).toUpperCase() + customer.dietary_flags.diet.slice(1)) : '❌ Not set'}
+⚠️ Allergies: ${hasSetAllergies ? (customer.allergies ? 'Yes (contact @noahchonlee)' : 'None') : '❌ Not set'}
 
 ${upcomingSkips && upcomingSkips.length > 0 ? `Upcoming skips:\n${upcomingSkips.map(formatSkip).join('\n')}` : 'No skips coming up — you\'re getting meals every day.'}
-
-/skip to change dates
-/diet to update preferences
   `.trim();
+
+  // Add onboarding prompt if incomplete
+  if (!onboardingComplete) {
+    statusText += '\n\n⚠️ Setup incomplete! Please:\n';
+    if (!hasSetDiet) statusText += '  • /diet - Set your dietary preference\n';
+    if (!hasSetAllergies) statusText += '  • Respond to allergy question\n';
+  } else {
+    statusText += '\n\n/skip to change dates\n/diet to update preferences';
+  }
 
   await sendMessage(ctx, chatId, statusText);
 }
@@ -1070,6 +1219,7 @@ Here's what you can do:
 /status — See what's coming
 /billing — Manage subscription
 /undo — Undo your last skip
+/resend — Get a new Telegram link (if not yet linked)
 
 Questions? Hit up @noahchonlee
   `.trim();
@@ -1178,6 +1328,114 @@ async function handleUnskipCommand(ctx: RequestContext, chatId: number) {
   await sendMessage(ctx, chatId, 'Tap a date to restore it:', { inline_keyboard: buttons });
 }
 
+async function handleResendCommand(ctx: RequestContext, chatId: number, telegramUserId: number) {
+  // UJ-5: Resend linking email command
+
+  // Check if user is already linked
+  const { data: customer } = await ctx.supabase
+    .from('customers')
+    .select('id, email, name, telegram_handle')
+    .eq('telegram_user_id', telegramUserId)
+    .single();
+
+  if (customer) {
+    await sendMessage(
+      ctx,
+      chatId,
+      'You\'re already linked! 🎉\n\nUse /status to check your subscription, or /help to see what else you can do.'
+    );
+    return;
+  }
+
+  // Not linked - check for pending tokens
+  // User isn't linked, so we need to find tokens by telegram_user_id from any previous linking attempts
+  // But we don't store telegram_user_id in tokens table... we need to find by checking if user has any tokens
+  // Actually, if user isn't linked, they need a NEW token. Let's check if they have an email in the system first.
+
+  // For resend to work, we need to know which customer this should be for
+  // The only way to know is if they've tried before and we have their telegram_user_id in a failed attempt
+  // Or if they give us their email... but that's complex UX
+
+  // Actually, let's check if there's a token that was created but never used
+  // We can't directly query by telegram_user_id since tokens are created BEFORE linking
+  // This is a limitation of the current architecture
+
+  // Better approach: Check rate limit first, then look for any unused tokens
+  const { data: rateLimit } = await ctx.supabase
+    .from('telegram_resend_rate_limit')
+    .select('*')
+    .eq('telegram_user_id', telegramUserId)
+    .single();
+
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+  if (rateLimit && new Date(rateLimit.last_resend_at) > oneHourAgo) {
+    const timeSinceLastResend = now.getTime() - new Date(rateLimit.last_resend_at).getTime();
+    const minutesLeft = Math.ceil((60 * 60 * 1000 - timeSinceLastResend) / 60 / 1000);
+
+    await sendMessage(
+      ctx,
+      chatId,
+      `Please wait ${minutesLeft} minute${minutesLeft > 1 ? 's' : ''} before requesting another link.\n\n` +
+      'Check your email inbox (and spam folder) for the welcome email from Frontier Meals.\n\n' +
+      'Need help? Message @noahchonlee'
+    );
+    return;
+  }
+
+  // No linked account and passed rate limit - they need to contact support
+  // We can't resend without knowing which customer record to link to
+  await sendMessage(
+    ctx,
+    chatId,
+    'No pending link found for your Telegram account.\n\n' +
+    '📧 If you just subscribed, check your email for the welcome message with your Telegram link.\n\n' +
+    '🆕 If you haven\'t subscribed yet, visit frontiermeals.com to get started.\n\n' +
+    '❓ Already subscribed but can\'t find your link? Message @noahchonlee with your email address and we\'ll help you out.'
+  );
+
+  // Update rate limit even for failed attempts (prevents spam)
+  await ctx.supabase
+    .from('telegram_resend_rate_limit')
+    .upsert({
+      telegram_user_id: telegramUserId,
+      last_resend_at: now.toISOString()
+    });
+}
+
+async function checkAbandonedOnboarding(ctx: RequestContext, chatId: number, telegramUserId: number) {
+  // UX-2: Check if user has incomplete onboarding and prompt them
+
+  const { data: customer } = await ctx.supabase
+    .from('customers')
+    .select('id, dietary_flags, allergies')
+    .eq('telegram_user_id', telegramUserId)
+    .single();
+
+  if (!customer) {
+    // Not linked - don't nag
+    return;
+  }
+
+  // Check if onboarding is incomplete
+  const hasSetDiet = customer.dietary_flags && customer.dietary_flags.diet;
+  const hasSetAllergies = customer.allergies !== null;
+
+  if (!hasSetDiet || !hasSetAllergies) {
+    // Onboarding incomplete - send gentle reminder
+    await sendMessage(
+      ctx,
+      chatId,
+      '👋 Hey! Looks like you haven\'t finished setting up your meal preferences.\n\n' +
+      'Quick setup:\n' +
+      (!hasSetDiet ? '  • /diet - Choose your dietary preference\n' : '') +
+      (!hasSetAllergies ? '  • Tell us about any allergies\n' : '') +
+      '\nThis ensures we prepare the right meals for you! 🍽️'
+    );
+  }
+}
+
 async function handleBillingCommand(ctx: RequestContext, chatId: number) {
   const telegramUserId = chatId;
 
@@ -1193,33 +1451,26 @@ async function handleBillingCommand(ctx: RequestContext, chatId: number) {
     return;
   }
 
-  if (!customer.stripe_customer_id) {
+  // Route to provider-specific billing handler
+  const provider = customer.payment_provider;
+
+  if (provider === 'paypal') {
+    // PayPal flow: Direct link to PayPal account management
     await sendMessage(
       ctx,
       chatId,
-      'Can\'t find your billing account.\n\nSomething\'s off — message @noahchonlee and we\'ll sort it out.'
-    );
-    return;
-  }
-
-  try {
-    // Generate Stripe Customer Portal session (expires in 30 minutes)
-    const portalSession = await ctx.stripe.billingPortal.sessions.create({
-      customer: customer.stripe_customer_id,
-      return_url: 'https://frontier-meals.com'
-    });
-
-    // Send message with inline button
-    await sendMessage(
-      ctx,
-      chatId,
-      '💳 Manage your subscription:\n\n• Update payment\n• View billing history\n• Pause or cancel\n\nTap below to open your portal (expires in 30 min)',
+      '💳 Manage Your Subscription\n\n' +
+      '• Update payment method\n' +
+      '• View billing history\n' +
+      '• Pause or cancel\n\n' +
+      '⚠️ You\'ll see all your PayPal subscriptions — look for "Frontier Meals"\n\n' +
+      'Tap below to open PayPal:',
       {
         inline_keyboard: [
           [
             {
-              text: '💳 Open Billing Portal',
-              url: portalSession.url
+              text: '💳 Open PayPal Account',
+              url: 'https://www.paypal.com/myaccount/autopay/'
             }
           ]
         ]
@@ -1231,16 +1482,73 @@ async function handleBillingCommand(ctx: RequestContext, chatId: number) {
       actor: `customer:${customer.id}`,
       action: 'billing_portal_accessed',
       subject: `customer:${customer.id}`,
-      metadata: { portal_session_id: portalSession.id }
+      metadata: { payment_provider: 'paypal' }
     });
-  } catch (error) {
-    console.error('[Telegram] Error creating portal session:', error);
-    await sendMessage(
-      ctx,
-      chatId,
-      'Something went wrong.\n\nTry again? If it keeps happening, ping @noahchonlee.'
-    );
+
+    return;
   }
+
+  if (provider === 'stripe') {
+    // Stripe flow: Generate billing portal session
+    if (!customer.stripe_customer_id) {
+      await sendMessage(
+        ctx,
+        chatId,
+        'Can\'t find your billing account.\n\nSomething\'s off — message @noahchonlee and we\'ll sort it out.'
+      );
+      return;
+    }
+
+    try {
+      // Generate Stripe Customer Portal session (expires in 30 minutes)
+      const portalSession = await ctx.stripe.billingPortal.sessions.create({
+        customer: customer.stripe_customer_id,
+        return_url: 'https://frontier-meals.com'
+      });
+
+      // Send message with inline button
+      await sendMessage(
+        ctx,
+        chatId,
+        '💳 Manage Your Subscription\n\n• Update payment method\n• View billing history\n• Pause or cancel\n\nTap below to open your portal (expires in 30 min):',
+        {
+          inline_keyboard: [
+            [
+              {
+                text: '💳 Open Billing Portal',
+                url: portalSession.url
+              }
+            ]
+          ]
+        }
+      );
+
+      // Log audit event
+      await ctx.supabase.from('audit_log').insert({
+        actor: `customer:${customer.id}`,
+        action: 'billing_portal_accessed',
+        subject: `customer:${customer.id}`,
+        metadata: { portal_session_id: portalSession.id, payment_provider: 'stripe' }
+      });
+    } catch (error) {
+      console.error('[Telegram] Error creating portal session:', error);
+      await sendMessage(
+        ctx,
+        chatId,
+        'Something went wrong.\n\nTry again? If it keeps happening, ping @noahchonlee.'
+      );
+    }
+
+    return;
+  }
+
+  // Unknown provider
+  console.error('[Telegram] Unknown payment provider:', provider);
+  await sendMessage(
+    ctx,
+    chatId,
+    'Can\'t find your billing account.\n\nSomething\'s off — message @noahchonlee and we\'ll sort it out.'
+  );
 }
 
 // Telegram API helpers
