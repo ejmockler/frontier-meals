@@ -84,7 +84,7 @@ export const POST: RequestHandler = async (event) => {
 			deep_link_token_hash: deepLinkTokenHash.slice(0, 8) + '...'
 		});
 
-		return json({ url: approvalUrl });
+		return json({ approvalUrl });
 	} catch (error) {
 		console.error('[PayPal] Error creating subscription:', error);
 		return json({ error: 'Failed to create subscription' }, { status: 500 });
