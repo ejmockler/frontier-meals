@@ -455,6 +455,9 @@ async function handleSubscriptionActivated(
 	// NOTE: We end up with 2 valid tokens per customer (success page + email)
 	// This is acceptable - both work, user can use either one
 	// PayPal doesn't support metadata like Stripe, so we can't pass plaintext token through
+	//
+	// DISCOUNT CODES:
+	// If reservation_id is present in custom_id, we call redeem_discount_code RPC
 	// ============================================================================
 
 	const paypalCustomId = resource.custom_id;
@@ -464,25 +467,40 @@ async function handleSubscriptionActivated(
 		throw new Error('Missing custom_id in PayPal subscription');
 	}
 
-	// Validate SHA-256 format (64 hex characters)
-	const SHA256_REGEX = /^[a-f0-9]{64}$/i;
-	if (!SHA256_REGEX.test(paypalCustomId)) {
-		console.error('[PayPal Webhook] Invalid custom_id format:', {
-			length: paypalCustomId.length,
-			prefix: paypalCustomId.slice(0, 8)
+	// Parse custom_id - it may be JSON (with reservation_id) or plain SHA-256 hash
+	let customData: { token: string; reservation_id?: string; email?: string };
+	try {
+		// Try parsing as JSON first (new format with discount codes)
+		customData = JSON.parse(paypalCustomId);
+		console.log('[PayPal Webhook] Parsed custom_id as JSON:', {
+			has_token: !!customData.token,
+			has_reservation: !!customData.reservation_id
 		});
-		throw new Error('Invalid custom_id format in PayPal subscription');
+	} catch {
+		// Fall back to plain hash (legacy format)
+		const SHA256_REGEX = /^[a-f0-9]{64}$/i;
+		if (!SHA256_REGEX.test(paypalCustomId)) {
+			console.error('[PayPal Webhook] Invalid custom_id format:', {
+				length: paypalCustomId.length,
+				prefix: paypalCustomId.slice(0, 8)
+			});
+			throw new Error('Invalid custom_id format in PayPal subscription');
+		}
+		customData = { token: paypalCustomId };
+		console.log('[PayPal Webhook] Using legacy custom_id format (plain hash)');
 	}
 
+	const tokenHash = customData.token;
+
 	console.log('[PayPal Webhook] Looking for checkout token:', {
-		paypal_custom_id: paypalCustomId.slice(0, 8) + '...'
+		token_hash: tokenHash.slice(0, 8) + '...'
 	});
 
 	// Find and activate the token created during checkout
 	const { data: existingToken, error: findTokenError } = await supabase
 		.from('telegram_deep_link_tokens')
 		.select('*')
-		.eq('paypal_custom_id', paypalCustomId)
+		.eq('paypal_custom_id', tokenHash)
 		.eq('used', false)
 		.maybeSingle();
 
@@ -519,7 +537,7 @@ async function handleSubscriptionActivated(
 	} else {
 		// FALLBACK: Token not found (shouldn't happen unless DB write failed at checkout)
 		console.warn('[PayPal Webhook] ⚠ Checkout token not found - checkout DB write may have failed:', {
-			paypal_custom_id: paypalCustomId.slice(0, 8) + '...'
+			token_hash: tokenHash.slice(0, 8) + '...'
 		});
 	}
 
@@ -628,6 +646,68 @@ async function handleSubscriptionActivated(
 		console.log('[EMAIL SKIP] Email already sent (duplicate webhook or race condition)');
 	}
 
+	// ============================================================================
+	// DISCOUNT CODE REDEMPTION
+	// ============================================================================
+	// If reservation_id exists in custom_id, redeem the discount code
+	// This is idempotent - safe to call multiple times
+	// ============================================================================
+
+	if (customData.reservation_id) {
+		try {
+			console.log('[PayPal Webhook] Redeeming discount code for reservation:', {
+				reservation_id: customData.reservation_id,
+				customer_id: customerId,
+				paypal_subscription_id: paypalSubscriptionId
+			});
+
+			const { data: redeemed, error: redeemError } = await supabase.rpc('redeem_discount_code', {
+				p_reservation_id: customData.reservation_id,
+				p_customer_id: customerId,
+				p_paypal_subscription_id: paypalSubscriptionId
+			});
+
+			if (redeemError) {
+				// Log error but don't fail the webhook
+				// The subscription is already created, redemption failure shouldn't block
+				console.error('[PayPal Webhook] Error redeeming discount code (non-fatal):', {
+					error: redeemError.message,
+					reservation_id: customData.reservation_id
+				});
+
+				// Audit log for failed redemption
+				await supabase.from('audit_log').insert({
+					actor: 'system',
+					action: 'discount_redemption_failed',
+					subject: `customer:${customerId}`,
+					metadata: {
+						payment_provider: 'paypal',
+						paypal_subscription_id: paypalSubscriptionId,
+						reservation_id: customData.reservation_id,
+						error: redeemError.message
+					}
+				});
+			} else if (redeemed) {
+				console.log('[PayPal Webhook] ✓ Discount code redeemed successfully');
+
+				// Audit log for successful redemption
+				await supabase.from('audit_log').insert({
+					actor: 'system',
+					action: 'discount_redeemed',
+					subject: `customer:${customerId}`,
+					metadata: {
+						payment_provider: 'paypal',
+						paypal_subscription_id: paypalSubscriptionId,
+						reservation_id: customData.reservation_id
+					}
+				});
+			}
+		} catch (error) {
+			// Catch any unexpected errors - don't fail the webhook
+			console.error('[PayPal Webhook] Unexpected error during discount redemption (non-fatal):', error);
+		}
+	}
+
 	// Audit log (PII-safe metadata)
 	await supabase.from('audit_log').insert({
 		actor: 'system',
@@ -636,7 +716,8 @@ async function handleSubscriptionActivated(
 		metadata: {
 			payment_provider: 'paypal',
 			paypal_subscription_id: redactPII({ subscription_id: paypalSubscriptionId }).subscription_id,
-			email_domain: email.split('@')[1] || 'unknown' // Store domain only, not full email
+			email_domain: email.split('@')[1] || 'unknown', // Store domain only, not full email
+			has_discount: !!customData.reservation_id
 		}
 	});
 }

@@ -47,6 +47,9 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	try {
+		// Parse request body for optional reservation_id
+		const body = await request.json().catch(() => ({}));
+		const { reservation_id, email } = body;
 		// Generate deep link token BEFORE checkout (same pattern as Stripe)
 		// This is passed via custom_id and returned in success URL
 		const deepLinkToken = randomUUID();
@@ -85,6 +88,77 @@ export const POST: RequestHandler = async (event) => {
 			expires_at: tokenExpiresAt.toISOString()
 		});
 
+		// Determine which PayPal Plan ID to use
+		let planId: string;
+		let customIdData: { token: string; reservation_id?: string; email?: string };
+
+		if (reservation_id) {
+			// Fetch reservation to get the discounted plan's paypal_plan_id
+			const { data: reservation, error: reservationError } = await supabase
+				.from('discount_code_reservations')
+				.select(`
+					id,
+					discount_code_id,
+					customer_email,
+					discount_codes!inner(
+						plan_id,
+						subscription_plans!inner(
+							paypal_plan_id
+						)
+					)
+				`)
+				.eq('id', reservation_id)
+				.is('redeemed_at', null)
+				.single();
+
+			if (reservationError || !reservation) {
+				console.error('[PayPal Checkout] Invalid or already redeemed reservation:', reservation_id);
+				return json({ error: 'Invalid reservation ID' }, { status: 400 });
+			}
+
+			// Extract paypal_plan_id from nested structure
+			const discountCodes = Array.isArray(reservation.discount_codes)
+				? reservation.discount_codes[0]
+				: reservation.discount_codes;
+			const subscriptionPlans = Array.isArray(discountCodes?.subscription_plans)
+				? discountCodes.subscription_plans[0]
+				: discountCodes?.subscription_plans;
+
+			if (!subscriptionPlans?.paypal_plan_id) {
+				console.error('[PayPal Checkout] No PayPal plan ID found for reservation:', reservation_id);
+				return json({ error: 'Invalid plan configuration' }, { status: 500 });
+			}
+
+			planId = subscriptionPlans.paypal_plan_id;
+			customIdData = {
+				token: deepLinkTokenHash,
+				reservation_id,
+				email: email || reservation.customer_email
+			};
+
+			console.log('[PayPal Checkout] Using discounted plan:', {
+				reservation_id,
+				plan_id: planId
+			});
+		} else {
+			// No reservation - use default plan
+			const { data: defaultPlan } = await supabase
+				.from('subscription_plans')
+				.select('paypal_plan_id')
+				.eq('is_default', true)
+				.eq('is_active', true)
+				.single();
+
+			planId = defaultPlan?.paypal_plan_id || env.PAYPAL_PLAN_ID;
+			customIdData = { token: deepLinkTokenHash };
+
+			if (email) {
+				customIdData.email = email;
+			}
+
+			console.log('[PayPal Checkout] Using default plan:', { plan_id: planId });
+		}
+
 		const paypalEnv: PayPalEnv = {
 			PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID,
 			PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET,
@@ -96,9 +170,10 @@ export const POST: RequestHandler = async (event) => {
 		// Create PayPal subscription
 		// Note: PayPal doesn't support custom fields at checkout like Stripe
 		// The telegram_handle will be extracted from the bot interaction later
+		// We encode reservation_id in custom_id as JSON for webhook processing
 		const subscription = await createPayPalSubscription(paypalEnv, {
-			planId: env.PAYPAL_PLAN_ID,
-			customId: deepLinkTokenHash, // Store hash in custom_id for verification
+			planId,
+			customId: JSON.stringify(customIdData), // Store reservation_id + token for verification
 			returnUrl: `${url.origin}/success?t=${deepLinkToken}&provider=paypal`,
 			cancelUrl: `${url.origin}`
 		});
