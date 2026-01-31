@@ -556,6 +556,8 @@
             Code Expired
           {:else if errorCode === 'ALREADY_REDEEMED'}
             Already Redeemed
+          {:else if errorCode === 'SUBSCRIPTION_INACTIVE'}
+            Subscription Issue
           {:else}
             Something's not right
           {/if}
@@ -563,7 +565,13 @@
 
         <p class="text-3xl text-[#D97F3E] font-bold mb-8">{message}</p>
 
-        {#if errorCode !== 'ALREADY_REDEEMED'}
+        {#if errorCode === 'SUBSCRIPTION_INACTIVE'}
+          <div class="bg-[#E8E6E1] rounded-sm p-8 border-2 border-[#D9D7D2] shadow-lg">
+            <p class="text-2xl text-[#5C5A56] font-medium">
+              Please check your email or contact support to resolve payment issues
+            </p>
+          </div>
+        {:else if errorCode !== 'ALREADY_REDEEMED'}
           <div class="bg-[#E8E6E1] rounded-sm p-8 border-2 border-[#D9D7D2] shadow-lg">
             <p class="text-2xl text-[#5C5A56] font-medium">
               Check your QR code or contact support

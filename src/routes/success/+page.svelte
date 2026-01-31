@@ -32,7 +32,7 @@
       <!-- Header -->
       <div>
         <h1 class="text-3xl font-extrabold tracking-tight text-[#1A1816] mb-2">Welcome to Frontier Meals! 🍽️</h1>
-        <p class="text-[#5C5A56]">Your subscription is now active.</p>
+        <p class="text-[#5C5A56]">We're setting up your subscription now.</p>
       </div>
 
       {#if deepLink}
