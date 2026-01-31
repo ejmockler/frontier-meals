@@ -87,7 +87,7 @@ export function getTelegramCorrectionEmail(data: TelegramCorrectionEmailData) {
 
     <!-- Expiry Warning -->
     <div style="${infoBoxStyle('warning')}">
-      <p style="${infoBoxTitleStyle('warning')}">&#9200; Links expire in 48 hours</p>
+      <p style="${infoBoxTitleStyle('warning')}">&#9200; Links expire in 7 days</p>
       <p style="${infoBoxTextStyle('warning')}">Need help? Message <a href="https://t.me/noahchonlee" style="color: ${scheme.link}; text-decoration: underline;">@noahchonlee</a> on Telegram.</p>
     </div>
   `;

@@ -222,7 +222,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
         id: 'telegram_correction-infoBox-2',
         type: 'infoBox',
         boxType: 'warning',
-        title: '⏰ Links expire in 48 hours',
+        title: '⏰ Links expire in 7 days',
         text: 'Need help? Message @noahchonlee on Telegram.'
       }
     ]

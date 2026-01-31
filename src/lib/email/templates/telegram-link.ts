@@ -97,7 +97,7 @@ export function getTelegramLinkEmail(data: {
     <!-- Warning Notice -->
     <div style="${infoBoxStyle('warning')}">
       <p style="${infoBoxTitleStyle('warning')}">⚠️ Important</p>
-      <p style="${infoBoxTextStyle('warning')}">You must connect on Telegram within 60 minutes to start receiving your daily QR codes.</p>
+      <p style="${infoBoxTextStyle('warning')}">This link expires in 7 days. Connect on Telegram to start receiving your daily QR codes.</p>
     </div>
   `;
 
