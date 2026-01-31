@@ -52,6 +52,39 @@ export const POST: RequestHandler = async (event) => {
 		const deepLinkToken = randomUUID();
 		const deepLinkTokenHash = await sha256(deepLinkToken);
 
+		// CRITICAL: Store token in database BEFORE redirect (7-day expiry)
+		// This solves the race condition where user lands on success page before webhook
+		//
+		// FLOW:
+		// 1. Token created here with customer_id=NULL, paypal_custom_id=hash
+		// 2. User redirected to PayPal, completes payment
+		// 3. User returns to /success?t=TOKEN (success page shows link)
+		// 4. Webhook arrives, creates customer, activates token (sets customer_id)
+		// 5. Both success page link AND email link now work
+		//
+		// NOTE: There's still a potential delay if webhook arrives AFTER user clicks success page link
+		// But this is much better than the old flow where success page had a DIFFERENT (invalid) token
+		// At worst, user sees "link expired" and uses the email link instead
+		const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+		const { error: tokenError } = await supabase.from('telegram_deep_link_tokens').insert({
+			customer_id: null, // Will be set by webhook when customer is created
+			token_hash: deepLinkTokenHash,
+			paypal_custom_id: deepLinkTokenHash, // Links token to subscription via custom_id
+			expires_at: tokenExpiresAt.toISOString(),
+			used: false
+		});
+
+		if (tokenError) {
+			console.error('[PayPal Checkout] Error storing deep link token:', tokenError);
+			return json({ error: 'Failed to create checkout session' }, { status: 500 });
+		}
+
+		console.log('[PayPal Checkout] Deep link token stored:', {
+			token_hash: deepLinkTokenHash.slice(0, 8) + '...',
+			paypal_custom_id: deepLinkTokenHash.slice(0, 8) + '...',
+			expires_at: tokenExpiresAt.toISOString()
+		});
+
 		const paypalEnv: PayPalEnv = {
 			PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID,
 			PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET,
