@@ -153,5 +153,14 @@ export const RateLimitKeys = {
    */
   checkout(ip: string): string {
     return `checkout:${ip}`;
+  },
+
+  /**
+   * Generate key for webhook rate limiting
+   * @param provider - Payment provider (stripe, paypal)
+   * @param ip - IP address of the requester
+   */
+  webhook(provider: 'stripe' | 'paypal', ip: string): string {
+    return `webhook:${provider}:${ip}`;
   }
 };
