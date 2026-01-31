@@ -7,7 +7,8 @@ import {
 import {
   SUPABASE_SERVICE_ROLE_KEY,
   QR_PRIVATE_KEY_BASE64,
-  CRON_SECRET
+  CRON_SECRET,
+  TELEGRAM_BOT_TOKEN
 } from '$env/static/private';
 
 /**
@@ -42,14 +43,15 @@ export const POST: RequestHandler = async ({ request }) => {
     const results = await issueDailyQRCodes({
       supabaseUrl: PUBLIC_SUPABASE_URL,
       supabaseServiceKey: SUPABASE_SERVICE_ROLE_KEY,
-      qrPrivateKey
+      qrPrivateKey,
+      telegramBotToken: TELEGRAM_BOT_TOKEN
     });
 
     console.log(`[Cron] Job complete. Issued: ${results.issued}, Errors: ${results.errors.length}`);
 
     if (results.errors.length > 0) {
+      // Alerts are sent by issueDailyQRCodes() via sendAdminAlert()
       console.error('[Cron] Errors encountered:', results.errors);
-      // TODO: Send alert to @noahchonlee via Telegram
     }
 
     return json({
