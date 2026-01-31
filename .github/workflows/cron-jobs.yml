@@ -24,6 +24,7 @@ on:
           - cleanup-rate-limits
           - cleanup-expired-tokens
           - cleanup-skip-sessions
+          - cleanup-discount-reservations
           - all
 
 env:
@@ -141,6 +142,24 @@ jobs:
       - name: Cleanup Skip Sessions
         run: |
           response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/cleanup-skip-sessions" \
+            -H "Content-Type: application/json" \
+            -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+  # Cleanup Discount Reservations - Runs every 5 minutes (separate workflow)
+  cleanup-discount-reservations:
+    name: Cleanup Discount Reservations
+    runs-on: ubuntu-latest
+    if: github.event.inputs.job == 'cleanup-discount-reservations' || github.event.inputs.job == 'all'
+    steps:
+      - name: Cleanup Discount Reservations
+        run: |
+          response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/cleanup-discount-reservations" \
             -H "Content-Type: application/json" \
             -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
 
