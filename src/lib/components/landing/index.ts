@@ -13,3 +13,4 @@ export { default as BenefitsGrid } from './BenefitsGrid.svelte';
 export { default as SocialProof } from './SocialProof.svelte';
 export { default as FinalCTA } from './FinalCTA.svelte';
 export { default as SubscriptionCheckout } from './SubscriptionCheckout.svelte';
+export { default as DiscountCodeInput } from './DiscountCodeInput.svelte';

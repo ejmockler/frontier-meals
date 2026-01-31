@@ -23,16 +23,22 @@
     });
   }
 
-  async function handleCheckout() {
+  async function handleCheckout(reservationId?: string) {
     loading = true;
     error = '';
 
     try {
+      const body: { reservation_id?: string } = {};
+      if (reservationId) {
+        body.reservation_id = reservationId;
+      }
+
       const response = await fetch('/api/paypal/create-subscription', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify(body)
       });
 
       const data = await response.json();

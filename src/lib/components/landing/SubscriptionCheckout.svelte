@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * SubscriptionCheckout - Commitment Threshold Pattern
+	 * SubscriptionCheckout - Commitment Threshold Pattern with Discount Code Support
 	 *
 	 * Perceptual Engineering Principles Applied:
 	 * - Visible State: Locked/unlocked is perceptually obvious
@@ -8,25 +8,78 @@
 	 * - Recognition > Recall: Key terms shown, not linked to PDF
 	 * - Intentionality: Two-step prevents accidental commitment
 	 * - Working Memory: Only essential terms (~3 chunks)
+	 * - Discount Integration: Always-visible on desktop, collapsible on mobile
+	 * - Price Animation: Discount impact perceptually highlighted
 	 */
 
+	import DiscountCodeInput from './DiscountCodeInput.svelte';
+
 	interface Props {
-		onPayPalCheckout: () => void;
+		onPayPalCheckout: (reservationId?: string) => void;
 		loading?: boolean;
 		price?: string;
+		email?: string; // Customer email for discount reservations
 	}
 
 	let {
 		onPayPalCheckout,
 		loading = false,
-		price = '$500/month'
+		price = '$500/month',
+		email = ''
 	}: Props = $props();
 
 	// Commitment threshold state
 	let agreed = $state(false);
 
+	// Discount state
+	let reservationId = $state<string | undefined>(undefined);
+	let discountedPrice = $state<number | undefined>(undefined);
+	let originalPrice = $state<number>(500); // Default price, extracted from price prop
+	let showPriceAnimation = $state(false);
+
+	// Extract numeric price from price string (e.g., "$500/month" -> 500)
+	$effect(() => {
+		const match = price.match(/\$(\d+)/);
+		if (match) {
+			originalPrice = parseInt(match[1], 10);
+		}
+	});
+
 	// Derived: buttons unlocked when agreement is checked
 	let unlocked = $derived(agreed && !loading);
+
+	// Derived: final price to display
+	let finalPrice = $derived(discountedPrice ?? originalPrice);
+	let hasDiscount = $derived(discountedPrice !== undefined && discountedPrice !== originalPrice);
+
+	/**
+	 * Handle discount code applied
+	 */
+	function handleDiscountApplied(resId: string, newPrice: number) {
+		reservationId = resId;
+		discountedPrice = newPrice;
+
+		// Trigger price animation
+		showPriceAnimation = true;
+		setTimeout(() => {
+			showPriceAnimation = false;
+		}, 300);
+	}
+
+	/**
+	 * Handle discount code removed
+	 */
+	function handleDiscountRemoved() {
+		reservationId = undefined;
+		discountedPrice = undefined;
+	}
+
+	/**
+	 * Handle PayPal checkout with optional reservation ID
+	 */
+	function handleCheckout() {
+		onPayPalCheckout(reservationId);
+	}
 </script>
 
 <div class="w-full max-w-md mx-auto">
@@ -69,9 +122,21 @@
 		<ul class="space-y-3 mb-5">
 			<li class="flex items-start gap-3">
 				<span class="flex-shrink-0 w-6 h-6 bg-[#E67E50]/10 text-[#E67E50] rounded flex items-center justify-center text-sm font-bold">$</span>
-				<div>
-					<p class="font-medium text-[#1A1816]">{price}, billed monthly</p>
+				<div class="flex-1">
+					<div class="font-medium text-[#1A1816]" class:price-updating={showPriceAnimation}>
+						{#if hasDiscount}
+							<span class="price-original">${originalPrice}/month</span>
+							<span class="price-discounted ml-2">${finalPrice}/month</span>
+						{:else}
+							{price}, billed monthly
+						{/if}
+					</div>
 					<p class="text-sm text-[#5C5A56]">First charge today</p>
+					{#if hasDiscount}
+						<p class="text-xs text-[#059669] mt-1 savings-badge inline-block">
+							You save: ${(originalPrice - finalPrice).toFixed(2)}
+						</p>
+					{/if}
 				</div>
 			</li>
 			<li class="flex items-start gap-3">
@@ -103,6 +168,16 @@
 				</div>
 			</li>
 		</ul>
+
+		<!-- Discount Code Section -->
+		<div class="mb-5 pt-3 border-t-2 border-[#E8E6E1]">
+			<DiscountCodeInput
+				planPrice={originalPrice}
+				onDiscountApplied={handleDiscountApplied}
+				onDiscountRemoved={handleDiscountRemoved}
+				{email}
+			/>
+		</div>
 
 		<!-- Agreement Checkbox (The Threshold) -->
 		<label
@@ -138,7 +213,7 @@
 	<div class="space-y-3">
 		<!-- Subscribe Button -->
 		<button
-			onclick={onPayPalCheckout}
+			onclick={handleCheckout}
 			disabled={!unlocked}
 			class="w-full h-14 rounded-md font-bold text-lg transition-all duration-300 ease-out flex items-center justify-center gap-3 focus:outline-none focus:ring-2 focus:ring-offset-2 border-2"
 			class:bg-[#E67E50]={unlocked}
@@ -174,3 +249,53 @@
 		</p>
 	{/if}
 </div>
+
+<style>
+	/* Price animation styles */
+	:global(.price-updating) {
+		animation: price-highlight 200ms ease-out;
+	}
+
+	@keyframes price-highlight {
+		0% {
+			background: transparent;
+		}
+		50% {
+			background: #fef3c7;
+			transform: scale(1.05);
+		}
+		100% {
+			background: transparent;
+			transform: scale(1);
+		}
+	}
+
+	:global(.price-original) {
+		text-decoration: line-through;
+		color: #9ca3af;
+	}
+
+	:global(.price-discounted) {
+		color: #059669;
+		font-weight: 600;
+	}
+
+	:global(.savings-badge) {
+		animation: badge-appear 300ms ease-out;
+		background: #d1fae5;
+		color: #059669;
+		padding: 4px 8px;
+		border-radius: 4px;
+	}
+
+	@keyframes badge-appear {
+		0% {
+			opacity: 0;
+			transform: translateY(-10px);
+		}
+		100% {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+</style>
