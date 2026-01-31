@@ -20,6 +20,13 @@ Welcome to the Frontier Meals technical documentation. This directory contains s
 
 ### Feature Specifications
 
+#### Discount Codes (In Development)
+- `discount-codes-spec.md` - **Discount code system specification**
+  - Database schema with reservation system
+  - Admin UI for code management
+  - Customer checkout integration
+  - Race condition prevention
+
 #### Email & Templates
 - Template service docs in root: `/TEMPLATE_SERVICE_README.md`
 
