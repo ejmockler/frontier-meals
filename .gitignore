@@ -55,3 +55,4 @@ drizzle/**/*.sql
 .cache
 .temp
 .playwright-mcp/
+.wrangler

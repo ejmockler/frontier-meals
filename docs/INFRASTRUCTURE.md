@@ -97,7 +97,8 @@ Cron jobs are triggered via **GitHub Actions** since Cloudflare Pages doesn't su
 | Issue QR Codes | Daily at 12pm PT | `cron-jobs.yml` |
 | Check Telegram Links | Daily (after QR) | `cron-jobs.yml` |
 | Retry Failed Emails | Every 6 hours | `cron-retry-emails.yml` |
-| Cleanup Rate Limits | Weekly (Sunday) | `cron-cleanup.yml` |
+| Cleanup Rate Limits | Weekly (Sunday 3am UTC) | `cron-cleanup.yml` |
+| Cleanup Expired Tokens | Weekly (Sunday 2am UTC) | `cron-cleanup.yml` |
 
 ### Manual Trigger
 
@@ -123,6 +124,7 @@ curl -X POST https://frontiermeals.com/api/cron/issue-qr \
 | `/api/cron/check-telegram-links` | Send reminders for unlinked Telegram accounts |
 | `/api/cron/retry-emails` | Retry failed email deliveries |
 | `/api/cron/cleanup-rate-limits` | Clean expired rate limit entries |
+| `/api/cron/cleanup-expired-tokens` | Clean expired and unused Telegram deep link tokens |
 
 ## Webhooks
 

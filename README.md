@@ -1,7 +1,7 @@
 # Frontier Meals — Documentation Suite
 
-**Version:** 1.0
-**Last Updated:** 2025-10-26
+**Version:** 1.1
+**Last Updated:** 2026-01-30
 **Scope:** Consumer-Handling Stack Only
 
 ---
@@ -71,7 +71,7 @@ frontier-meals-docs/
   - [Webhook Backlog](runbooks/WEBHOOK-BACKLOG.md) — Stripe/Telegram recovery
 
 **Key Tools:**
-- Vercel Logs (cron jobs, webhooks)
+- Cloudflare Pages Logs (cron jobs, webhooks)
 - Stripe Dashboard (subscriptions, payments)
 - Resend Dashboard (email delivery)
 - Telegram Bot (ops alerts, customer support)
@@ -115,7 +115,7 @@ pnpm dev
 **Key Commands:**
 - `supabase migration new <name>` — Create migration
 - `stripe listen --forward-to localhost:5173/api/stripe/webhook` — Test webhooks
-- `vercel --prod` — Deploy to production
+- Deploy to production via Cloudflare Pages
 
 ---
 
@@ -252,10 +252,10 @@ Skips for dates after the current week's Friday 09:00 PT boundary are flagged `e
 | **Web app** | SvelteKit (SSR + islands), PWA for kiosk |
 | **Database** | Supabase Postgres + RLS |
 | **Auth** | Passwordless magic link (admin-only) |
-| **Payments** | Stripe Checkout + Billing |
+| **Payments** | Stripe + PayPal | Dual payment provider support |
 | **Email** | Resend API |
 | **Messaging** | Telegram Bot API |
-| **Infra** | Vercel (app) + Supabase (DB/cron) |
+| **Infra** | Cloudflare Pages + Supabase (DB/cron) |
 | **Observability** | Server logs only (no Sentry) |
 
 ---
@@ -290,10 +290,8 @@ Skips for dates after the current week's Friday 09:00 PT boundary are flagged `e
 
 ## Deployment
 
-**Vercel (Production):**
-```bash
-vercel --prod
-```
+**Cloudflare Pages (Production):**
+Deployment is automated via Git integration with Cloudflare Pages.
 
 **Supabase (Migrations):**
 ```bash
@@ -338,6 +336,11 @@ supabase db push --linked
 ---
 
 ## Changelog
+
+**v1.1 (2026-01-30):**
+- Added PayPal as dual payment provider alongside Stripe
+- Updated deployment platform from Vercel to Cloudflare Pages
+- Corrected infrastructure references throughout documentation
 
 **v1.0 (2025-10-26):**
 - Initial documentation suite

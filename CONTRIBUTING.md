@@ -7,7 +7,7 @@ Thank you for your interest in contributing to Frontier Meals! This document pro
 1. Fork and clone the repository
 2. Install dependencies: `pnpm install`
 3. Set up environment variables (see README.md)
-4. Run database migrations: `cd apps/api && pnpm db:migrate`
+4. Run database migrations: `supabase db push`
 5. Start development servers: `pnpm dev`
 
 ## Code Standards
@@ -52,14 +52,14 @@ Example: `feat(auth): add password reset functionality`
 
 ## Pull Request Process
 
-1. Create a feature branch from `develop`
+1. Create a feature branch from `main`
 2. Make your changes
 3. Write/update tests
 4. Run the full test suite: `pnpm test`
 5. Run linting: `pnpm lint:fix`
 6. Commit your changes
 7. Push to your fork
-8. Open a pull request to `develop`
+8. Open a pull request to `main`
 
 ### PR Checklist
 
