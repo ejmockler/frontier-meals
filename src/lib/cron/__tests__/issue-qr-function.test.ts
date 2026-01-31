@@ -207,7 +207,8 @@ describe('issueDailyQRCodes() - Integration Tests (Real DB)', () => {
 			const result = await issueDailyQRCodes({
 				supabaseUrl: SUPABASE_URL,
 				supabaseServiceKey: SUPABASE_SERVICE_KEY,
-				qrPrivateKey: QR_PRIVATE_KEY
+				qrPrivateKey: QR_PRIVATE_KEY,
+				telegramBotToken: process.env.TELEGRAM_BOT_TOKEN
 			});
 
 			expect(result.issued).toBe(0);
@@ -225,7 +226,8 @@ describe('issueDailyQRCodes() - Integration Tests (Real DB)', () => {
 			const result = await issueDailyQRCodes({
 				supabaseUrl: SUPABASE_URL,
 				supabaseServiceKey: SUPABASE_SERVICE_KEY,
-				qrPrivateKey: QR_PRIVATE_KEY
+				qrPrivateKey: QR_PRIVATE_KEY,
+				telegramBotToken: process.env.TELEGRAM_BOT_TOKEN
 			});
 
 			// Should not skip
@@ -267,7 +269,8 @@ describe('issueDailyQRCodes() - Integration Tests (Real DB)', () => {
 			const result = await issueDailyQRCodes({
 				supabaseUrl: SUPABASE_URL,
 				supabaseServiceKey: SUPABASE_SERVICE_KEY,
-				qrPrivateKey: QR_PRIVATE_KEY
+				qrPrivateKey: QR_PRIVATE_KEY,
+				telegramBotToken: process.env.TELEGRAM_BOT_TOKEN
 			});
 
 			// Should issue to active customer only
@@ -299,7 +302,8 @@ describe('issueDailyQRCodes() - Integration Tests (Real DB)', () => {
 			const result = await issueDailyQRCodes({
 				supabaseUrl: SUPABASE_URL,
 				supabaseServiceKey: SUPABASE_SERVICE_KEY,
-				qrPrivateKey: QR_PRIVATE_KEY
+				qrPrivateKey: QR_PRIVATE_KEY,
+				telegramBotToken: process.env.TELEGRAM_BOT_TOKEN
 			});
 
 			// Verify no QR token created for canceled subscription
@@ -319,7 +323,8 @@ describe('issueDailyQRCodes() - Integration Tests (Real DB)', () => {
 			const result = await issueDailyQRCodes({
 				supabaseUrl: SUPABASE_URL,
 				supabaseServiceKey: SUPABASE_SERVICE_KEY,
-				qrPrivateKey: QR_PRIVATE_KEY
+				qrPrivateKey: QR_PRIVATE_KEY,
+				telegramBotToken: process.env.TELEGRAM_BOT_TOKEN
 			});
 
 			// Customer with NULL dates should NOT receive QR
@@ -344,7 +349,8 @@ describe('issueDailyQRCodes() - Integration Tests (Real DB)', () => {
 			const result = await issueDailyQRCodes({
 				supabaseUrl: SUPABASE_URL,
 				supabaseServiceKey: SUPABASE_SERVICE_KEY,
-				qrPrivateKey: QR_PRIVATE_KEY
+				qrPrivateKey: QR_PRIVATE_KEY,
+				telegramBotToken: process.env.TELEGRAM_BOT_TOKEN
 			});
 
 			expect(result.issued).toBe(0);
@@ -366,7 +372,8 @@ describe('issueDailyQRCodes() - Integration Tests (Real DB)', () => {
 			const result = await issueDailyQRCodes({
 				supabaseUrl: SUPABASE_URL,
 				supabaseServiceKey: SUPABASE_SERVICE_KEY,
-				qrPrivateKey: QR_PRIVATE_KEY
+				qrPrivateKey: QR_PRIVATE_KEY,
+				telegramBotToken: process.env.TELEGRAM_BOT_TOKEN
 			});
 
 			// Verify entitlement created with meals_allowed=0
@@ -618,7 +625,8 @@ describe('issueDailyQRCodes() - Integration Tests (Real DB)', () => {
 			const result = await issueDailyQRCodes({
 				supabaseUrl: SUPABASE_URL,
 				supabaseServiceKey: SUPABASE_SERVICE_KEY,
-				qrPrivateKey: QR_PRIVATE_KEY
+				qrPrivateKey: QR_PRIVATE_KEY,
+				telegramBotToken: process.env.TELEGRAM_BOT_TOKEN
 			});
 
 			// Should have at least one error (customer1)
@@ -649,7 +657,8 @@ describe('issueDailyQRCodes() - Integration Tests (Real DB)', () => {
 			const result = await issueDailyQRCodes({
 				supabaseUrl: SUPABASE_URL,
 				supabaseServiceKey: SUPABASE_SERVICE_KEY,
-				qrPrivateKey: QR_PRIVATE_KEY
+				qrPrivateKey: QR_PRIVATE_KEY,
+				telegramBotToken: process.env.TELEGRAM_BOT_TOKEN
 			});
 
 			// Should have error for our customer
