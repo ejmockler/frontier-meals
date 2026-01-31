@@ -5,15 +5,63 @@ import { getEnv, getSupabaseAdmin } from '$lib/server/env';
 import { sendEmail } from '$lib/email/send';
 import { renderTemplate } from '$lib/email/templates';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
+import { sendAdminAlert } from '$lib/utils/alerts';
+import { redactPII } from '$lib/utils/logging';
+import { checkRateLimit, RateLimitKeys } from '$lib/utils/rate-limit';
 
 export const POST: RequestHandler = async (event) => {
-  const { request } = event;
+  const { request, getClientAddress } = event;
   const env = await getEnv(event);
   const supabase = await getSupabaseAdmin(event);
   const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
     apiVersion: '2025-12-15.clover',
     typescript: true
   });
+
+  // Get client IP address for rate limiting
+  // Priority: CF-Connecting-IP (Cloudflare) > X-Forwarded-For > getClientAddress()
+  const clientIp =
+    request.headers.get('CF-Connecting-IP') ||
+    request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+    getClientAddress() ||
+    'unknown';
+
+  // Rate limiting: 100 requests per minute per IP
+  // Stripe webhooks shouldn't exceed this under normal circumstances
+  // Protects against webhook replay attacks and DDoS attempts
+  const rateLimitResult = await checkRateLimit(supabase, {
+    key: RateLimitKeys.webhook('stripe', clientIp),
+    maxRequests: 100,
+    windowMinutes: 1
+  });
+
+  if (!rateLimitResult.allowed) {
+    console.warn('[Stripe Webhook] Rate limit exceeded for IP:', redactPII({ ip: clientIp }).ip);
+
+    // Log rate limit event for monitoring
+    await supabase.from('audit_log').insert({
+      actor: 'system',
+      action: 'webhook_rate_limit_exceeded',
+      subject: `webhook:stripe:${clientIp}`,
+      metadata: {
+        ip: redactPII({ ip: clientIp }).ip,
+        reset_at: rateLimitResult.resetAt.toISOString()
+      }
+    });
+
+    return json(
+      { error: 'Too many requests. Please try again later.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(rateLimitResult.retryAfter),
+          'X-RateLimit-Limit': '100',
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': rateLimitResult.resetAt.toISOString()
+        }
+      }
+    );
+  }
 
   const body = await request.text();
   const signature = request.headers.get('stripe-signature');
@@ -73,11 +121,15 @@ export const POST: RequestHandler = async (event) => {
         break;
 
       case 'customer.subscription.updated':
-        await handleSubscriptionUpdated(eventObj.data.object as Stripe.Subscription, stripe, supabase);
+        await handleSubscriptionUpdated(eventObj.data.object as Stripe.Subscription, stripe, supabase, env);
         break;
 
       case 'customer.subscription.deleted':
         await handleSubscriptionDeleted(eventObj.data.object as Stripe.Subscription, stripe, supabase, env);
+        break;
+
+      case 'charge.dispute.created':
+        await handleDisputeCreated(eventObj.data.object as Stripe.Dispute, stripe, supabase, env);
         break;
 
       default:
@@ -621,7 +673,7 @@ async function handlePaymentFailed(invoice: Stripe.Invoice, stripe: Stripe, supa
   });
 }
 
-async function handleSubscriptionUpdated(subscription: Stripe.Subscription, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient) {
+async function handleSubscriptionUpdated(subscription: Stripe.Subscription, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient, env: import('$lib/server/env').ServerEnv) {
   // In Stripe API 2025-10-29.clover (Basil 2025-03-31+), period dates moved to subscription items
   const firstItem = subscription.items?.data?.[0];
   const periodStart = firstItem?.current_period_start;
@@ -642,6 +694,16 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription, stri
   const periodEndISO = periodEnd
     ? new Date(periodEnd * 1000).toISOString()
     : null;
+
+  // Get current subscription state to detect status transitions
+  const { data: currentSub } = await supabase
+    .from('subscriptions')
+    .select('status, customer_id, customers(name, email)')
+    .eq('stripe_subscription_id', subscription.id)
+    .single();
+
+  const previousStatus = currentSub?.status;
+  const newStatus = subscription.status;
 
   // UPSERT pattern: Try to update existing subscription first
   console.log('[DB] Attempting to update subscription:', { stripe_subscription_id: subscription.id });
@@ -724,6 +786,45 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription, stri
     console.log('[DB SUCCESS] Subscription updated');
   }
 
+  // Detect payment recovery transition: past_due → active
+  if (previousStatus === 'past_due' && newStatus === 'active' && currentSub) {
+    const customer = Array.isArray(currentSub.customers)
+      ? currentSub.customers[0]
+      : currentSub.customers;
+
+    if (customer) {
+      console.log('[Stripe] Payment recovered - sending recovery email:', {
+        customer_id: customer.id,
+        previous_status: previousStatus,
+        new_status: newStatus
+      });
+
+      try {
+        const emailTemplate = await renderTemplate(
+          'subscription_payment_recovered',
+          { customer_name: customer.name },
+          env.SUPABASE_SERVICE_ROLE_KEY
+        );
+
+        await sendEmail({
+          to: customer.email,
+          subject: emailTemplate.subject,
+          html: emailTemplate.html,
+          tags: [
+            { name: 'category', value: 'subscription_payment_recovered' },
+            { name: 'customer_id', value: customer.id }
+          ],
+          idempotencyKey: `payment_recovered/${subscription.id}/${Date.now()}`
+        });
+
+        console.log('[EMAIL SUCCESS] Payment recovery email sent');
+      } catch (emailError) {
+        console.error('[EMAIL ERROR] Failed to send payment recovery email:', emailError);
+        // Don't throw - email failure shouldn't fail the webhook
+      }
+    }
+  }
+
   // Audit log
   const stripeCustomerId = subscription.customer as string;
   const { data: customer } = await supabase
@@ -741,7 +842,8 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription, stri
         subscription_id: subscription.id,
         status: subscription.status,
         period_start: periodStartISO,
-        period_end: periodEndISO
+        period_end: periodEndISO,
+        status_transition: previousStatus ? `${previousStatus} → ${newStatus}` : newStatus
       }
     });
   }
@@ -789,4 +891,145 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription, stri
       }
     });
   }
+}
+
+async function handleDisputeCreated(dispute: Stripe.Dispute, stripe: Stripe, supabase: import('@supabase/supabase-js').SupabaseClient, env: import('$lib/server/env').ServerEnv) {
+  const chargeId = dispute.charge as string;
+  const disputeAmount = dispute.amount;
+  const disputeReason = dispute.reason;
+
+  console.log('[Stripe] Dispute created (chargeback):', {
+    dispute_id: dispute.id,
+    charge_id: chargeId,
+    amount: disputeAmount,
+    reason: disputeReason
+  });
+
+  // Get charge details to find the payment intent
+  const charge = await stripe.charges.retrieve(chargeId, {
+    expand: ['payment_intent']
+  });
+
+  const paymentIntent = charge.payment_intent as Stripe.PaymentIntent;
+  if (!paymentIntent) {
+    console.error('[Stripe] No payment intent found for dispute:', dispute.id);
+    return;
+  }
+
+  // Find subscription by payment intent metadata or customer
+  const stripeCustomerId = charge.customer as string;
+  if (!stripeCustomerId) {
+    console.error('[Stripe] No customer found for dispute:', dispute.id);
+    return;
+  }
+
+  // First find customer by Stripe customer ID
+  const { data: customer } = await supabase
+    .from('customers')
+    .select('id, name, email')
+    .eq('stripe_customer_id', stripeCustomerId)
+    .single();
+
+  if (!customer) {
+    console.log('[Stripe] Customer not found for dispute:', stripeCustomerId);
+    return;
+  }
+
+  // Find subscription by customer ID (may have multiple - get active/past_due ones)
+  const { data: subscriptions } = await supabase
+    .from('subscriptions')
+    .select('*')
+    .eq('customer_id', customer.id)
+    .in('status', ['active', 'past_due', 'trialing']);
+
+  if (!subscriptions || subscriptions.length === 0) {
+    console.log('[Stripe] No active subscription found for dispute (customer may have no active subscription):', stripeCustomerId);
+    return;
+  }
+
+  // Suspend ALL active subscriptions for this customer (chargeback affects the account)
+  const subscriptionIds = subscriptions.map(s => s.id);
+  const subscriptionStripeIds = subscriptions.map(s => s.stripe_subscription_id).filter(Boolean);
+
+  // Suspend all subscriptions immediately due to chargeback
+  const now = new Date().toISOString();
+  await supabase
+    .from('subscriptions')
+    .update({
+      status: 'suspended',
+      chargeback_at: now
+    })
+    .in('id', subscriptionIds);
+
+  console.log('[Stripe] Subscriptions auto-suspended due to chargeback:', {
+    subscription_count: subscriptions.length,
+    subscription_ids: subscriptionStripeIds,
+    customer_id: customer.id,
+    dispute_id: dispute.id
+  });
+
+  // Send chargeback notification email to customer
+  try {
+    const emailTemplate = await renderTemplate(
+      'subscription_chargeback',
+      {
+        customer_name: customer.name
+      },
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    await sendEmail({
+      to: customer.email,
+      subject: emailTemplate.subject,
+      html: emailTemplate.html,
+      tags: [
+        { name: 'category', value: 'subscription_chargeback' },
+        { name: 'customer_id', value: customer.id }
+      ],
+      idempotencyKey: `chargeback/${dispute.id}`
+    });
+
+    console.log('[EMAIL SUCCESS] Chargeback notification sent to customer');
+  } catch (emailError) {
+    console.error('[EMAIL ERROR] Failed to send chargeback notification:', emailError);
+    // Don't throw - email failure shouldn't fail the webhook
+  }
+
+  // Send admin alert via Telegram
+  try {
+    await sendAdminAlert(
+      '🚨 *CHARGEBACK ALERT*',
+      {
+        provider: 'Stripe',
+        customer_email: redactPII({ email: customer.email }).email,
+        subscription_id: redactPII({ subscription_id: subscriptionStripeIds[0] || 'unknown' }).subscription_id,
+        amount: `$${(disputeAmount / 100).toFixed(2)}`,
+        reason: disputeReason,
+        dispute_id: redactPII({ dispute_id: dispute.id }).dispute_id,
+        customer_id: customer.id,
+        action: 'Subscription auto-suspended'
+      }
+    );
+    console.log('[ALERT SUCCESS] Admin notified of chargeback');
+  } catch (alertError) {
+    console.error('[ALERT ERROR] Failed to send admin alert:', alertError);
+    // Don't throw - alert failure shouldn't fail the webhook
+  }
+
+  // Audit log for dispute/chargeback with auto-suspension marker
+  await supabase.from('audit_log').insert({
+    actor: 'system',
+    action: 'payment_reversed',
+    subject: `customer:${customer.id}`,
+    metadata: {
+      payment_provider: 'stripe',
+      stripe_subscription_ids: subscriptionStripeIds,
+      subscriptions_suspended: subscriptions.length,
+      dispute_id: dispute.id,
+      dispute_amount: disputeAmount,
+      dispute_reason: disputeReason,
+      auto_suspended: true,
+      note: 'Chargeback received - subscription(s) auto-suspended pending review'
+    }
+  });
 }
