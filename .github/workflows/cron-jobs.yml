@@ -22,6 +22,8 @@ on:
           - check-telegram-links
           - retry-emails
           - cleanup-rate-limits
+          - cleanup-expired-tokens
+          - cleanup-skip-sessions
           - all
 
 env:
@@ -103,6 +105,42 @@ jobs:
       - name: Cleanup Rate Limits
         run: |
           response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/cleanup-rate-limits" \
+            -H "Content-Type: application/json" \
+            -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+  # Cleanup Expired Tokens - Runs weekly
+  cleanup-expired-tokens:
+    name: Cleanup Expired Tokens
+    runs-on: ubuntu-latest
+    if: github.event.inputs.job == 'cleanup-expired-tokens' || github.event.inputs.job == 'all'
+    steps:
+      - name: Cleanup Expired Tokens
+        run: |
+          response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/cleanup-expired-tokens" \
+            -H "Content-Type: application/json" \
+            -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+  # Cleanup Skip Sessions - Runs daily
+  cleanup-skip-sessions:
+    name: Cleanup Skip Sessions
+    runs-on: ubuntu-latest
+    if: github.event.inputs.job == 'cleanup-skip-sessions' || github.event.inputs.job == 'all'
+    steps:
+      - name: Cleanup Skip Sessions
+        run: |
+          response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/cleanup-skip-sessions" \
             -H "Content-Type: application/json" \
             -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
 

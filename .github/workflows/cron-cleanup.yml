@@ -31,3 +31,43 @@ jobs:
           if [ "$http_code" != "200" ]; then
             echo "::warning::Rate limit cleanup returned status $http_code"
           fi
+
+  cleanup-expired-tokens:
+    name: Cleanup Expired Tokens
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup Expired Telegram Tokens
+        run: |
+          response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/cleanup-expired-tokens" \
+            -H "Content-Type: application/json" \
+            -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          if [ "$http_code" != "200" ]; then
+            echo "::warning::Token cleanup returned status $http_code"
+          fi
+
+  cleanup-skip-sessions:
+    name: Cleanup Skip Sessions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup Expired Skip Sessions
+        run: |
+          response=$(curl -s -L -w "\n%{http_code}" -X POST "${{ env.PRODUCTION_URL }}/api/cron/cleanup-skip-sessions" \
+            -H "Content-Type: application/json" \
+            -H "Cron-Secret: ${{ secrets.CRON_SECRET }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          if [ "$http_code" != "200" ]; then
+            echo "::warning::Skip sessions cleanup returned status $http_code"
+          fi
