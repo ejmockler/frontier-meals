@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PageData } from './$types';
   import {
     HeroSection,
     CommunityGallery,
@@ -12,8 +13,13 @@
     Text,
   } from '$lib/components/landing';
 
+  let { data }: { data: PageData } = $props();
+
   let loading = $state(false);
   let error = $state('');
+
+  // Format price string from server data
+  const priceString = `$${data.defaultPlanPrice}/${data.billingCycle}`;
 
   function handleScrollToCheckout() {
     // Smooth scroll to checkout section
@@ -126,6 +132,7 @@
       onCheckout={handleCheckout}
       onContact={handleContact}
       {loading}
+      price={priceString}
     />
   </main>
 
