@@ -6,17 +6,17 @@
 		{
 			src: '/images/landing/rooftop-celebration.jpg',
 			alt: 'Rooftop lunch celebration',
-			aspect: 'landscape'
+			size: 'large' // Featured image spans 2 columns
 		},
 		{
 			src: '/images/landing/happy-participants.jpg',
 			alt: 'Happy lunch participants',
-			aspect: 'landscape'
+			size: 'small'
 		},
 		{
 			src: '/images/landing/community-dining.jpg',
 			alt: 'Community dining together',
-			aspect: 'portrait'
+			size: 'small'
 		}
 	];
 </script>
@@ -28,35 +28,51 @@
 			subhead="More than just lunch—it's about connecting with your colleagues"
 		/>
 
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
-			{#each images as image, i}
-				<div
-					class="group relative overflow-hidden rounded-md shadow-lg"
-					class:md:row-span-2={image.aspect === 'portrait'}
-					class:aspect-video={image.aspect === 'landscape'}
-					class:aspect-3-4={image.aspect === 'portrait'}
-					use:scrollReveal={{ delay: i * 100 }}
-				>
-					<img
-						src={image.src}
-						alt={image.alt}
-						width={image.aspect === 'landscape' ? 800 : 600}
-						height={image.aspect === 'landscape' ? 600 : 800}
-						class="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
-						loading="lazy"
-						decoding="async"
-					/>
+		<!-- Consistent horizontal layout: Featured large + 2 smaller squares -->
+		<div class="flex flex-col sm:flex-row gap-3 md:gap-4">
+			<!-- Featured large image -->
+			<div
+				class="group relative overflow-hidden rounded-md shadow-lg flex-1 sm:flex-[2] aspect-4-3"
+				use:scrollReveal={{ delay: 0 }}
+			>
+				<img
+					src={images[0].src}
+					alt={images[0].alt}
+					width="800"
+					height="600"
+					class="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+					loading="lazy"
+					decoding="async"
+				/>
+				<div class="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity duration-300"></div>
+			</div>
 
-					<!-- Subtle overlay on hover -->
-					<div class="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-				</div>
-			{/each}
+			<!-- Two smaller images stacked vertically -->
+			<div class="flex flex-row sm:flex-col gap-3 md:gap-4 flex-1">
+				{#each images.slice(1) as image, i}
+					<div
+						class="group relative overflow-hidden rounded-md shadow-lg flex-1 aspect-square"
+						use:scrollReveal={{ delay: (i + 1) * 100 }}
+					>
+						<img
+							src={image.src}
+							alt={image.alt}
+							width="400"
+							height="400"
+							class="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+							loading="lazy"
+							decoding="async"
+						/>
+						<div class="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity duration-300"></div>
+					</div>
+				{/each}
+			</div>
 		</div>
 	</Container>
 </Section>
 
 <style>
-	.aspect-3-4 {
-		aspect-ratio: 3 / 4;
+	.aspect-4-3 {
+		aspect-ratio: 4 / 3;
 	}
 </style>
