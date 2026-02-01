@@ -2,7 +2,6 @@
 	import type { PageData } from './$types';
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
-	import type { DiscountCode } from '$lib/types/discount';
 
 	export let data: PageData;
 	export let form;
@@ -10,9 +9,6 @@
 	// Form state - initialize from loaded discount
 	let code = data.discount.code;
 	let plan_id = data.discount.plan_id;
-	let discount_type: DiscountCode['discount_type'] = data.discount.discount_type;
-	let discount_value = data.discount.discount_value?.toString() || '';
-	let discount_duration_months = data.discount.discount_duration_months;
 	let max_uses = data.discount.max_uses?.toString() || '';
 	let valid_until = data.discount.valid_until
 		? data.discount.valid_until.split('T')[0]
@@ -26,64 +22,12 @@
 	// Selected plan for preview
 	$: selectedPlan = data.plans.find((p) => p.id === plan_id);
 
-	// Compute discount display text
-	$: discountDisplay = getDiscountDisplay(
-		discount_type,
-		parseFloat(discount_value) || 0,
-		discount_duration_months
-	);
+	// Default plan for calculating savings
+	$: defaultPlan = data.plans.find((p) => p.is_default);
 
-	// Compute discounted price for preview
-	$: discountedPrice = selectedPlan
-		? computeDiscountedPrice(
-				selectedPlan.price_amount,
-				discount_type,
-				parseFloat(discount_value) || 0
-		  )
-		: 0;
-
-	// Compute savings
-	$: savings = selectedPlan ? selectedPlan.price_amount - discountedPrice : 0;
-
-	function getDiscountDisplay(
-		type: string,
-		value: number,
-		duration: number
-	): string {
-		if (!value && type !== 'free_trial') return '';
-
-		if (type === 'percentage') {
-			if (duration === 1) {
-				return `${value}% off first month`;
-			} else {
-				return `${value}% off first ${duration} months`;
-			}
-		} else if (type === 'fixed_amount') {
-			if (duration === 1) {
-				return `$${value} off first month`;
-			} else {
-				return `$${value} off first ${duration} months`;
-			}
-		} else if (type === 'free_trial') {
-			return `${duration} month${duration > 1 ? 's' : ''} free trial`;
-		}
-		return '';
-	}
-
-	function computeDiscountedPrice(
-		price: number,
-		type: string,
-		value: number
-	): number {
-		if (type === 'percentage') {
-			return price * (1 - value / 100);
-		} else if (type === 'fixed_amount') {
-			return Math.max(0, price - value);
-		} else if (type === 'free_trial') {
-			return 0;
-		}
-		return price;
-	}
+	// Calculate savings from price delta
+	$: savings = defaultPlan && selectedPlan ? Math.max(0, defaultPlan.price_amount - selectedPlan.price_amount) : 0;
+	$: savingsPercent = defaultPlan && savings > 0 ? Math.round((savings / defaultPlan.price_amount) * 100) : 0;
 
 	function cancel() {
 		goto('/admin/discounts');
@@ -238,7 +182,7 @@
 							for="plan_id"
 							class="block text-sm font-bold text-[#1A1816] mb-2"
 						>
-							Apply to Plan
+							Discount Plan
 						</label>
 						<select
 							id="plan_id"
@@ -250,108 +194,18 @@
 							<option value="">Select a plan...</option>
 							{#each data.plans as plan}
 								<option value={plan.id}>
-									{plan.business_name} (${plan.price_amount}/{plan.billing_cycle})
+									{plan.business_name} — ${plan.price_amount}/{plan.billing_cycle}
+									{#if plan.is_default}
+										(Default)
+									{:else if defaultPlan}
+										(Save ${(defaultPlan.price_amount - plan.price_amount).toFixed(2)})
+									{/if}
 								</option>
 							{/each}
 						</select>
-					</div>
-
-					<!-- Discount type -->
-					<div>
-						<label class="block text-sm font-bold text-[#1A1816] mb-2">
-							Discount Type
-						</label>
-						<div class="flex gap-4">
-							<label class="flex items-center gap-2 cursor-pointer">
-								<input
-									type="radio"
-									name="discount_type"
-									value="percentage"
-									bind:group={discount_type}
-									class="w-4 h-4 text-[#E67E50] focus:ring-[#E67E50]"
-								/>
-								<span class="text-sm font-medium text-[#1A1816]"
-									>Percentage</span
-								>
-							</label>
-							<label class="flex items-center gap-2 cursor-pointer">
-								<input
-									type="radio"
-									name="discount_type"
-									value="fixed_amount"
-									bind:group={discount_type}
-									class="w-4 h-4 text-[#E67E50] focus:ring-[#E67E50]"
-								/>
-								<span class="text-sm font-medium text-[#1A1816]"
-									>Fixed Amount</span
-								>
-							</label>
-							<label class="flex items-center gap-2 cursor-pointer">
-								<input
-									type="radio"
-									name="discount_type"
-									value="free_trial"
-									bind:group={discount_type}
-									class="w-4 h-4 text-[#E67E50] focus:ring-[#E67E50]"
-								/>
-								<span class="text-sm font-medium text-[#1A1816]"
-									>Free Trial</span
-								>
-							</label>
-						</div>
-					</div>
-
-					<!-- Discount value -->
-					{#if discount_type !== 'free_trial'}
-						<div>
-							<label
-								for="discount_value"
-								class="block text-sm font-bold text-[#1A1816] mb-2"
-							>
-								Discount Value
-							</label>
-							<div class="relative">
-								<input
-									id="discount_value"
-									name="discount_value"
-									type="number"
-									step={discount_type === 'percentage' ? '1' : '0.01'}
-									min="0"
-									max={discount_type === 'percentage' ? '100' : undefined}
-									bind:value={discount_value}
-									required
-									placeholder={discount_type === 'percentage' ? '50' : '10.00'}
-									class="w-full px-4 py-2 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none font-medium text-[#1A1816] bg-white"
-								/>
-								<div
-									class="absolute right-3 top-1/2 -translate-y-1/2 text-[#5C5A56] font-bold"
-								>
-									{discount_type === 'percentage' ? '%' : '$'}
-								</div>
-							</div>
-						</div>
-					{/if}
-
-					<!-- Duration -->
-					<div>
-						<label
-							for="discount_duration_months"
-							class="block text-sm font-bold text-[#1A1816] mb-2"
-						>
-							Duration
-						</label>
-						<div class="flex items-center gap-2">
-							<input
-								id="discount_duration_months"
-								name="discount_duration_months"
-								type="number"
-								min="1"
-								bind:value={discount_duration_months}
-								required
-								class="w-24 px-4 py-2 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none font-medium text-[#1A1816] bg-white"
-							/>
-							<span class="text-sm font-medium text-[#5C5A56]">months</span>
-						</div>
+						<p class="text-xs text-[#5C5A56] mt-1">
+							Select the PayPal plan with discounted pricing
+						</p>
 					</div>
 
 					<!-- Collapsible Limits section -->
@@ -437,6 +291,9 @@
 										required
 										class="w-full px-4 py-2 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none font-medium text-[#1A1816] bg-white"
 									/>
+									<p class="text-xs text-[#5C5A56] mt-1">
+										How many times can one customer use this code
+									</p>
 								</div>
 							</div>
 						{/if}
@@ -489,7 +346,7 @@
 					Customer Preview
 				</h2>
 
-				{#if code && selectedPlan && discountDisplay}
+				{#if code && selectedPlan}
 					<div class="space-y-4">
 						<div class="text-sm text-[#5C5A56]">
 							When customer enters: <strong class="text-[#1A1816]"
@@ -525,33 +382,23 @@
 									{selectedPlan.business_name}
 								</p>
 								<div class="flex items-baseline gap-2">
-									{#if discount_type === 'free_trial'}
-										<span class="text-2xl font-extrabold text-[#52A675]"
-											>FREE</span
-										>
-										<span
-											class="text-sm text-[#5C5A56] line-through"
-											>${selectedPlan.price_amount.toFixed(2)}/month</span
-										>
-									{:else}
-										<span
-											class="text-sm text-[#5C5A56] line-through"
-											>${selectedPlan.price_amount.toFixed(2)}</span
-										>
-										<span class="text-2xl font-extrabold text-[#52A675]"
-											>${discountedPrice.toFixed(2)}</span
-										>
-										<span class="text-sm text-[#5C5A56]">/month</span>
+									{#if defaultPlan && savings > 0}
+										<span class="text-sm text-[#5C5A56] line-through">
+											${defaultPlan.price_amount.toFixed(2)}
+										</span>
 									{/if}
+									<span class="text-2xl font-extrabold text-[#52A675]">
+										${selectedPlan.price_amount.toFixed(2)}
+									</span>
+									<span class="text-sm text-[#5C5A56]">/{selectedPlan.billing_cycle}</span>
 								</div>
-								<p class="text-sm font-bold text-[#52A675]">
-									{discountDisplay}
-								</p>
 								{#if savings > 0}
-									<p class="text-sm text-[#5C5A56]">
-										You save: <span class="font-bold text-[#52A675]"
-											>${savings.toFixed(2)}/month</span
-										>
+									<p class="text-sm font-bold text-[#52A675]">
+										Save ${savings.toFixed(2)} ({savingsPercent}% off)
+									</p>
+								{:else}
+									<p class="text-sm text-[#D97F3E] font-bold">
+										No discount (same as default plan)
 									</p>
 								{/if}
 							</div>

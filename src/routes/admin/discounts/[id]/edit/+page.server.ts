@@ -55,12 +55,9 @@ export const actions: Actions = {
 
 		const { id } = params;
 
-		// Extract form data
+		// Extract form data (simplified - no discount_type/value/duration)
 		const code = (formData.get('code') as string)?.toUpperCase().trim();
 		const plan_id = formData.get('plan_id') as string;
-		const discount_type = formData.get('discount_type') as string;
-		const discount_value = formData.get('discount_value') as string;
-		const discount_duration_months = formData.get('discount_duration_months') as string;
 		const max_uses = formData.get('max_uses') as string;
 		const valid_until = formData.get('valid_until') as string;
 		const max_uses_per_customer = formData.get('max_uses_per_customer') as string;
@@ -68,7 +65,7 @@ export const actions: Actions = {
 		const is_active = formData.get('is_active') === 'true';
 
 		// Validate required fields
-		if (!code || !plan_id || !discount_type || !discount_duration_months) {
+		if (!code || !plan_id) {
 			return fail(400, { error: 'Missing required fields' });
 		}
 
@@ -77,21 +74,13 @@ export const actions: Actions = {
 			return fail(400, { error: 'Code must be alphanumeric (A-Z, 0-9)' });
 		}
 
-		// Validate discount value for non-free-trial types
-		if (discount_type !== 'free_trial' && !discount_value) {
-			return fail(400, { error: 'Discount value is required for this discount type' });
-		}
-
 		try {
-			// Update discount code
+			// Update discount code (simplified - discount is implicit from plan price delta)
 			const { error } = await supabase
 				.from('discount_codes')
 				.update({
 					code,
 					plan_id,
-					discount_type,
-					discount_value: discount_value ? parseFloat(discount_value) : null,
-					discount_duration_months: parseInt(discount_duration_months),
 					max_uses: max_uses ? parseInt(max_uses) : null,
 					valid_until: valid_until || null,
 					max_uses_per_customer: max_uses_per_customer

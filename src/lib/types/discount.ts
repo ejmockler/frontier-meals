@@ -98,17 +98,8 @@ export interface DiscountCode {
 	/** Foreign key to subscription_plans table */
 	plan_id: string;
 
-	/** Optional joined plan data */
+	/** Optional joined plan data (includes price for delta calculation) */
 	plan?: SubscriptionPlan;
-
-	/** Type of discount */
-	discount_type: 'percentage' | 'fixed_amount' | 'free_trial';
-
-	/** Discount value (50 for 50%, 10.00 for $10 off) */
-	discount_value: number | null;
-
-	/** How many months the discount applies (default: 1) */
-	discount_duration_months: number;
 
 	/** Admin-facing notes (e.g., "Summer 2025 campaign for gym partners") */
 	admin_notes: string | null;
@@ -256,10 +247,10 @@ export type DiscountStatus =
  * Success Case:
  * - success: true
  * - reservation_id: UUID to pass to PayPal checkout
- * - plan: Business plan details
- * - discount: Computed discount information
- * - discounted_price: Final price after discount
- * - savings: Amount saved
+ * - plan: Discounted plan details (price already reflects discount)
+ * - original_price: Default plan price (for strikethrough display)
+ * - savings: Amount saved (calculated as original_price - plan.price)
+ * - savings_percent: Percentage saved
  *
  * Error Cases:
  * - success: false
@@ -275,41 +266,29 @@ export interface DiscountValidationResult {
 	/** Reservation ID to pass to PayPal checkout (only if success=true) */
 	reservation_id?: string;
 
-	/** Plan details (only if success=true) */
+	/** Discounted plan details (only if success=true) */
 	plan?: {
 		/** Plan UUID */
 		id: string;
 
-		/** Business-facing plan name */
+		/** Business-facing plan name (e.g., "Premium Monthly - 50% off") */
 		name: string;
 
-		/** Original plan price */
+		/** Discounted plan price (what customer pays) */
 		price: number;
 
 		/** Billing cycle */
 		billing_cycle: string;
 	};
 
-	/** Discount details (only if success=true) */
-	discount?: {
-		/** Discount type */
-		type: DiscountCode['discount_type'];
+	/** Default plan price for strikethrough display (only if success=true) */
+	original_price?: number;
 
-		/** Discount value (50 for 50%, 10.00 for $10) */
-		value: number;
-
-		/** How many months discount applies */
-		duration_months: number;
-
-		/** Human-readable display text (e.g., "50% off first month") */
-		display: string;
-	};
-
-	/** Final price after discount (only if success=true) */
-	discounted_price?: number;
-
-	/** Amount saved (only if success=true) */
+	/** Amount saved: original_price - plan.price (only if success=true) */
 	savings?: number;
+
+	/** Percentage saved (only if success=true) */
+	savings_percent?: number;
 
 	/** Error details (only if success=false) */
 	error?: {
@@ -343,22 +322,6 @@ export interface DiscountValidationResult {
 // ============================================================================
 
 /**
- * Discount display parameters for computing human-readable text
- *
- * Used by get_discount_display() database function and frontend formatting
- */
-export interface DiscountDisplayParams {
-	/** Discount type */
-	type: DiscountCode['discount_type'];
-
-	/** Discount value */
-	value: number;
-
-	/** Duration in months */
-	duration_months: number;
-}
-
-/**
  * Admin discount list item - Extended discount code with computed fields
  *
  * Used by GET /api/admin/discounts endpoint
@@ -367,8 +330,8 @@ export interface AdminDiscountListItem extends DiscountCode {
 	/** Computed status for color-coding */
 	status: DiscountStatus;
 
-	/** Human-readable discount display text */
-	discount_display: string;
+	/** Computed savings (default_plan.price - plan.price) */
+	savings?: number;
 
 	/** Usage summary object */
 	usage: {
@@ -389,23 +352,14 @@ export interface AdminDiscountListItem extends DiscountCode {
 /**
  * Discount code form data - Input for create/edit forms
  *
- * Used by admin UI forms
+ * Used by admin UI forms (simplified - discount is implicit from plan price delta)
  */
 export interface DiscountCodeFormData {
 	/** Code string (will be uppercased) */
 	code: string;
 
-	/** Plan UUID */
+	/** Plan UUID (discount is implicit from price delta vs default plan) */
 	plan_id: string;
-
-	/** Discount type */
-	discount_type: DiscountCode['discount_type'];
-
-	/** Discount value */
-	discount_value: number | null;
-
-	/** Duration in months */
-	discount_duration_months: number;
 
 	/** Admin notes */
 	admin_notes: string | null;

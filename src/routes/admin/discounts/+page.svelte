@@ -1,30 +1,20 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import type { DiscountCode, DiscountStatus } from '$lib/types/discount';
+	import type { DiscountStatus } from '$lib/types/discount';
 
 	export let data: PageData;
 
-	// Get discount display text
-	function getDiscountDisplay(discount: any): string {
-		const { discount_type, discount_value, discount_duration_months } = discount;
+	// Get discount display text from price delta
+	function getDiscountDisplay(discount: any, defaultPlanPrice: number): string {
+		if (!discount.plan) return 'Unknown discount';
 
-		if (discount_type === 'percentage') {
-			if (discount_duration_months === 1) {
-				return `${discount_value}% off first month`;
-			} else {
-				return `${discount_value}% off first ${discount_duration_months} months`;
-			}
-		} else if (discount_type === 'fixed_amount') {
-			if (discount_duration_months === 1) {
-				return `$${discount_value} off first month`;
-			} else {
-				return `$${discount_value} off first ${discount_duration_months} months`;
-			}
-		} else if (discount_type === 'free_trial') {
-			return `${discount_duration_months} month${discount_duration_months > 1 ? 's' : ''} free trial`;
-		}
+		const planPrice = discount.plan.price_amount;
+		const savings = Math.max(0, defaultPlanPrice - planPrice);
 
-		return 'Special discount';
+		if (savings <= 0) return 'No discount';
+
+		const savingsPercent = Math.round((savings / defaultPlanPrice) * 100);
+		return `$${savings.toFixed(2)} off (${savingsPercent}%)`;
 	}
 
 	// Calculate discount status
@@ -130,11 +120,14 @@
 		return `${discount.current_uses} / ${discount.max_uses}`;
 	}
 
+	// Get default plan price for delta calculation
+	$: defaultPlanPrice = data.defaultPlanPrice || 29;
+
 	// Process discounts with status
 	$: processedDiscounts = data.discounts.map((discount) => ({
 		...discount,
 		status: getStatus(discount),
-		discount_display: getDiscountDisplay(discount)
+		discount_display: getDiscountDisplay(discount, defaultPlanPrice)
 	}));
 
 	// Summary statistics

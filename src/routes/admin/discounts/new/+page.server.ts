@@ -36,30 +36,22 @@ export const actions: Actions = {
 			return fail(403, { error: 'Invalid CSRF token' });
 		}
 
-		// Extract form data
+		// Extract form data (simplified - no discount_type/value/duration)
 		const code = (formData.get('code') as string)?.toUpperCase().trim();
 		const plan_id = formData.get('plan_id') as string;
-		const discount_type = formData.get('discount_type') as string;
-		const discount_value = formData.get('discount_value') as string;
-		const discount_duration_months = formData.get('discount_duration_months') as string;
 		const max_uses = formData.get('max_uses') as string;
 		const valid_until = formData.get('valid_until') as string;
 		const max_uses_per_customer = formData.get('max_uses_per_customer') as string;
 		const admin_notes = formData.get('admin_notes') as string;
 
 		// Validate required fields
-		if (!code || !plan_id || !discount_type || !discount_duration_months) {
+		if (!code || !plan_id) {
 			return fail(400, { error: 'Missing required fields' });
 		}
 
 		// Validate code format (alphanumeric only)
 		if (!/^[A-Z0-9]+$/.test(code)) {
 			return fail(400, { error: 'Code must be alphanumeric (A-Z, 0-9)' });
-		}
-
-		// Validate discount value for non-free-trial types
-		if (discount_type !== 'free_trial' && !discount_value) {
-			return fail(400, { error: 'Discount value is required for this discount type' });
 		}
 
 		try {
@@ -70,15 +62,12 @@ export const actions: Actions = {
 				.eq('email', session.email)
 				.single();
 
-			// Insert discount code
+			// Insert discount code (simplified - discount is implicit from plan price delta)
 			const { data, error } = await supabase
 				.from('discount_codes')
 				.insert({
 					code,
 					plan_id,
-					discount_type,
-					discount_value: discount_value ? parseFloat(discount_value) : null,
-					discount_duration_months: parseInt(discount_duration_months),
 					max_uses: max_uses ? parseInt(max_uses) : null,
 					valid_until: valid_until || null,
 					max_uses_per_customer: max_uses_per_customer

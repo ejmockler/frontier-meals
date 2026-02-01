@@ -17,9 +17,8 @@ import type { DiscountValidationResult } from '$lib/types/discount';
  * - success: true
  * - reservation_id: UUID for PayPal checkout
  * - plan: { id, name, price, billing_cycle }
- * - discount: { type, value, duration_months, display }
- * - discounted_price: Final price after discount
- * - savings: Amount saved
+ * - original_price: Default plan price (for showing strikethrough)
+ * - savings: Amount saved (calculated as default_price - plan_price)
  *
  * Error Response (400):
  * - success: false
@@ -30,6 +29,7 @@ import type { DiscountValidationResult } from '$lib/types/discount';
  * - Typo detection: Levenshtein distance <= 2 for suggestions
  * - Atomic reservation: Prevents race conditions on limited-use codes
  * - 15-minute reservation TTL
+ * - Discount calculated as delta from default plan price
  */
 export const POST: RequestHandler = async (event) => {
 	const { request, getClientAddress } = event;
@@ -223,55 +223,21 @@ export const POST: RequestHandler = async (event) => {
 			);
 		}
 
-		// Success! Compute discounted price and savings
+		// Success! Calculate savings as delta from default plan price
 		const planPrice = parseFloat(result.plan_price || '0');
-		const discountType = result.discount_type;
-		const discountValue = parseFloat(result.discount_value || '0');
+		const defaultPlanPrice = parseFloat(result.default_plan_price || result.plan_price || '0');
 
-		let discountedPrice = planPrice;
-		let savings = 0;
-
-		if (discountType === 'percentage') {
-			savings = (planPrice * discountValue) / 100;
-			discountedPrice = planPrice - savings;
-		} else if (discountType === 'fixed_amount') {
-			savings = Math.min(discountValue, planPrice); // Can't save more than plan price
-			discountedPrice = planPrice - savings;
-		} else if (discountType === 'free_trial') {
-			// Free trial: first N months free, show $0
-			savings = planPrice;
-			discountedPrice = 0;
-		}
-
-		// Ensure prices are non-negative
-		discountedPrice = Math.max(0, discountedPrice);
-		savings = Math.max(0, savings);
-
-		// Generate human-readable discount display
-		const durationMonths = result.discount_duration_months || 1;
-		let discountDisplay = 'Discount applied';
-
-		if (discountType === 'percentage') {
-			discountDisplay =
-				durationMonths === 1
-					? `${discountValue}% off first month`
-					: `${discountValue}% off first ${durationMonths} months`;
-		} else if (discountType === 'fixed_amount') {
-			discountDisplay =
-				durationMonths === 1
-					? `$${discountValue.toFixed(2)} off first month`
-					: `$${discountValue.toFixed(2)} off first ${durationMonths} months`;
-		} else if (discountType === 'free_trial') {
-			discountDisplay = `${durationMonths} month${durationMonths > 1 ? 's' : ''} free`;
-		}
+		// Discount is implicit: savings = default_price - discounted_plan_price
+		const savings = Math.max(0, defaultPlanPrice - planPrice);
+		const savingsPercent = defaultPlanPrice > 0 ? Math.round((savings / defaultPlanPrice) * 100) : 0;
 
 		console.log('[Discount Reserve] Success:', {
 			reservation_id: result.reservation_id,
 			plan_name: result.plan_name,
-			discount_display: discountDisplay,
-			original_price: planPrice,
-			discounted_price: discountedPrice,
-			savings
+			original_price: defaultPlanPrice,
+			discounted_price: planPrice,
+			savings,
+			savings_percent: savingsPercent
 		});
 
 		return json(
@@ -280,18 +246,13 @@ export const POST: RequestHandler = async (event) => {
 				reservation_id: result.reservation_id,
 				plan: {
 					id: result.plan_id,
-					name: result.plan_name || 'Premium Plan',
-					price: planPrice,
+					name: result.plan_name || 'Discounted Plan',
+					price: Math.round(planPrice * 100) / 100,
 					billing_cycle: result.plan_billing_cycle || 'monthly'
 				},
-				discount: {
-					type: discountType,
-					value: discountValue,
-					duration_months: durationMonths,
-					display: discountDisplay
-				},
-				discounted_price: Math.round(discountedPrice * 100) / 100, // Round to 2 decimals
-				savings: Math.round(savings * 100) / 100
+				original_price: Math.round(defaultPlanPrice * 100) / 100,
+				savings: Math.round(savings * 100) / 100,
+				savings_percent: savingsPercent
 			} satisfies DiscountValidationResult,
 			{ status: 200 }
 		);

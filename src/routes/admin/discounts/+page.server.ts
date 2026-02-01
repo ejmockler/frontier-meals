@@ -8,6 +8,7 @@ const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 export const load: PageServerLoad = async ({ depends }) => {
 	depends('app:discounts');
 
+	// Load all discount codes with their plans
 	const { data: discounts, error } = await supabase
 		.from('discount_codes')
 		.select(`
@@ -18,8 +19,19 @@ export const load: PageServerLoad = async ({ depends }) => {
 
 	if (error) {
 		console.error('[Admin] Error fetching discounts:', error);
-		return { discounts: [] };
+		return { discounts: [], defaultPlanPrice: 29 };
 	}
 
-	return { discounts: discounts || [] };
+	// Load default plan price for delta calculation
+	const { data: defaultPlan } = await supabase
+		.from('subscription_plans')
+		.select('price_amount')
+		.eq('is_default', true)
+		.eq('is_active', true)
+		.single();
+
+	return {
+		discounts: discounts || [],
+		defaultPlanPrice: defaultPlan?.price_amount || 29
+	};
 };
