@@ -20,8 +20,8 @@
 	});
 </script>
 
-<Section spacing="normal" class="overflow-hidden min-h-[100dvh] flex flex-col">
-	<Container size="wide" class="flex-1 flex items-center">
+<Section spacing="normal" class="overflow-hidden min-h-[100dvh] flex items-center">
+	<Container size="wide">
 		<div class="grid md:grid-cols-2 gap-8 md:gap-12 lg:gap-16 items-center w-full">
 			<!-- Content Side -->
 			<div
@@ -57,7 +57,7 @@
 					</li>
 				</ul>
 
-				<div class="flex">
+				<div class="flex flex-col sm:flex-row sm:items-center gap-6">
 					<Button
 						onclick={onSubscribe}
 						disabled={loading}
@@ -67,6 +67,26 @@
 					>
 						{loading ? 'Loading...' : 'Start Your Subscription'}
 					</Button>
+
+					<!-- How it works: positioned relative to CTA -->
+					<button
+						onclick={onLearnMore}
+						class="group flex items-center justify-center sm:justify-start gap-2 text-[#5C5A56] hover:text-[#E67E50] transition-colors duration-200 focus:outline-none focus-visible:text-[#E67E50]"
+						class:opacity-0={!mounted}
+						class:opacity-100={mounted}
+						style="transition: opacity 0.5s ease-out 0.4s"
+						aria-label="Scroll to learn how it works"
+					>
+						<span class="text-base font-medium">How it works</span>
+						<svg
+							class="w-5 h-5 animate-bounce"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+						</svg>
+					</button>
 				</div>
 			</div>
 
@@ -96,24 +116,4 @@
 			</div>
 		</div>
 	</Container>
-
-	<!-- Scroll indicator: Bottom center, easy thumb target -->
-	<button
-		onclick={onLearnMore}
-		class="group flex flex-col items-center gap-2 pb-6 pt-4 px-8 mx-auto text-[#5C5A56] hover:text-[#E67E50] transition-colors duration-200 focus:outline-none focus-visible:text-[#E67E50]"
-		class:opacity-0={!mounted}
-		class:opacity-100={mounted}
-		style="transition: opacity 0.5s ease-out 0.4s"
-		aria-label="Scroll to learn how it works"
-	>
-		<span class="text-sm font-medium">How it works</span>
-		<svg
-			class="w-6 h-6 animate-bounce"
-			fill="none"
-			stroke="currentColor"
-			viewBox="0 0 24 24"
-		>
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-		</svg>
-	</button>
 </Section>
