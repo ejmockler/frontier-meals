@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Section, Container, Heading, Text } from '$lib/components/landing';
+	import { Section, Container } from '$lib/components/landing';
 	import Button from '$lib/components/ui/button.svelte';
 
 	interface Props {
@@ -14,16 +14,15 @@
 	let mounted = $state(false);
 
 	onMount(() => {
-		// Small delay to ensure smooth entrance
 		setTimeout(() => {
 			mounted = true;
 		}, 100);
 	});
 </script>
 
-<Section spacing="normal" class="overflow-hidden min-h-[calc(100vh-4rem)] flex items-center">
-	<Container size="wide">
-		<div class="grid md:grid-cols-2 gap-8 md:gap-12 lg:gap-16 items-center">
+<Section spacing="normal" class="overflow-hidden min-h-[100dvh] flex flex-col">
+	<Container size="wide" class="flex-1 flex items-center">
+		<div class="grid md:grid-cols-2 gap-8 md:gap-12 lg:gap-16 items-center w-full">
 			<!-- Content Side -->
 			<div
 				class="order-2 md:order-1 transition-all duration-500 ease-out"
@@ -32,32 +31,41 @@
 				class:opacity-100={mounted}
 				class:translate-y-0={mounted}
 			>
-				<h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#1A1816] mb-4 md:mb-6">
-					Frontier Meals
-				</h1>
+				<!-- Brand + Tagline -->
+				<div class="mb-6 md:mb-8">
+					<h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#1A1816]">
+						Frontier Meals
+					</h1>
+					<p class="text-xl sm:text-2xl lg:text-3xl font-medium text-[#E67E50] mt-2">
+						Lunch, solved.
+					</p>
+				</div>
 
-				<p class="text-lg sm:text-xl lg:text-2xl text-[#5C5A56] leading-relaxed mb-6 md:mb-8 max-w-lg">
-					Healthy lunches delivered daily to Frontier Tower. Subscribe once,
-					show up at noon, and enjoy community dining or grab and go.
-				</p>
+				<!-- Value Props: Scannable Chunks -->
+				<ul class="space-y-3 mb-8 text-[#5C5A56]">
+					<li class="flex items-center gap-3">
+						<span class="w-1.5 h-1.5 rounded-full bg-[#E67E50] flex-shrink-0"></span>
+						<span class="text-base sm:text-lg">Healthy meals at Frontier Tower, weekdays at noon</span>
+					</li>
+					<li class="flex items-center gap-3">
+						<span class="w-1.5 h-1.5 rounded-full bg-[#E67E50] flex-shrink-0"></span>
+						<span class="text-base sm:text-lg">Subscribe once, show up when you want</span>
+					</li>
+					<li class="flex items-center gap-3">
+						<span class="w-1.5 h-1.5 rounded-full bg-[#E67E50] flex-shrink-0"></span>
+						<span class="text-base sm:text-lg">Community dining or grab and go</span>
+					</li>
+				</ul>
 
-				<div class="flex flex-wrap gap-3 sm:gap-4">
+				<div class="flex">
 					<Button
 						onclick={onSubscribe}
 						disabled={loading}
 						size="lg"
+						class="w-full sm:w-auto"
 						aria-label="Start your lunch subscription"
 					>
 						{loading ? 'Loading...' : 'Start Your Subscription'}
-					</Button>
-
-					<Button
-						variant="outline"
-						onclick={onLearnMore}
-						size="lg"
-						aria-label="Learn more about how it works"
-					>
-						Learn More
 					</Button>
 				</div>
 			</div>
@@ -88,4 +96,24 @@
 			</div>
 		</div>
 	</Container>
+
+	<!-- Scroll indicator: Bottom center, easy thumb target -->
+	<button
+		onclick={onLearnMore}
+		class="group flex flex-col items-center gap-2 pb-6 pt-4 px-8 mx-auto text-[#5C5A56] hover:text-[#E67E50] transition-colors duration-200 focus:outline-none focus-visible:text-[#E67E50]"
+		class:opacity-0={!mounted}
+		class:opacity-100={mounted}
+		style="transition: opacity 0.5s ease-out 0.4s"
+		aria-label="Scroll to learn how it works"
+	>
+		<span class="text-sm font-medium">How it works</span>
+		<svg
+			class="w-6 h-6 animate-bounce"
+			fill="none"
+			stroke="currentColor"
+			viewBox="0 0 24 24"
+		>
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+		</svg>
+	</button>
 </Section>
