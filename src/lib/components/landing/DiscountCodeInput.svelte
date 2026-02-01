@@ -77,14 +77,15 @@
 					reservation_id: reservation.reservation_id,
 					plan: reservation.plan,
 					discount: reservation.discount,
-					discounted_price: reservation.discounted_price,
+					original_price: reservation.original_price,
 					savings: reservation.savings
 				};
 				code = reservation.code;
 
-				// Notify parent component
-				if (onDiscountApplied && reservation.reservation_id && reservation.discounted_price) {
-					onDiscountApplied(reservation.reservation_id, reservation.discounted_price);
+				// Notify parent component with the discounted price (plan.price)
+				const discountedPrice = reservation.plan?.price;
+				if (onDiscountApplied && reservation.reservation_id && discountedPrice !== undefined) {
+					onDiscountApplied(reservation.reservation_id, discountedPrice);
 				}
 			} else {
 				// Expired - clear it
@@ -110,7 +111,7 @@
 					reservation_id: result.reservation_id,
 					plan: result.plan,
 					discount: result.discount,
-					discounted_price: result.discounted_price,
+					original_price: result.original_price,
 					savings: result.savings,
 					expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString() // 15 minutes
 				})
@@ -159,9 +160,10 @@
 				// Save to sessionStorage
 				saveReservation(result);
 
-				// Notify parent component
-				if (onDiscountApplied && result.reservation_id && result.discounted_price) {
-					onDiscountApplied(result.reservation_id, result.discounted_price);
+				// Notify parent component with the discounted price (plan.price)
+				const discountedPrice = result.plan?.price;
+				if (onDiscountApplied && result.reservation_id && discountedPrice !== undefined) {
+					onDiscountApplied(result.reservation_id, discountedPrice);
 				}
 			}
 		} catch (error) {
@@ -303,7 +305,11 @@
 								{code.toUpperCase()}
 							</p>
 							<p class="text-xs text-[#059669]">
-								{validationResult.discount?.display}
+								{#if validationResult.savings && validationResult.savings > 0}
+									Save ${validationResult.savings.toFixed(2)} ({validationResult.savings_percent}% off)
+								{:else}
+									Applied
+								{/if}
 							</p>
 						</div>
 					</div>
@@ -433,9 +439,13 @@
 		{/if}
 
 		<!-- Success message -->
-		{#if isApplied && validationResult?.discount}
+		{#if isApplied && validationResult}
 			<div class="bg-[#d1fae5]/50 rounded-lg px-3 py-2 text-sm text-[#059669]">
-				✓ {validationResult.discount.display}
+				{#if validationResult.savings && validationResult.savings > 0}
+					✓ Save ${validationResult.savings.toFixed(2)} ({validationResult.savings_percent}% off)
+				{:else}
+					✓ Code applied
+				{/if}
 			</div>
 		{/if}
 
