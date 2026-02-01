@@ -2,67 +2,53 @@
 	import { Section, Container, Heading, Text } from '$lib/components/landing';
 	import { scrollReveal } from '$lib/actions/scrollReveal';
 
-	const features = [
+	interface Feature {
+		title: string;
+		items: string[];
+		highlight?: { value: string; label: string };
+	}
+
+	const features: Feature[] = [
 		{
-			title: 'Dietary Preferences',
-			description:
-				"Choose from: I eat anything, Vegetarian, Vegan, or Pescatarian. Let us know about any food allergies and we'll accommodate your needs.",
-			icon: '🥗',
-			highlight: false
+			title: 'Your Preferences',
+			items: ['Omnivore', 'Vegetarian', 'Vegan', 'Pescatarian']
 		},
 		{
-			title: 'Flexible Cancellation',
-			description:
-				"Can't make it? Cancel by Friday 9am PST before the meal and receive a 75% reimbursement for that day.",
-			icon: '📅',
-			highlight: true // THIS IS THE KEY DIFFERENTIATOR
+			title: 'Need to Skip?',
+			items: ['Cancel by Friday 9am', 'Get 75% back'],
+			highlight: { value: '75%', label: 'refund' }
 		}
 	];
 </script>
 
-<Section background="recessed">
+<Section background="recessed" spacing="normal">
 	<Container size="narrow">
-		<div class="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+		<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
 			{#each features as feature, i}
 				<div
-					class="p-8 rounded-md transition-all duration-150"
-					class:bg-white={!feature.highlight}
-					class:border-2={true}
+					class="p-6 md:p-8 rounded-md bg-white border-2 transition-all duration-200 hover:shadow-md"
 					class:border-[#D9D7D2]={!feature.highlight}
-					class:bg-highlight={feature.highlight}
 					class:border-[#E67E50]={feature.highlight}
-					class:shadow-lg={feature.highlight}
 					use:scrollReveal={{ delay: i * 100 }}
 				>
-					<!-- Icon -->
-					<div
-						class="w-14 h-14 rounded-md flex items-center justify-center mb-5"
-						class:bg-[#E8E6E1]={!feature.highlight}
-						class:bg-[#E67E50]={feature.highlight}
-					>
-						<span
-							class="text-3xl"
-							class:grayscale={!feature.highlight}
-							class:grayscale-0={feature.highlight}
-						>
-							{feature.icon}
-						</span>
-					</div>
-
-					<Heading level={3} class={feature.highlight ? 'text-[#E67E50]' : ''}>
+					<Heading level={3} class="mb-4 text-lg">
 						{feature.title}
 					</Heading>
 
-					<Text color="secondary" class="mt-3">
-						{feature.description}
-					</Text>
+					<!-- Tags/Pills for items -->
+					<div class="flex flex-wrap gap-2">
+						{#each feature.items as item}
+							<span class="px-3 py-1.5 bg-[#F5F3EF] text-[#5C5A56] text-sm rounded-full border border-[#E8E6E1]">
+								{item}
+							</span>
+						{/each}
+					</div>
 
-					<!-- Highlight badge for 75% reimbursement -->
+					<!-- Highlight callout -->
 					{#if feature.highlight}
-						<div
-							class="mt-4 inline-flex items-center gap-2 px-3 py-1.5 bg-[#E67E50] text-white text-sm font-bold rounded-full"
-						>
-							<span>75% Back</span>
+						<div class="mt-5 pt-5 border-t border-[#E8E6E1] flex items-center gap-3">
+							<span class="text-3xl font-bold text-[#E67E50]">{feature.highlight.value}</span>
+							<span class="text-sm text-[#5C5A56]">{feature.highlight.label}</span>
 						</div>
 					{/if}
 				</div>
@@ -70,9 +56,3 @@
 		</div>
 	</Container>
 </Section>
-
-<style>
-	.bg-highlight {
-		background-color: rgba(230, 126, 80, 0.1);
-	}
-</style>

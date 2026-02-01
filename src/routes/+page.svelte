@@ -4,7 +4,6 @@
     HeroSection,
     CommunityGallery,
     HowItWorks,
-    FlexibilityFeatures,
     FoodShowcase,
     BenefitsGrid,
     SocialProof,
@@ -24,6 +23,14 @@
   function handleScrollToCheckout() {
     // Smooth scroll to checkout section
     document.getElementById('checkout')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center'
+    });
+  }
+
+  function handleLearnMore() {
+    // Smooth scroll to how-it-works section, centered in viewport
+    document.getElementById('how-it-works')?.scrollIntoView({
       behavior: 'smooth',
       block: 'center'
     });
@@ -62,14 +69,6 @@
     }
   }
 
-  function handleLearnMore() {
-    // Smooth scroll to How It Works section
-    document.getElementById('how-it-works')?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    });
-  }
-
   function handleContact() {
     // Open Telegram contact
     window.open('https://t.me/noahchonlee', '_blank');
@@ -102,21 +101,15 @@
   <!-- Main Content -->
   <main id="main-content">
     <!-- Hero: Identity + Value Proposition -->
-    <HeroSection
-      onSubscribe={handleScrollToCheckout}
-      onLearnMore={handleLearnMore}
-    />
+    <HeroSection onSubscribe={handleScrollToCheckout} onLearnMore={handleLearnMore} />
 
     <!-- Community: Emotional resonance + Social proof -->
     <CommunityGallery />
 
-    <!-- How It Works: Mental model construction -->
+    <!-- How It Works: Mental model + Flexibility (merged) -->
     <div id="how-it-works">
       <HowItWorks />
     </div>
-
-    <!-- Flexibility: Risk mitigation + Key differentiator (75% reimbursement) -->
-    <FlexibilityFeatures />
 
     <!-- Food: Sensory appeal + Quality signal -->
     <FoodShowcase />
