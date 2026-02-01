@@ -4,7 +4,7 @@
 	interface Props {
 		id?: string;
 		background?: 'default' | 'elevated' | 'recessed';
-		spacing?: 'normal' | 'compact' | 'spacious';
+		spacing?: 'tight' | 'compact' | 'normal' | 'spacious';
 		class?: string;
 		children: any;
 	}
@@ -24,6 +24,7 @@
 	};
 
 	const spacings = {
+		tight: 'py-6 md:py-8',
 		compact: 'py-12 md:py-16',
 		normal: 'py-16 md:py-24',
 		spacious: 'py-24 md:py-32'
