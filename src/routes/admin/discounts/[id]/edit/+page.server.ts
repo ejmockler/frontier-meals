@@ -102,8 +102,8 @@ export const actions: Actions = {
 				return fail(500, { error: 'Failed to update discount code' });
 			}
 
-			// Redirect to discounts list page
-			throw redirect(303, '/admin/discounts');
+			// Redirect to discounts list page with success message
+			throw redirect(303, `/admin/discounts?updated=${encodeURIComponent(code)}`);
 		} catch (error) {
 			if (error instanceof Response) throw error; // Re-throw redirect
 			console.error('[Admin] Error updating discount code:', error);
@@ -148,8 +148,8 @@ export const actions: Actions = {
 				return fail(500, { error: 'Failed to delete discount code' });
 			}
 
-			// Redirect to discounts list page
-			throw redirect(303, '/admin/discounts');
+			// Redirect to discounts list page with success message
+			throw redirect(303, `/admin/discounts?deleted=${encodeURIComponent(discount.code)}`);
 		} catch (error) {
 			if (error instanceof Response) throw error; // Re-throw redirect
 			console.error('[Admin] Error deleting discount code:', error);

@@ -18,6 +18,8 @@
 	let is_active = data.discount.is_active;
 	let showLimits = !!(max_uses || valid_until);
 	let showDeleteConfirm = false;
+	let isSubmitting = false;
+	let isDeleting = false;
 
 	// Selected plan for preview
 	$: selectedPlan = data.plans.find((p) => p.id === plan_id);
@@ -114,7 +116,18 @@
 	<form
 		method="POST"
 		action="?/updateDiscount"
-		use:enhance
+		use:enhance={() => {
+			isSubmitting = true;
+			return async ({ result, update }) => {
+				isSubmitting = false;
+				if (result.type === 'redirect') {
+					goto(`${result.location}`);
+				} else {
+					await update();
+					window.scrollTo({ top: 0, behavior: 'smooth' });
+				}
+			};
+		}}
 		class="grid grid-cols-1 lg:grid-cols-5 gap-6"
 	>
 		<input type="hidden" name="csrf_token" value={data.csrfToken} />
@@ -329,9 +342,20 @@
 					</button>
 					<button
 						type="submit"
-						class="flex-1 px-6 py-3 bg-[#E67E50] border-2 border-[#D97F3E] text-white font-bold rounded-sm hover:bg-[#D97F3E] hover:shadow-xl shadow-lg transition-all"
+						disabled={isSubmitting}
+						class="flex-1 px-6 py-3 bg-[#E67E50] border-2 border-[#D97F3E] text-white font-bold rounded-sm hover:bg-[#D97F3E] hover:shadow-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
 					>
-						Save Changes
+						{#if isSubmitting}
+							<span class="inline-flex items-center gap-2">
+								<svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+								</svg>
+								Saving...
+							</span>
+						{:else}
+							Save Changes
+						{/if}
 					</button>
 				</div>
 			</div>
@@ -508,15 +532,37 @@
 				<form
 					method="POST"
 					action="?/deleteDiscount"
-					use:enhance
+					use:enhance={() => {
+						isDeleting = true;
+						return async ({ result, update }) => {
+							isDeleting = false;
+							if (result.type === 'redirect') {
+								goto(`${result.location}`);
+							} else {
+								await update();
+								closeDeleteConfirm();
+							}
+						};
+					}}
 					class="flex-1"
 				>
 					<input type="hidden" name="csrf_token" value={data.csrfToken} />
 					<button
 						type="submit"
-						class="w-full px-4 py-2 text-white bg-[#C85454] border-2 border-[#C85454]/70 hover:bg-[#C85454]/90 hover:shadow-xl shadow-lg rounded-sm font-bold transition-colors"
+						disabled={isDeleting}
+						class="w-full px-4 py-2 text-white bg-[#C85454] border-2 border-[#C85454]/70 hover:bg-[#C85454]/90 hover:shadow-xl shadow-lg rounded-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 					>
-						Delete
+						{#if isDeleting}
+							<span class="inline-flex items-center justify-center gap-2">
+								<svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+								</svg>
+								Deleting...
+							</span>
+						{:else}
+							Delete
+						{/if}
 					</button>
 				</form>
 			</div>

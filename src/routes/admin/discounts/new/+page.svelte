@@ -14,6 +14,7 @@
 	let max_uses_per_customer = 1;
 	let admin_notes = '';
 	let showLimits = false;
+	let isSubmitting = false;
 
 	// Selected plan for preview
 	$: selectedPlan = data.plans.find((p) => p.id === plan_id);
@@ -92,7 +93,20 @@
 	<form
 		method="POST"
 		action="?/createDiscount"
-		use:enhance
+		use:enhance={() => {
+			isSubmitting = true;
+			return async ({ result, update }) => {
+				isSubmitting = false;
+				if (result.type === 'redirect') {
+					// Success - redirect happens automatically with message
+					goto(`${result.location}?created=${encodeURIComponent(code)}`);
+				} else {
+					// Error - update form to show error, scroll to top
+					await update();
+					window.scrollTo({ top: 0, behavior: 'smooth' });
+				}
+			};
+		}}
 		class="grid grid-cols-1 lg:grid-cols-5 gap-6"
 	>
 		<input type="hidden" name="csrf_token" value={data.csrfToken} />
@@ -289,9 +303,20 @@
 					</button>
 					<button
 						type="submit"
-						class="flex-1 px-6 py-3 bg-[#E67E50] border-2 border-[#D97F3E] text-white font-bold rounded-sm hover:bg-[#D97F3E] hover:shadow-xl shadow-lg transition-all"
+						disabled={isSubmitting}
+						class="flex-1 px-6 py-3 bg-[#E67E50] border-2 border-[#D97F3E] text-white font-bold rounded-sm hover:bg-[#D97F3E] hover:shadow-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
 					>
-						Create Discount
+						{#if isSubmitting}
+							<span class="inline-flex items-center gap-2">
+								<svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+								</svg>
+								Creating...
+							</span>
+						{:else}
+							Create Discount
+						{/if}
 					</button>
 				</div>
 			</div>

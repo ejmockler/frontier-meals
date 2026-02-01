@@ -1,8 +1,32 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import type { DiscountStatus } from '$lib/types/discount';
+	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
 
 	export let data: PageData;
+
+	// Success notification state
+	let showSuccess = false;
+	let successMessage = '';
+
+	// Show success notification on mount if present, then clear URL
+	onMount(() => {
+		if (data.successMessage) {
+			successMessage = data.successMessage;
+			showSuccess = true;
+			// Clear the URL parameter without triggering navigation
+			const url = new URL(window.location.href);
+			url.searchParams.delete('created');
+			url.searchParams.delete('updated');
+			url.searchParams.delete('deleted');
+			window.history.replaceState({}, '', url.toString());
+			// Auto-dismiss after 5 seconds
+			setTimeout(() => {
+				showSuccess = false;
+			}, 5000);
+		}
+	});
 
 	// Get discount display text from price delta
 	function getDiscountDisplay(discount: any, defaultPlanPrice: number): string {
@@ -142,6 +166,28 @@
 </svelte:head>
 
 <div class="space-y-6">
+	<!-- Success notification -->
+	{#if showSuccess}
+		<div
+			class="bg-[#D1FAE5] border-2 border-[#52A675] rounded-sm p-4 flex items-center justify-between animate-in slide-in-from-top duration-300"
+		>
+			<div class="flex items-center gap-3">
+				<svg class="w-5 h-5 text-[#52A675] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+				</svg>
+				<p class="font-bold text-[#1A1816]">{successMessage}</p>
+			</div>
+			<button
+				on:click={() => (showSuccess = false)}
+				class="text-[#52A675] hover:text-[#1A1816] transition-colors"
+			>
+				<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</button>
+		</div>
+	{/if}
+
 	<!-- Page header -->
 	<div class="flex items-center justify-between">
 		<div>

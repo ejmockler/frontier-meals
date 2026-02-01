@@ -5,8 +5,13 @@ import type { PageServerLoad } from './$types';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-export const load: PageServerLoad = async ({ depends }) => {
+export const load: PageServerLoad = async ({ depends, url }) => {
 	depends('app:discounts');
+
+	// Check for success message from redirect
+	const createdCode = url.searchParams.get('created');
+	const updatedCode = url.searchParams.get('updated');
+	const deletedCode = url.searchParams.get('deleted');
 
 	// Load all discount codes with their plans
 	const { data: discounts, error } = await supabase
@@ -32,6 +37,13 @@ export const load: PageServerLoad = async ({ depends }) => {
 
 	return {
 		discounts: discounts || [],
-		defaultPlanPrice: defaultPlan?.price_amount || 29
+		defaultPlanPrice: defaultPlan?.price_amount || 29,
+		successMessage: createdCode
+			? `Discount code "${createdCode}" created successfully`
+			: updatedCode
+				? `Discount code "${updatedCode}" updated successfully`
+				: deletedCode
+					? `Discount code "${deletedCode}" deleted successfully`
+					: null
 	};
 };
