@@ -1,29 +1,31 @@
 <script lang="ts">
-  import { Section, Container, Heading } from '$lib/components/landing';
+	import { Section, Container, Text } from '$lib/components/landing';
+	import { scrollReveal } from '$lib/actions/scrollReveal';
 </script>
 
-<Section background="recessed" spacing="normal">
-  <Container>
-    <div class="text-center mb-8">
-      <Heading level={2} align="center">
-        Loved by the Frontier Tower Community
-      </Heading>
-    </div>
+<Section background="recessed" spacing="tight" class="pt-10 md:pt-14">
+	<Container>
+		<!-- Community Image -->
+		<div
+			class="relative rounded-md overflow-hidden shadow-xl max-w-3xl mx-auto"
+			use:scrollReveal={{ delay: 100 }}
+		>
+			<img
+				src="/images/landing/large-gathering.jpg"
+				alt="Large community gathering at Frontier Tower lunch"
+				width="1200"
+				height="800"
+				class="w-full"
+				loading="lazy"
+				decoding="async"
+			/>
 
-    <!-- Large Community Image -->
-    <div class="relative rounded-md overflow-hidden shadow-xl max-w-4xl mx-auto">
-      <img
-        src="/images/landing/large-gathering.jpg"
-        alt="Large community gathering at Frontier Tower lunch"
-        width="1200"
-        height="800"
-        class="w-full"
-        loading="lazy"
-        decoding="async"
-      />
-
-      <!-- Gradient overlay for depth -->
-      <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
-    </div>
-  </Container>
+			<!-- Caption overlay -->
+			<div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 sm:p-6">
+				<Text color="inverse" size="sm" align="center">
+					The Frontier Tower community
+				</Text>
+			</div>
+		</div>
+	</Container>
 </Section>

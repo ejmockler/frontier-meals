@@ -13,7 +13,7 @@
   let { onCheckout, onContact, loading = false, price = '$500/month' }: Props = $props();
 </script>
 
-<Section background="recessed" spacing="spacious">
+<Section background="recessed" spacing="compact">
   <Container size="narrow">
     <div class="text-center mb-8">
       <Heading level={2} align="center" class="mb-4">
