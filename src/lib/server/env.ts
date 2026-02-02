@@ -39,12 +39,21 @@ export interface ServerEnv {
 	STRIPE_WEBHOOK_SECRET_TEST?: string;
 	STRIPE_PRICE_ID_LIVE?: string;
 	STRIPE_PRICE_ID_TEST?: string;
-	// PayPal Config
+	// PayPal Config (resolved values)
 	PAYPAL_CLIENT_ID?: string;
 	PAYPAL_CLIENT_SECRET?: string;
 	PAYPAL_WEBHOOK_ID?: string;
 	PAYPAL_PLAN_ID?: string;
 	PAYPAL_MODE?: 'sandbox' | 'live';
+	// Dual-mode PayPal Config
+	PAYPAL_CLIENT_ID_LIVE?: string;
+	PAYPAL_CLIENT_ID_SANDBOX?: string;
+	PAYPAL_CLIENT_SECRET_LIVE?: string;
+	PAYPAL_CLIENT_SECRET_SANDBOX?: string;
+	PAYPAL_WEBHOOK_ID_LIVE?: string;
+	PAYPAL_WEBHOOK_ID_SANDBOX?: string;
+	PAYPAL_PLAN_ID_LIVE?: string;
+	PAYPAL_PLAN_ID_SANDBOX?: string;
 }
 
 // Cache for local dev env
@@ -58,26 +67,43 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 	// In Cloudflare Workers, secrets are in platform.env
 	if (event.platform?.env) {
 		const env = event.platform.env as ServerEnv;
+
 		// Apply Stripe Mode Logic for Cloudflare (trim to handle potential whitespace)
-		const mode = env.STRIPE_MODE?.trim().toLowerCase();
-		const isTest = mode === 'test';
+		const stripeMode = env.STRIPE_MODE?.trim().toLowerCase();
+		const isStripeTest = stripeMode === 'test';
 
-		console.log(`[Env] Stripe Mode: ${mode}, isTest: ${isTest}`);
+		// Apply PayPal Mode Logic for Cloudflare
+		const paypalMode = env.PAYPAL_MODE?.trim().toLowerCase();
+		const isPayPalSandbox = paypalMode === 'sandbox';
 
-		const pick = (base: string, test?: string, live?: string) => {
-			if (isTest) return test || base;
+		console.log(`[Env] Stripe Mode: ${stripeMode}, isTest: ${isStripeTest}`);
+		console.log(`[Env] PayPal Mode: ${paypalMode}, isSandbox: ${isPayPalSandbox}`);
+
+		const pickStripe = (base: string, test?: string, live?: string) => {
+			if (isStripeTest) return test || base;
 			return live || base;
+		};
+
+		const pickPayPal = (sandbox?: string, live?: string) => {
+			if (isPayPalSandbox) return sandbox || '';
+			return live || '';
 		};
 
 		return {
 			...env,
-			STRIPE_SECRET_KEY: pick(env.STRIPE_SECRET_KEY, env.STRIPE_SECRET_KEY_TEST, env.STRIPE_SECRET_KEY_LIVE),
-			STRIPE_WEBHOOK_SECRET: pick(
+			// Stripe resolved values
+			STRIPE_SECRET_KEY: pickStripe(env.STRIPE_SECRET_KEY, env.STRIPE_SECRET_KEY_TEST, env.STRIPE_SECRET_KEY_LIVE),
+			STRIPE_WEBHOOK_SECRET: pickStripe(
 				env.STRIPE_WEBHOOK_SECRET,
 				env.STRIPE_WEBHOOK_SECRET_TEST,
 				env.STRIPE_WEBHOOK_SECRET_LIVE
 			),
-			STRIPE_PRICE_ID: pick(env.STRIPE_PRICE_ID, env.STRIPE_PRICE_ID_TEST, env.STRIPE_PRICE_ID_LIVE)
+			STRIPE_PRICE_ID: pickStripe(env.STRIPE_PRICE_ID, env.STRIPE_PRICE_ID_TEST, env.STRIPE_PRICE_ID_LIVE),
+			// PayPal resolved values
+			PAYPAL_CLIENT_ID: pickPayPal(env.PAYPAL_CLIENT_ID_SANDBOX, env.PAYPAL_CLIENT_ID_LIVE),
+			PAYPAL_CLIENT_SECRET: pickPayPal(env.PAYPAL_CLIENT_SECRET_SANDBOX, env.PAYPAL_CLIENT_SECRET_LIVE),
+			PAYPAL_WEBHOOK_ID: pickPayPal(env.PAYPAL_WEBHOOK_ID_SANDBOX, env.PAYPAL_WEBHOOK_ID_LIVE),
+			PAYPAL_PLAN_ID: pickPayPal(env.PAYPAL_PLAN_ID_SANDBOX, env.PAYPAL_PLAN_ID_LIVE)
 		};
 	}
 
@@ -110,34 +136,53 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 			STRIPE_PRICE_ID_LIVE: (privateEnv as any).STRIPE_PRICE_ID_LIVE,
 			STRIPE_PRICE_ID_TEST: (privateEnv as any).STRIPE_PRICE_ID_TEST,
 			// PayPal Config
-			PAYPAL_CLIENT_ID: (privateEnv as any).PAYPAL_CLIENT_ID,
-			PAYPAL_CLIENT_SECRET: (privateEnv as any).PAYPAL_CLIENT_SECRET,
-			PAYPAL_WEBHOOK_ID: (privateEnv as any).PAYPAL_WEBHOOK_ID,
-			PAYPAL_PLAN_ID: (privateEnv as any).PAYPAL_PLAN_ID,
-			PAYPAL_MODE: (privateEnv as any).PAYPAL_MODE as 'sandbox' | 'live'
+			PAYPAL_MODE: (privateEnv as any).PAYPAL_MODE as 'sandbox' | 'live',
+			PAYPAL_CLIENT_ID_LIVE: (privateEnv as any).PAYPAL_CLIENT_ID_LIVE,
+			PAYPAL_CLIENT_ID_SANDBOX: (privateEnv as any).PAYPAL_CLIENT_ID_SANDBOX,
+			PAYPAL_CLIENT_SECRET_LIVE: (privateEnv as any).PAYPAL_CLIENT_SECRET_LIVE,
+			PAYPAL_CLIENT_SECRET_SANDBOX: (privateEnv as any).PAYPAL_CLIENT_SECRET_SANDBOX,
+			PAYPAL_WEBHOOK_ID_LIVE: (privateEnv as any).PAYPAL_WEBHOOK_ID_LIVE,
+			PAYPAL_WEBHOOK_ID_SANDBOX: (privateEnv as any).PAYPAL_WEBHOOK_ID_SANDBOX,
+			PAYPAL_PLAN_ID_LIVE: (privateEnv as any).PAYPAL_PLAN_ID_LIVE,
+			PAYPAL_PLAN_ID_SANDBOX: (privateEnv as any).PAYPAL_PLAN_ID_SANDBOX
 		};
 	}
 
 	// Apply Stripe Mode Logic
 	const env = localEnvCache as ServerEnv;
-	const mode = env.STRIPE_MODE?.trim().toLowerCase();
-	const isTest = mode === 'test';
+	const stripeMode = env.STRIPE_MODE?.trim().toLowerCase();
+	const isStripeTest = stripeMode === 'test';
 
-	// Helper to pick key
-	const pick = (base: string, test?: string, live?: string) => {
-		if (isTest) return test || base;
+	// Apply PayPal Mode Logic
+	const paypalMode = env.PAYPAL_MODE?.trim().toLowerCase();
+	const isPayPalSandbox = paypalMode === 'sandbox';
+
+	// Helper to pick key based on mode
+	const pickStripe = (base: string, test?: string, live?: string) => {
+		if (isStripeTest) return test || base;
 		return live || base;
+	};
+
+	const pickPayPal = (sandbox?: string, live?: string) => {
+		if (isPayPalSandbox) return sandbox || '';
+		return live || '';
 	};
 
 	return {
 		...env,
-		STRIPE_SECRET_KEY: pick(env.STRIPE_SECRET_KEY, env.STRIPE_SECRET_KEY_TEST, env.STRIPE_SECRET_KEY_LIVE),
-		STRIPE_WEBHOOK_SECRET: pick(
+		// Stripe resolved values
+		STRIPE_SECRET_KEY: pickStripe(env.STRIPE_SECRET_KEY, env.STRIPE_SECRET_KEY_TEST, env.STRIPE_SECRET_KEY_LIVE),
+		STRIPE_WEBHOOK_SECRET: pickStripe(
 			env.STRIPE_WEBHOOK_SECRET,
 			env.STRIPE_WEBHOOK_SECRET_TEST,
 			env.STRIPE_WEBHOOK_SECRET_LIVE
 		),
-		STRIPE_PRICE_ID: pick(env.STRIPE_PRICE_ID, env.STRIPE_PRICE_ID_TEST, env.STRIPE_PRICE_ID_LIVE)
+		STRIPE_PRICE_ID: pickStripe(env.STRIPE_PRICE_ID, env.STRIPE_PRICE_ID_TEST, env.STRIPE_PRICE_ID_LIVE),
+		// PayPal resolved values
+		PAYPAL_CLIENT_ID: pickPayPal(env.PAYPAL_CLIENT_ID_SANDBOX, env.PAYPAL_CLIENT_ID_LIVE),
+		PAYPAL_CLIENT_SECRET: pickPayPal(env.PAYPAL_CLIENT_SECRET_SANDBOX, env.PAYPAL_CLIENT_SECRET_LIVE),
+		PAYPAL_WEBHOOK_ID: pickPayPal(env.PAYPAL_WEBHOOK_ID_SANDBOX, env.PAYPAL_WEBHOOK_ID_LIVE),
+		PAYPAL_PLAN_ID: pickPayPal(env.PAYPAL_PLAN_ID_SANDBOX, env.PAYPAL_PLAN_ID_LIVE)
 	};
 }
 
