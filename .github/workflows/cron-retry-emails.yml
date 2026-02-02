@@ -1,10 +1,14 @@
-# Retry Failed Emails - Runs every 6 hours
+# Retry Failed Emails
+#
+# MIGRATED TO CLOUDFLARE WORKERS (Feb 2026)
+# Now runs via frontier-meals-cron-frequent Worker every 6 hours.
+# This workflow is kept for manual fallback only.
+
 name: Retry Failed Emails
 
 on:
-  schedule:
-    # Every 6 hours
-    - cron: '0 */6 * * *'
+  # schedule DISABLED - migrated to Cloudflare Workers
+  # - cron: '0 */6 * * *'
   workflow_dispatch:
 
 env:

@@ -1,16 +1,24 @@
 # Cron Jobs for Frontier Meals
-# These workflows trigger the API endpoints that handle scheduled tasks.
+#
+# MIGRATED TO CLOUDFLARE WORKERS (Feb 2026)
+# All scheduled jobs now run via Cloudflare Workers for reliability.
+# See workers/ directory for implementation.
+#
+# Workers:
+#   - frontier-meals-cron: QR issuance (daily 19:00 UTC)
+#   - frontier-meals-cron-frequent: discount cleanup, email retry, telegram check
+#   - frontier-meals-cron-weekly: all cleanup jobs (Sunday 03:00 UTC)
+#
+# This workflow is kept for manual fallback only via workflow_dispatch.
+#
 # Secrets required in GitHub repo settings:
 #   - CRON_SECRET: Shared secret for authenticating cron requests
-#   - PRODUCTION_URL: https://frontiermeals.com (or your deployed URL)
 
 name: Scheduled Jobs
 
 on:
-  schedule:
-    # Issue daily QR codes - 12:00 PM Pacific (20:00 UTC in winter, 19:00 UTC in summer)
-    # Using 19:00 UTC to account for PDT
-    - cron: '0 19 * * *'
+  # schedule DISABLED - migrated to Cloudflare Workers
+  # - cron: '0 19 * * *'
   workflow_dispatch:
     inputs:
       job:

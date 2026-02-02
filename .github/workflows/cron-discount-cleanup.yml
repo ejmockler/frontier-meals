@@ -1,6 +1,8 @@
 # Discount Code Reservation Cleanup Job
-# Runs every 5 minutes to release expired discount code reservations
-# that prevent legitimate usage when users abandon checkout.
+#
+# MIGRATED TO CLOUDFLARE WORKERS (Feb 2026)
+# Now runs via frontier-meals-cron-frequent Worker every 5 minutes.
+# This workflow is kept for manual fallback only.
 #
 # Secrets required in GitHub repo settings:
 #   - CRON_SECRET: Shared secret for authenticating cron requests
@@ -8,9 +10,8 @@
 name: Discount Reservation Cleanup
 
 on:
-  schedule:
-    # Every 5 minutes
-    - cron: '*/5 * * * *'
+  # schedule DISABLED - migrated to Cloudflare Workers
+  # - cron: '*/5 * * * *'
   workflow_dispatch:
 
 env:
