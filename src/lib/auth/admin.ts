@@ -80,51 +80,74 @@ export async function generateMagicLinkToken(email: string): Promise<string> {
 /**
  * Verify a magic link token and mark it as used
  * Hashes incoming token before database lookup
+ *
+ * C5 FIX: Uses atomic UPDATE ... WHERE used = false ... RETURNING pattern
+ * to prevent race condition where the same token could be used twice
+ * in parallel requests. Only one request will successfully mark the token
+ * as used and receive the row back.
  */
 export async function verifyMagicLinkToken(token: string): Promise<{ valid: boolean; email?: string; expired?: boolean }> {
   const supabase = await getSupabaseAdmin();
 
   // Hash the incoming token to compare with stored hash
   const tokenHash = await sha256(token);
-  console.log('[verifyMagicLinkToken] Token hash:', tokenHash);
+  console.log('[verifyMagicLinkToken] Attempting atomic token claim...');
 
+  // C5 FIX: Atomic update - only one concurrent request will succeed
+  // The update includes `used = false` in the WHERE clause, so only
+  // unused tokens can be claimed. The first request to execute this
+  // UPDATE will set used=true and get the row back; subsequent parallel
+  // requests will find no matching row (used is now true).
   const { data: link, error } = await supabase
     .from('admin_magic_links')
-    .select('*')
+    .update({
+      used: true,
+      used_at: new Date().toISOString()
+    })
     .eq('token_hash', tokenHash)
     .eq('used', false)
+    .select('*')
     .single();
 
-  console.log('[verifyMagicLinkToken] Database query result:', { link, error });
-
+  // If no row was returned, either token doesn't exist or was already used
   if (error || !link) {
-    console.error('[verifyMagicLinkToken] Token not found or already used:', error);
+    // Check if the token exists but was already used (for better error messaging)
+    const { data: existingLink } = await supabase
+      .from('admin_magic_links')
+      .select('used, expires_at')
+      .eq('token_hash', tokenHash)
+      .single();
+
+    if (existingLink) {
+      if (existingLink.used) {
+        console.log('[verifyMagicLinkToken] Token already used (possible race condition prevented)');
+        return { valid: false, expired: false };
+      }
+      // Token exists but update failed for another reason
+      console.error('[verifyMagicLinkToken] Token exists but update failed:', error);
+    } else {
+      console.log('[verifyMagicLinkToken] Token not found');
+    }
     return { valid: false, expired: false };
   }
 
-  // Check expiry
+  // Check expiry (token was claimed but might be expired)
   const expiresAt = new Date(link.expires_at);
   const now = new Date();
-  console.log('[verifyMagicLinkToken] Expiry check:', { expiresAt: expiresAt.toISOString(), now: now.toISOString(), expired: expiresAt < now });
 
   if (expiresAt < now) {
-    console.error('[verifyMagicLinkToken] Token expired');
+    console.log('[verifyMagicLinkToken] Token claimed but expired');
+    // Token is already marked as used, so it can't be reused even if expired
     return { valid: false, expired: true };
   }
 
-  console.log('[verifyMagicLinkToken] Token valid, marking as used');
-
-  // Mark as used
-  await supabase
-    .from('admin_magic_links')
-    .update({ used: true, used_at: new Date().toISOString() })
-    .eq('token_hash', tokenHash);
-
+  console.log('[verifyMagicLinkToken] Token successfully claimed and validated');
   return { valid: true, email: link.email };
 }
 
 export interface AdminSession {
   sessionId: string;
+  jti: string;  // C2: JWT ID for database-backed revocation
   email: string;
   role: 'admin';
   createdAt: string;
@@ -134,15 +157,168 @@ export interface AdminSession {
 /**
  * Create an admin session
  * Returns session data to be stored in encrypted cookie
+ * C2: Now includes JTI for database-backed session tracking
  */
 export function createAdminSession(email: string): AdminSession {
+  const jti = randomUUID();  // JWT ID for revocation tracking
   return {
     sessionId: randomUUID(),
+    jti,  // C2: Include JTI for database tracking
     email,
     role: 'admin',
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
   };
+}
+
+/**
+ * Insert admin session record into database for tracking and revocation
+ * C2: Database-backed session tracking
+ */
+export async function insertAdminSessionRecord(
+  session: AdminSession,
+  metadata: { ipAddress?: string; userAgent?: string }
+): Promise<void> {
+  const supabase = await getSupabaseAdmin();
+
+  const { error } = await supabase.from('admin_sessions').insert({
+    admin_email: session.email,
+    jti: session.jti,
+    created_at: session.createdAt,
+    expires_at: session.expiresAt,
+    ip_address: metadata.ipAddress || null,
+    user_agent: metadata.userAgent || null
+  });
+
+  if (error) {
+    console.error('[Admin Auth] Failed to insert session record:', {
+      code: error.code,
+      message: error.message
+    });
+    // Don't throw - session cookie is still valid, just not tracked in DB
+    // This allows graceful degradation if DB is temporarily unavailable
+  } else {
+    console.log('[Admin Auth] Session record inserted for tracking');
+  }
+}
+
+/**
+ * Validate admin session against database
+ * C2: Check if session is revoked or expired in database
+ * Returns null if session is revoked/expired/not found, or the session if valid
+ */
+export async function validateAdminSessionInDb(jti: string): Promise<{ valid: boolean; error?: string }> {
+  const supabase = await getSupabaseAdmin();
+
+  // Call the database function that handles all validation logic
+  const { data, error } = await supabase.rpc('validate_admin_session', {
+    p_jti: jti
+  });
+
+  if (error) {
+    console.error('[Admin Auth] Database session validation error:', {
+      code: error.code,
+      message: error.message
+    });
+    // Fail open during database issues to prevent lockout
+    // The JWT signature is still valid, so we allow access
+    return { valid: true };
+  }
+
+  if (!data || data.length === 0) {
+    return { valid: false, error: 'SESSION_NOT_FOUND' };
+  }
+
+  const result = data[0];
+  if (!result.valid) {
+    return { valid: false, error: result.error_code };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Revoke a specific admin session by JTI
+ */
+export async function revokeAdminSession(
+  jti: string,
+  revokedBy: string,
+  reason?: string
+): Promise<boolean> {
+  const supabase = await getSupabaseAdmin();
+
+  const { data, error } = await supabase.rpc('revoke_admin_session', {
+    p_jti: jti,
+    p_revoked_by: revokedBy,
+    p_reason: reason || null
+  });
+
+  if (error) {
+    console.error('[Admin Auth] Failed to revoke session:', {
+      code: error.code,
+      message: error.message
+    });
+    return false;
+  }
+
+  return data === true;
+}
+
+/**
+ * Revoke all sessions for an admin (logout everywhere)
+ */
+export async function revokeAllAdminSessions(
+  adminEmail: string,
+  revokedBy: string,
+  reason?: string
+): Promise<number> {
+  const supabase = await getSupabaseAdmin();
+
+  const { data, error } = await supabase.rpc('revoke_all_admin_sessions', {
+    p_admin_email: adminEmail,
+    p_revoked_by: revokedBy,
+    p_reason: reason || 'Logout all sessions'
+  });
+
+  if (error) {
+    console.error('[Admin Auth] Failed to revoke all sessions:', {
+      code: error.code,
+      message: error.message
+    });
+    return 0;
+  }
+
+  return data || 0;
+}
+
+/**
+ * Get active sessions for an admin (for session management UI)
+ */
+export async function getActiveAdminSessions(adminEmail: string): Promise<Array<{
+  id: string;
+  jti: string;
+  created_at: string;
+  expires_at: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  last_used_at: string | null;
+  use_count: number;
+}>> {
+  const supabase = await getSupabaseAdmin();
+
+  const { data, error } = await supabase.rpc('get_active_admin_sessions', {
+    p_admin_email: adminEmail
+  });
+
+  if (error) {
+    console.error('[Admin Auth] Failed to get active sessions:', {
+      code: error.code,
+      message: error.message
+    });
+    return [];
+  }
+
+  return data || [];
 }
 
 /**
