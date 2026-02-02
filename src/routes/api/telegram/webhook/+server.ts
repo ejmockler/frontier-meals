@@ -7,6 +7,8 @@ import { sha256, timingSafeEqual } from '$lib/utils/crypto';
 import { getEnv, type ServerEnv } from '$lib/server/env';
 import Stripe from 'stripe';
 import { checkRateLimit } from '$lib/utils/rate-limit';
+import { sendEmail } from '$lib/email/send';
+import { renderTemplate } from '$lib/email/templates';
 
 // Request-scoped context for clients and env
 interface RequestContext {
@@ -76,6 +78,258 @@ async function deleteSkipSession(ctx: RequestContext, telegramUserId: number): P
   if (error) {
     console.error('[DB ERROR] Failed to delete skip session:', error);
   }
+}
+
+// ============================================================================
+// TELEGRAM LINK VERIFICATION HELPERS (C1 Security Fix)
+// ============================================================================
+
+/**
+ * Generate a cryptographically secure 6-digit verification code
+ */
+function generateVerificationCode(): string {
+  // Use crypto.getRandomValues for cryptographic randomness
+  const array = new Uint32Array(1);
+  crypto.getRandomValues(array);
+  // Generate a 6-digit code (100000-999999)
+  const code = 100000 + (array[0] % 900000);
+  return code.toString();
+}
+
+/**
+ * Verification state for pending Telegram link
+ */
+interface PendingVerification {
+  customer_id: string;
+  telegram_user_id: number;
+  telegram_username: string | null;
+  token_hash: string;
+  chat_id: number;
+  attempts: number;
+  max_attempts: number;
+  expires_at: Date;
+}
+
+/**
+ * Get pending verification for a Telegram user
+ */
+async function getPendingVerification(
+  ctx: RequestContext,
+  telegramUserId: number
+): Promise<PendingVerification | null> {
+  const { data, error } = await ctx.supabase
+    .from('telegram_link_verifications')
+    .select('*')
+    .eq('telegram_user_id', telegramUserId)
+    .is('verified_at', null)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  // Check if expired
+  if (new Date(data.expires_at) < new Date()) {
+    // Delete expired verification
+    await ctx.supabase
+      .from('telegram_link_verifications')
+      .delete()
+      .eq('id', data.id);
+    return null;
+  }
+
+  // Check if max attempts exceeded
+  if (data.attempts >= data.max_attempts) {
+    // Delete exhausted verification
+    await ctx.supabase
+      .from('telegram_link_verifications')
+      .delete()
+      .eq('id', data.id);
+    return null;
+  }
+
+  return {
+    customer_id: data.customer_id,
+    telegram_user_id: data.telegram_user_id,
+    telegram_username: data.telegram_username,
+    token_hash: data.token_hash,
+    chat_id: data.chat_id,
+    attempts: data.attempts,
+    max_attempts: data.max_attempts,
+    expires_at: new Date(data.expires_at)
+  };
+}
+
+/**
+ * Create a pending verification for Telegram account linking
+ * Returns the plaintext verification code to send via email
+ */
+async function createPendingVerification(
+  ctx: RequestContext,
+  customerId: string,
+  telegramUserId: number,
+  telegramUsername: string | null,
+  tokenHash: string,
+  chatId: number
+): Promise<string> {
+  // Generate 6-digit code
+  const code = generateVerificationCode();
+  const codeHash = await sha256(code);
+
+  // Delete any existing pending verification for this user
+  await ctx.supabase
+    .from('telegram_link_verifications')
+    .delete()
+    .eq('telegram_user_id', telegramUserId);
+
+  // Create new verification record
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  const { error } = await ctx.supabase
+    .from('telegram_link_verifications')
+    .insert({
+      customer_id: customerId,
+      telegram_user_id: telegramUserId,
+      telegram_username: telegramUsername,
+      code_hash: codeHash,
+      token_hash: tokenHash,
+      chat_id: chatId,
+      attempts: 0,
+      max_attempts: 3,
+      expires_at: expiresAt.toISOString()
+    });
+
+  if (error) {
+    console.error('[DB ERROR] Failed to create verification:', error);
+    throw error;
+  }
+
+  return code;
+}
+
+/**
+ * Verify a code and complete the Telegram link if valid
+ * Returns: { success: true, customer_name } on success
+ *          { success: false, reason: string } on failure
+ */
+async function verifyCodeAndLink(
+  ctx: RequestContext,
+  telegramUserId: number,
+  code: string
+): Promise<{ success: true; customer_name: string } | { success: false; reason: string; attemptsRemaining?: number }> {
+  // Get pending verification
+  const { data: verification, error: fetchError } = await ctx.supabase
+    .from('telegram_link_verifications')
+    .select('*, customers(id, name, email)')
+    .eq('telegram_user_id', telegramUserId)
+    .is('verified_at', null)
+    .single();
+
+  if (fetchError || !verification) {
+    return { success: false, reason: 'no_pending_verification' };
+  }
+
+  // Check expiration
+  if (new Date(verification.expires_at) < new Date()) {
+    await ctx.supabase
+      .from('telegram_link_verifications')
+      .delete()
+      .eq('id', verification.id);
+    return { success: false, reason: 'code_expired' };
+  }
+
+  // Check attempts
+  if (verification.attempts >= verification.max_attempts) {
+    await ctx.supabase
+      .from('telegram_link_verifications')
+      .delete()
+      .eq('id', verification.id);
+    return { success: false, reason: 'max_attempts_exceeded' };
+  }
+
+  // Verify code hash
+  const codeHash = await sha256(code);
+  if (codeHash !== verification.code_hash) {
+    // Increment attempt count
+    const newAttempts = verification.attempts + 1;
+    await ctx.supabase
+      .from('telegram_link_verifications')
+      .update({ attempts: newAttempts })
+      .eq('id', verification.id);
+
+    if (newAttempts >= verification.max_attempts) {
+      await ctx.supabase
+        .from('telegram_link_verifications')
+        .delete()
+        .eq('id', verification.id);
+      return { success: false, reason: 'max_attempts_exceeded' };
+    }
+
+    return {
+      success: false,
+      reason: 'invalid_code',
+      attemptsRemaining: verification.max_attempts - newAttempts
+    };
+  }
+
+  // Code is valid! Complete the linking process
+  const customerId = verification.customer_id;
+  const telegramUsername = verification.telegram_username;
+  const extractedHandle = telegramUsername ? `@${telegramUsername}` : null;
+
+  // Link the account
+  const { error: linkError } = await ctx.supabase
+    .from('customers')
+    .update({
+      telegram_user_id: telegramUserId,
+      telegram_handle: extractedHandle
+    })
+    .eq('id', customerId);
+
+  if (linkError) {
+    console.error('[DB ERROR] Failed to link telegram account:', linkError);
+    return { success: false, reason: 'link_failed' };
+  }
+
+  // Mark token as used
+  await ctx.supabase
+    .from('telegram_deep_link_tokens')
+    .update({ used: true, used_at: new Date().toISOString() })
+    .eq('token_hash', verification.token_hash);
+
+  // Update telegram_link_status
+  await ctx.supabase
+    .from('telegram_link_status')
+    .upsert({
+      customer_id: customerId,
+      is_linked: true,
+      first_seen_at: new Date().toISOString(),
+      last_seen_at: new Date().toISOString()
+    });
+
+  // Mark verification as complete
+  await ctx.supabase
+    .from('telegram_link_verifications')
+    .update({ verified_at: new Date().toISOString() })
+    .eq('id', verification.id);
+
+  // Log audit event
+  await ctx.supabase.from('audit_log').insert({
+    actor: `customer:${customerId}`,
+    action: 'telegram_linked',
+    subject: `customer:${customerId}`,
+    metadata: {
+      telegram_user_id: telegramUserId,
+      telegram_username: telegramUsername,
+      telegram_handle: extractedHandle,
+      source: 'deep_link_verified'
+    }
+  });
+
+  // Get customer name for response
+  const customerName = verification.customers?.name || 'there';
+
+  return { success: true, customer_name: customerName };
 }
 
 interface TelegramUpdate {
@@ -189,16 +443,10 @@ async function handleMessage(ctx: RequestContext, message: TelegramMessage) {
         if (updateError) {
           console.error('[Telegram] Failed to update telegram_handle:', {
             customer_id: customer.id,
-            old_handle: customer.telegram_handle,
-            new_handle: currentHandle,
             error: updateError
           });
         } else {
-          console.log('[Telegram] Auto-updated telegram_handle:', {
-            customer_id: customer.id,
-            old_handle: customer.telegram_handle,
-            new_handle: currentHandle
-          });
+          console.log('[Telegram] Auto-updated telegram_handle for customer:', customer.id);
 
           // Log audit event
           await ctx.supabase.from('audit_log').insert({
@@ -214,18 +462,12 @@ async function handleMessage(ctx: RequestContext, message: TelegramMessage) {
         }
       } else if (customer) {
         // Customer found but handle unchanged - log at debug level
-        console.log('[Telegram] Handle check: no change needed', {
-          customer_id: customer.id,
-          current_handle: customer.telegram_handle
-        });
+        console.log('[Telegram] Handle check: no change needed for customer:', customer.id);
       }
     } else {
       // Rate limited - skip check silently
       // Next check will be available at: rateLimitResult.resetAt
-      console.log('[Telegram] Handle check rate-limited', {
-        telegram_user_id: telegramUserId,
-        next_check_at: rateLimitResult.resetAt
-      });
+      console.log('[Telegram] Handle check rate-limited, next check at:', rateLimitResult.resetAt);
     }
   }
 
@@ -267,8 +509,95 @@ async function handleMessage(ctx: RequestContext, message: TelegramMessage) {
         await sendMessage(ctx, chatId, 'Not sure what that is. Try /help to see what\'s available.');
     }
   } else {
-    // UX-2: Check for abandoned onboarding when user sends non-command message
-    await checkAbandonedOnboarding(ctx, chatId, telegramUserId);
+    // C1 Security Fix: Check if this is a verification code (6 digits)
+    const trimmedText = text.trim();
+    const isVerificationCode = /^\d{6}$/.test(trimmedText);
+
+    if (isVerificationCode) {
+      await handleVerificationCode(ctx, chatId, telegramUserId, trimmedText, message.from.username);
+    } else {
+      // UX-2: Check for abandoned onboarding when user sends non-command message
+      await checkAbandonedOnboarding(ctx, chatId, telegramUserId);
+    }
+  }
+}
+
+/**
+ * Handle verification code input for Telegram account linking (C1 Security Fix)
+ */
+async function handleVerificationCode(
+  ctx: RequestContext,
+  chatId: number,
+  telegramUserId: number,
+  code: string,
+  telegramUsername: string | undefined
+) {
+  // C3/C4: Don't log telegram_user_id (PII)
+  console.log('[Telegram] Verification code received');
+
+  const result = await verifyCodeAndLink(ctx, telegramUserId, code);
+
+  if (result.success) {
+    console.log('[Telegram] Verification successful, account linked');
+    // Send onboarding - diet selection (same as before)
+    await sendDietSelectionKeyboard(ctx, chatId);
+    return;
+  }
+
+  // Handle different failure reasons (result.success is false here)
+  const failureResult = result as { success: false; reason: string; attemptsRemaining?: number };
+
+  switch (failureResult.reason) {
+    case 'no_pending_verification':
+      await sendMessage(
+        ctx,
+        chatId,
+        'No pending verification found.\n\n' +
+        'If you\'re trying to connect your account, click the link in your welcome email first.'
+      );
+      break;
+    case 'code_expired':
+      await sendMessage(
+        ctx,
+        chatId,
+        'That code has expired.\n\n' +
+        'Click the link in your welcome email to get a new verification code.'
+      );
+      break;
+    case 'max_attempts_exceeded':
+      await sendMessage(
+        ctx,
+        chatId,
+        'Too many incorrect attempts.\n\n' +
+        'Click the link in your welcome email to get a new verification code.'
+      );
+      break;
+    case 'invalid_code': {
+      const attemptsLeft = failureResult.attemptsRemaining || 0;
+      await sendMessage(
+        ctx,
+        chatId,
+        `That code isn't right.\n\n` +
+        `You have ${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} remaining. ` +
+        `Check your email for the 6-digit code and try again.`
+      );
+      break;
+    }
+    case 'link_failed':
+      await sendMessage(
+        ctx,
+        chatId,
+        'Something went wrong linking your account.\n\n' +
+        'Please try again or message @noahchonlee for help.'
+      );
+      break;
+    default:
+      await sendMessage(
+        ctx,
+        chatId,
+        'Something went wrong.\n\n' +
+        'Please try again or message @noahchonlee for help.'
+      );
   }
 }
 
@@ -282,7 +611,7 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
   const chatId = message.chat.id;
 
   // Check if already linked
-  console.log('[Telegram Webhook] Checking if user already linked, telegram_user_id:', telegramUserId);
+  console.log('[Telegram Webhook] Checking if user already linked');
   const { data: existingCustomer, error: existingError } = await ctx.supabase
     .from('customers')
     .select('*')
@@ -316,7 +645,7 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
         .from('customers')
         .update({ telegram_handle: extractedHandle })
         .eq('id', existingCustomer.id);
-      console.log('[Telegram] Updated missing telegram_handle for existing customer:', extractedHandle);
+      console.log('[Telegram] Updated missing telegram_handle for existing customer:', existingCustomer.id);
     }
 
     await sendMessage(ctx, chatId, 'Hey again! You\'re all set.\n\n/skip to manage dates\n/status to see what\'s coming\n/help for everything else');
@@ -336,7 +665,7 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
   // Validate token format (UUID)
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!token || !UUID_REGEX.test(token)) {
-    console.log('[Telegram] Invalid token format:', { length: token?.length });
+    console.log('[Telegram] Invalid token format received');
     await sendMessage(
       ctx,
       chatId,
@@ -347,7 +676,7 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
 
   // Verify deep link token (hash incoming token for comparison)
   const tokenHash = await sha256(token);
-  console.log('[Telegram Webhook] Token hash computed, querying database...');
+  console.log('[Telegram Webhook] Querying database for deep link token');
 
   const { data: deepLinkToken, error: deepLinkError } = await ctx.supabase
     .from('telegram_deep_link_tokens')
@@ -383,16 +712,79 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
   }
 
   // ============================================================================
-  // CHECK IF TOKEN IS ACTIVATED (customer_id set)
+  // ATOMIC TOKEN CLAIM - RACE CONDITION FIX (C2)
   // ============================================================================
+  // This section prevents race conditions where multiple Telegram users could
+  // claim the same token. We use an atomic "claim" operation that:
+  // 1. Sets claimed_by_telegram_user_id ONLY IF it's currently NULL and used=FALSE
+  // 2. Returns whether the claim succeeded
+  // 3. Only proceeds if THIS request successfully claimed the token
+  //
   // For PayPal customers, token is created at checkout with customer_id=NULL
   // Webhook activates it by setting customer_id when customer is created
   // If user clicks link BEFORE webhook completes, poll for up to 5 seconds
+
+  // Step 1: Attempt to atomically claim this token for this Telegram user
+  // The WHERE clause ensures only ONE request can succeed
+  const { data: claimResult, error: claimError } = await ctx.supabase
+    .from('telegram_deep_link_tokens')
+    .update({
+      claimed_by_telegram_user_id: telegramUserId,
+      claimed_at: new Date().toISOString()
+    })
+    .eq('token_hash', tokenHash)
+    .eq('used', false)
+    .or(`claimed_by_telegram_user_id.is.null,claimed_by_telegram_user_id.eq.${telegramUserId}`)
+    .select('id, claimed_by_telegram_user_id')
+    .single();
+
+  if (claimError || !claimResult) {
+    // Check if token was already claimed by someone else
+    const { data: tokenStatus } = await ctx.supabase
+      .from('telegram_deep_link_tokens')
+      .select('claimed_by_telegram_user_id, used')
+      .eq('token_hash', tokenHash)
+      .single();
+
+    if (tokenStatus?.used) {
+      console.log('[Telegram] Token already used');
+      await sendMessage(
+        ctx,
+        chatId,
+        'This link has already been used.\n\n' +
+        'If you\'ve already connected your account, use /status to check.\n\n' +
+        'Questions? Message @noahchonlee'
+      );
+      return;
+    }
+
+    if (tokenStatus?.claimed_by_telegram_user_id && tokenStatus.claimed_by_telegram_user_id !== telegramUserId) {
+      console.log('[Telegram] Token claimed by different user');
+      await sendMessage(
+        ctx,
+        chatId,
+        'This link is being processed by another account.\n\n' +
+        'Each subscription link can only be used once. If this is your subscription, please contact @noahchonlee for help.'
+      );
+      return;
+    }
+
+    // Unknown error - log and return generic message
+    console.error('[Telegram] Failed to claim token:', claimError);
+    await sendMessage(
+      ctx,
+      chatId,
+      'Something went wrong claiming this link.\n\n' +
+      'Please try again, or contact @noahchonlee if the problem persists.'
+    );
+    return;
+  }
+
+  console.log('[Telegram] Token claimed successfully');
+
+  // Step 2: Check if token is activated (customer_id set)
   if (!deepLinkToken.customer_id) {
-    console.log('[Telegram] Token not yet activated - polling for webhook:', {
-      token_hash: tokenHash.slice(0, 8) + '...',
-      paypal_custom_id: deepLinkToken.paypal_custom_id?.slice(0, 8) + '...' || null
-    });
+    console.log('[Telegram] Token not yet activated - polling for webhook completion');
 
     // Poll for activation (10 attempts × 500ms = 5 seconds)
     for (let i = 0; i < 10; i++) {
@@ -411,6 +803,7 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
     }
 
     // If still not activated after polling, ask user to wait
+    // Note: Token remains claimed by this user, so they can retry
     if (!deepLinkToken.customer_id) {
       console.log('[Telegram] Token still not activated after polling');
       await sendMessage(
@@ -433,7 +826,7 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
 
   if (!extractedHandle) {
     // UJ-6: User has no Telegram username set - provide clear instructions
-    console.log('[Telegram] User has no username set, prompting:', { telegram_user_id: telegramUserId, first_name: telegramFirstName });
+    console.log('[Telegram] User has no username set, prompting for handle setup');
     await sendMessage(
       ctx,
       chatId,
@@ -451,100 +844,116 @@ async function handleStartCommand(ctx: RequestContext, message: TelegramMessage)
     return;
   }
 
-  // Link the account: set BOTH telegram_user_id AND telegram_handle
-  // For Stripe customers, telegram_handle may already be set from checkout
-  // For PayPal customers, telegram_handle will be null and we set it here
-  console.log('[DB] Linking telegram account:', {
-    customer_id: deepLinkToken.customer_id,
-    telegram_user_id: telegramUserId,
-    telegram_handle: extractedHandle
-  });
+  // ============================================================================
+  // C1 SECURITY FIX: EMAIL VERIFICATION BEFORE LINKING
+  // ============================================================================
+  // Instead of directly linking, we now:
+  // 1. Get customer email from database
+  // 2. Create a pending verification with 6-digit code
+  // 3. Send verification code to customer's email
+  // 4. User must enter code in Telegram to complete linking
+  // This prevents account takeover via shared deep links.
 
-  const { error: linkError } = await ctx.supabase
+  // Get customer info (especially email)
+  const { data: customer, error: customerError } = await ctx.supabase
     .from('customers')
-    .update({
-      telegram_user_id: telegramUserId,
-      telegram_handle: extractedHandle  // Set handle from message.from.username
-    })
-    .eq('id', deepLinkToken.customer_id);
+    .select('id, email, name')
+    .eq('id', deepLinkToken.customer_id)
+    .single();
 
-  if (linkError) {
-    console.error('[DB ERROR] Error linking telegram account:', {
-      code: linkError.code,
-      message: linkError.message,
-      details: linkError.details,
-      hint: linkError.hint,
-      customer_id: deepLinkToken.customer_id
-    });
+  if (customerError || !customer) {
+    console.error('[DB ERROR] Could not find customer:', customerError);
     await sendMessage(ctx, chatId, 'Something went wrong.\n\nTry again? If it keeps happening, ping @noahchonlee.');
     return;
   }
 
-  console.log('[DB SUCCESS] Telegram account linked with handle:', extractedHandle);
-
-  // Mark token as used
-  console.log('[DB] Marking token as used');
-  const { error: tokenError } = await ctx.supabase
-    .from('telegram_deep_link_tokens')
-    .update({ used: true, used_at: new Date().toISOString() })
-    .eq('token_hash', tokenHash);
-
-  if (tokenError) {
-    console.error('[DB ERROR] Error marking token as used:', {
-      code: tokenError.code,
-      message: tokenError.message
-    });
-    // Don't fail - account is already linked
+  // Create pending verification and get the plaintext code
+  let verificationCode: string;
+  try {
+    verificationCode = await createPendingVerification(
+      ctx,
+      deepLinkToken.customer_id,
+      telegramUserId,
+      telegramUsername || null,
+      tokenHash,
+      chatId
+    );
+  } catch (error) {
+    console.error('[DB ERROR] Failed to create verification:', error);
+    await sendMessage(ctx, chatId, 'Something went wrong.\n\nTry again? If it keeps happening, ping @noahchonlee.');
+    return;
   }
 
-  // Update telegram_link_status
-  console.log('[DB] Updating telegram_link_status');
-  const { error: statusError } = await ctx.supabase
-    .from('telegram_link_status')
-    .upsert({
-      customer_id: deepLinkToken.customer_id,
-      is_linked: true,
-      first_seen_at: new Date().toISOString(),
-      last_seen_at: new Date().toISOString()
+  // C3/C4: Don't log email addresses (PII) - log customer_id instead
+  console.log('[Telegram] Verification created, sending email for customer:', customer.id);
+
+  // Send verification email
+  try {
+    const customerFirstName = customer.name?.split(' ')[0] || 'there';
+    const emailResult = await renderTemplate(
+      'telegram_verification',
+      {
+        customer_name: customerFirstName,
+        verification_code: verificationCode
+      },
+      ctx.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    await sendEmail({
+      to: customer.email,
+      subject: emailResult.subject,
+      html: emailResult.html,
+      tags: [
+        { name: 'category', value: 'telegram_verification' },
+        { name: 'customer_id', value: customer.id }
+      ],
+      supabase: ctx.supabase
     });
 
-  if (statusError) {
-    console.error('[DB ERROR] Error updating telegram_link_status:', {
-      code: statusError.code,
-      message: statusError.message,
-      details: statusError.details,
-      hint: statusError.hint
-    });
-    // Don't fail - account is already linked
+    // C3/C4: Don't log email addresses (PII)
+    console.log('[Email] Verification code sent for customer:', customer.id);
+  } catch (emailError) {
+    console.error('[Email ERROR] Failed to send verification email:', emailError);
+    // Clean up the pending verification since we couldn't send the email
+    await ctx.supabase
+      .from('telegram_link_verifications')
+      .delete()
+      .eq('telegram_user_id', telegramUserId);
+
+    await sendMessage(
+      ctx,
+      chatId,
+      'We couldn\'t send your verification email.\n\n' +
+      'Please try clicking the link again, or contact @noahchonlee for help.'
+    );
+    return;
   }
 
-  console.log('[DB SUCCESS] Telegram link status updated');
-
-  // Log audit event (include extracted handle)
-  console.log('[DB] Creating audit_log entry for telegram_linked');
-  const { error: auditError } = await ctx.supabase.from('audit_log').insert({
+  // Log audit event for verification initiated
+  await ctx.supabase.from('audit_log').insert({
     actor: `customer:${deepLinkToken.customer_id}`,
-    action: 'telegram_linked',
+    action: 'telegram_verification_initiated',
     subject: `customer:${deepLinkToken.customer_id}`,
     metadata: {
       telegram_user_id: telegramUserId,
       telegram_username: telegramUsername,
-      telegram_handle: extractedHandle,
       source: 'deep_link'
     }
   });
 
-  if (auditError) {
-    console.error('[DB ERROR] Error creating audit_log:', {
-      code: auditError.code,
-      message: auditError.message
-    });
-  } else {
-    console.log('[DB SUCCESS] Audit log created');
-  }
+  // Mask email for display (show first 2 chars + last part after @)
+  const emailParts = customer.email.split('@');
+  const maskedEmail = emailParts[0].substring(0, 2) + '***@' + emailParts[1];
 
-  // Send onboarding - diet selection
-  await sendDietSelectionKeyboard(ctx, chatId);
+  // Send instructions to user
+  await sendMessage(
+    ctx,
+    chatId,
+    `Almost there! We need to verify this is your account.\n\n` +
+    `We just sent a 6-digit code to ${maskedEmail}\n\n` +
+    `Please check your email and reply with the code here.\n\n` +
+    `(Code expires in 10 minutes)`
+  );
 }
 
 async function sendDietSelectionKeyboard(ctx: RequestContext, chatId: number) {
@@ -1582,7 +1991,6 @@ async function sendMessage(
     if (!response.ok) {
       const error = await response.text();
       console.error('[Telegram] sendMessage failed:', {
-        chatId,
         status: response.status,
         error,
         textPreview: text.substring(0, 100)
@@ -1593,7 +2001,6 @@ async function sendMessage(
     return await response.json();
   } catch (error) {
     console.error('[Telegram] sendMessage exception:', {
-      chatId,
       error: error instanceof Error ? error.message : String(error),
       textPreview: text.substring(0, 100)
     });
@@ -1632,7 +2039,6 @@ async function editMessage(
     if (!response.ok) {
       const error = await response.text();
       console.error('[Telegram] editMessage failed:', {
-        chatId,
         messageId,
         status: response.status,
         error,
@@ -1644,7 +2050,6 @@ async function editMessage(
     return await response.json();
   } catch (error) {
     console.error('[Telegram] editMessage exception:', {
-      chatId,
       messageId,
       error: error instanceof Error ? error.message : String(error),
       textPreview: text.substring(0, 100)
