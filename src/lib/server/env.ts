@@ -84,9 +84,17 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 			return live || base;
 		};
 
-		const pickPayPal = (sandbox?: string, live?: string) => {
-			if (isPayPalSandbox) return sandbox || '';
-			return live || '';
+		const pickPayPal = (credName: string, sandbox?: string, live?: string) => {
+			if (isPayPalSandbox) {
+				if (!sandbox || sandbox.trim() === '') {
+					throw new Error(`[PayPal] Missing ${credName}_SANDBOX credential for sandbox mode. Do not fall back to live credentials.`);
+				}
+				return sandbox;
+			}
+			if (!live || live.trim() === '') {
+				throw new Error(`[PayPal] Missing ${credName}_LIVE credential for live mode. Do not fall back to sandbox credentials.`);
+			}
+			return live;
 		};
 
 		return {
@@ -100,10 +108,10 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 			),
 			STRIPE_PRICE_ID: pickStripe(env.STRIPE_PRICE_ID, env.STRIPE_PRICE_ID_TEST, env.STRIPE_PRICE_ID_LIVE),
 			// PayPal resolved values
-			PAYPAL_CLIENT_ID: pickPayPal(env.PAYPAL_CLIENT_ID_SANDBOX, env.PAYPAL_CLIENT_ID_LIVE),
-			PAYPAL_CLIENT_SECRET: pickPayPal(env.PAYPAL_CLIENT_SECRET_SANDBOX, env.PAYPAL_CLIENT_SECRET_LIVE),
-			PAYPAL_WEBHOOK_ID: pickPayPal(env.PAYPAL_WEBHOOK_ID_SANDBOX, env.PAYPAL_WEBHOOK_ID_LIVE),
-			PAYPAL_PLAN_ID: pickPayPal(env.PAYPAL_PLAN_ID_SANDBOX, env.PAYPAL_PLAN_ID_LIVE)
+			PAYPAL_CLIENT_ID: pickPayPal('PAYPAL_CLIENT_ID', env.PAYPAL_CLIENT_ID_SANDBOX, env.PAYPAL_CLIENT_ID_LIVE),
+			PAYPAL_CLIENT_SECRET: pickPayPal('PAYPAL_CLIENT_SECRET', env.PAYPAL_CLIENT_SECRET_SANDBOX, env.PAYPAL_CLIENT_SECRET_LIVE),
+			PAYPAL_WEBHOOK_ID: pickPayPal('PAYPAL_WEBHOOK_ID', env.PAYPAL_WEBHOOK_ID_SANDBOX, env.PAYPAL_WEBHOOK_ID_LIVE),
+			PAYPAL_PLAN_ID: pickPayPal('PAYPAL_PLAN_ID', env.PAYPAL_PLAN_ID_SANDBOX, env.PAYPAL_PLAN_ID_LIVE)
 		};
 	}
 
@@ -163,9 +171,17 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 		return live || base;
 	};
 
-	const pickPayPal = (sandbox?: string, live?: string) => {
-		if (isPayPalSandbox) return sandbox || '';
-		return live || '';
+	const pickPayPal = (credName: string, sandbox?: string, live?: string) => {
+		if (isPayPalSandbox) {
+			if (!sandbox || sandbox.trim() === '') {
+				throw new Error(`[PayPal] Missing ${credName}_SANDBOX credential for sandbox mode. Do not fall back to live credentials.`);
+			}
+			return sandbox;
+		}
+		if (!live || live.trim() === '') {
+			throw new Error(`[PayPal] Missing ${credName}_LIVE credential for live mode. Do not fall back to sandbox credentials.`);
+		}
+		return live;
 	};
 
 	return {
@@ -179,10 +195,10 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 		),
 		STRIPE_PRICE_ID: pickStripe(env.STRIPE_PRICE_ID, env.STRIPE_PRICE_ID_TEST, env.STRIPE_PRICE_ID_LIVE),
 		// PayPal resolved values
-		PAYPAL_CLIENT_ID: pickPayPal(env.PAYPAL_CLIENT_ID_SANDBOX, env.PAYPAL_CLIENT_ID_LIVE),
-		PAYPAL_CLIENT_SECRET: pickPayPal(env.PAYPAL_CLIENT_SECRET_SANDBOX, env.PAYPAL_CLIENT_SECRET_LIVE),
-		PAYPAL_WEBHOOK_ID: pickPayPal(env.PAYPAL_WEBHOOK_ID_SANDBOX, env.PAYPAL_WEBHOOK_ID_LIVE),
-		PAYPAL_PLAN_ID: pickPayPal(env.PAYPAL_PLAN_ID_SANDBOX, env.PAYPAL_PLAN_ID_LIVE)
+		PAYPAL_CLIENT_ID: pickPayPal('PAYPAL_CLIENT_ID', env.PAYPAL_CLIENT_ID_SANDBOX, env.PAYPAL_CLIENT_ID_LIVE),
+		PAYPAL_CLIENT_SECRET: pickPayPal('PAYPAL_CLIENT_SECRET', env.PAYPAL_CLIENT_SECRET_SANDBOX, env.PAYPAL_CLIENT_SECRET_LIVE),
+		PAYPAL_WEBHOOK_ID: pickPayPal('PAYPAL_WEBHOOK_ID', env.PAYPAL_WEBHOOK_ID_SANDBOX, env.PAYPAL_WEBHOOK_ID_LIVE),
+		PAYPAL_PLAN_ID: pickPayPal('PAYPAL_PLAN_ID', env.PAYPAL_PLAN_ID_SANDBOX, env.PAYPAL_PLAN_ID_LIVE)
 	};
 }
 

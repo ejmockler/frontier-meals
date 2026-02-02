@@ -4,9 +4,18 @@
  * Uses direct REST API calls (PayPal's official Node SDK is deprecated).
  * Implements OAuth 2.0 authentication with token caching.
  * Uses API-based webhook verification for Cloudflare Workers compatibility.
+ *
+ * All external API calls are wrapped with timeouts to prevent indefinite hangs.
  */
 
 import { randomUUID } from '$lib/utils/crypto';
+import { withTimeout } from '$lib/utils/timeout';
+
+// Default timeout for PayPal API calls (10 seconds)
+const PAYPAL_API_TIMEOUT_MS = 10000;
+
+// Shorter timeout for webhook verification (5 seconds - webhooks need fast response)
+const PAYPAL_WEBHOOK_TIMEOUT_MS = 5000;
 
 export interface PayPalEnv {
 	PAYPAL_CLIENT_ID: string;
@@ -17,7 +26,8 @@ export interface PayPalEnv {
 }
 
 // Token cache (in-memory, per-isolate in Cloudflare Workers)
-let tokenCache: { token: string; expiresAt: number } | null = null;
+// Keyed by environment mode to prevent cross-environment token reuse
+const tokenCache: Record<string, { token: string; expiresAt: number }> = {};
 
 /**
  * Get PayPal base URL based on mode
@@ -31,25 +41,42 @@ export function getPayPalBaseUrl(mode: 'sandbox' | 'live'): string {
  * Tokens expire after ~9 hours, we cache with 5-minute buffer
  */
 export async function getPayPalAccessToken(env: PayPalEnv): Promise<string> {
+	const mode = env.PAYPAL_MODE || 'sandbox';
+	const cached = tokenCache[mode];
+
 	// Return cached token if still valid
-	if (tokenCache && tokenCache.expiresAt > Date.now()) {
-		return tokenCache.token;
+	if (cached && cached.expiresAt > Date.now()) {
+		return cached.token;
+	}
+
+	// Validate credentials before Base64 encoding
+	// Empty credentials would create malformed auth headers (e.g., "Basic Og==")
+	if (!env.PAYPAL_CLIENT_ID || typeof env.PAYPAL_CLIENT_ID !== 'string' || env.PAYPAL_CLIENT_ID.trim() === '') {
+		throw new Error(`[PayPal] PAYPAL_CLIENT_ID is missing or empty for ${mode} mode. Check your environment configuration.`);
+	}
+	if (!env.PAYPAL_CLIENT_SECRET || typeof env.PAYPAL_CLIENT_SECRET !== 'string' || env.PAYPAL_CLIENT_SECRET.trim() === '') {
+		throw new Error(`[PayPal] PAYPAL_CLIENT_SECRET is missing or empty for ${mode} mode. Check your environment configuration.`);
 	}
 
 	const baseUrl = getPayPalBaseUrl(env.PAYPAL_MODE);
 
-	// Base64 encode credentials
+	// Base64 encode credentials (validated above)
 	const credentials = `${env.PAYPAL_CLIENT_ID}:${env.PAYPAL_CLIENT_SECRET}`;
 	const auth = btoa(credentials);
 
-	const response = await fetch(`${baseUrl}/v1/oauth2/token`, {
-		method: 'POST',
-		headers: {
-			Authorization: `Basic ${auth}`,
-			'Content-Type': 'application/x-www-form-urlencoded'
-		},
-		body: 'grant_type=client_credentials'
-	});
+	// Wrap OAuth token fetch with timeout to prevent indefinite hangs
+	const response = await withTimeout(
+		fetch(`${baseUrl}/v1/oauth2/token`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Basic ${auth}`,
+				'Content-Type': 'application/x-www-form-urlencoded'
+			},
+			body: 'grant_type=client_credentials'
+		}),
+		PAYPAL_API_TIMEOUT_MS,
+		'PayPal OAuth token fetch'
+	);
 
 	if (!response.ok) {
 		const error = await response.text();
@@ -60,7 +87,7 @@ export async function getPayPalAccessToken(env: PayPalEnv): Promise<string> {
 	const data = (await response.json()) as { access_token: string; expires_in: number };
 
 	// Cache with 5-minute buffer before expiry
-	tokenCache = {
+	tokenCache[mode] = {
 		token: data.access_token,
 		expiresAt: Date.now() + (data.expires_in - 300) * 1000
 	};
@@ -91,30 +118,35 @@ export async function createPayPalSubscription(
 	const accessToken = await getPayPalAccessToken(env);
 	const baseUrl = getPayPalBaseUrl(env.PAYPAL_MODE);
 
-	const response = await fetch(`${baseUrl}/v1/billing/subscriptions`, {
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${accessToken}`,
-			'Content-Type': 'application/json',
-			'PayPal-Request-Id': randomUUID()
-		},
-		body: JSON.stringify({
-			plan_id: options.planId,
-			custom_id: options.customId,
-			application_context: {
-				brand_name: 'Frontier Meals',
-				locale: 'en-US',
-				shipping_preference: 'NO_SHIPPING',
-				user_action: 'SUBSCRIBE_NOW',
-				payment_method: {
-					payer_selected: 'PAYPAL',
-					payee_preferred: 'IMMEDIATE_PAYMENT_REQUIRED'
-				},
-				return_url: options.returnUrl,
-				cancel_url: options.cancelUrl
-			}
-		})
-	});
+	// Wrap subscription creation with timeout
+	const response = await withTimeout(
+		fetch(`${baseUrl}/v1/billing/subscriptions`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				'Content-Type': 'application/json',
+				'PayPal-Request-Id': randomUUID()
+			},
+			body: JSON.stringify({
+				plan_id: options.planId,
+				custom_id: options.customId,
+				application_context: {
+					brand_name: 'Frontier Meals',
+					locale: 'en-US',
+					shipping_preference: 'NO_SHIPPING',
+					user_action: 'SUBSCRIBE_NOW',
+					payment_method: {
+						payer_selected: 'PAYPAL',
+						payee_preferred: 'IMMEDIATE_PAYMENT_REQUIRED'
+					},
+					return_url: options.returnUrl,
+					cancel_url: options.cancelUrl
+				}
+			})
+		}),
+		PAYPAL_API_TIMEOUT_MS,
+		'PayPal subscription creation'
+	);
 
 	if (!response.ok) {
 		const error = await response.text();
@@ -163,23 +195,28 @@ export async function verifyPayPalWebhook(
 		const accessToken = await getPayPalAccessToken(env);
 		const baseUrl = getPayPalBaseUrl(env.PAYPAL_MODE);
 
-		// Use PayPal's verification API
-		const verifyResponse = await fetch(`${baseUrl}/v1/notifications/verify-webhook-signature`, {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${accessToken}`,
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({
-				auth_algo: authAlgo,
-				cert_url: certUrl,
-				transmission_id: transmissionId,
-				transmission_sig: transmissionSig,
-				transmission_time: transmissionTime,
-				webhook_id: env.PAYPAL_WEBHOOK_ID,
-				webhook_event: JSON.parse(body)
-			})
-		});
+		// Use PayPal's verification API with timeout
+		// Webhook verification uses shorter timeout (5s) since webhooks need fast response
+		const verifyResponse = await withTimeout(
+			fetch(`${baseUrl}/v1/notifications/verify-webhook-signature`, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					auth_algo: authAlgo,
+					cert_url: certUrl,
+					transmission_id: transmissionId,
+					transmission_sig: transmissionSig,
+					transmission_time: transmissionTime,
+					webhook_id: env.PAYPAL_WEBHOOK_ID,
+					webhook_event: JSON.parse(body)
+				})
+			}),
+			PAYPAL_WEBHOOK_TIMEOUT_MS,
+			'PayPal webhook signature verification'
+		);
 
 		if (!verifyResponse.ok) {
 			const error = await verifyResponse.text();
@@ -236,12 +273,17 @@ export async function getPayPalSubscription(
 	const accessToken = await getPayPalAccessToken(env);
 	const baseUrl = getPayPalBaseUrl(env.PAYPAL_MODE);
 
-	const response = await fetch(`${baseUrl}/v1/billing/subscriptions/${subscriptionId}`, {
-		headers: {
-			Authorization: `Bearer ${accessToken}`,
-			'Content-Type': 'application/json'
-		}
-	});
+	// Wrap subscription fetch with timeout
+	const response = await withTimeout(
+		fetch(`${baseUrl}/v1/billing/subscriptions/${subscriptionId}`, {
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				'Content-Type': 'application/json'
+			}
+		}),
+		PAYPAL_API_TIMEOUT_MS,
+		'PayPal subscription details fetch'
+	);
 
 	if (!response.ok) {
 		const error = await response.text();
@@ -263,14 +305,19 @@ export async function cancelPayPalSubscription(
 	const accessToken = await getPayPalAccessToken(env);
 	const baseUrl = getPayPalBaseUrl(env.PAYPAL_MODE);
 
-	const response = await fetch(`${baseUrl}/v1/billing/subscriptions/${subscriptionId}/cancel`, {
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${accessToken}`,
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify({ reason })
-	});
+	// Wrap cancellation with timeout
+	const response = await withTimeout(
+		fetch(`${baseUrl}/v1/billing/subscriptions/${subscriptionId}/cancel`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ reason })
+		}),
+		PAYPAL_API_TIMEOUT_MS,
+		'PayPal subscription cancellation'
+	);
 
 	if (!response.ok) {
 		const error = await response.text();
@@ -290,14 +337,19 @@ export async function suspendPayPalSubscription(
 	const accessToken = await getPayPalAccessToken(env);
 	const baseUrl = getPayPalBaseUrl(env.PAYPAL_MODE);
 
-	const response = await fetch(`${baseUrl}/v1/billing/subscriptions/${subscriptionId}/suspend`, {
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${accessToken}`,
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify({ reason })
-	});
+	// Wrap suspension with timeout
+	const response = await withTimeout(
+		fetch(`${baseUrl}/v1/billing/subscriptions/${subscriptionId}/suspend`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ reason })
+		}),
+		PAYPAL_API_TIMEOUT_MS,
+		'PayPal subscription suspension'
+	);
 
 	if (!response.ok) {
 		const error = await response.text();
@@ -317,18 +369,64 @@ export async function activatePayPalSubscription(
 	const accessToken = await getPayPalAccessToken(env);
 	const baseUrl = getPayPalBaseUrl(env.PAYPAL_MODE);
 
-	const response = await fetch(`${baseUrl}/v1/billing/subscriptions/${subscriptionId}/activate`, {
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${accessToken}`,
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify({ reason })
-	});
+	// Wrap activation with timeout
+	const response = await withTimeout(
+		fetch(`${baseUrl}/v1/billing/subscriptions/${subscriptionId}/activate`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ reason })
+		}),
+		PAYPAL_API_TIMEOUT_MS,
+		'PayPal subscription activation'
+	);
 
 	if (!response.ok) {
 		const error = await response.text();
 		console.error('[PayPal] Subscription activation failed:', { status: response.status, error });
 		throw new Error(`Subscription activation failed: ${error}`);
+	}
+}
+
+/**
+ * Validate that a PayPal Plan ID exists
+ * Returns true if plan exists, false otherwise
+ */
+export async function validatePayPalPlanExists(
+	env: PayPalEnv,
+	planId: string
+): Promise<{ exists: boolean; error?: string }> {
+	try {
+		const accessToken = await getPayPalAccessToken(env);
+		const baseUrl = getPayPalBaseUrl(env.PAYPAL_MODE);
+
+		// Wrap plan validation with timeout
+		const response = await withTimeout(
+			fetch(`${baseUrl}/v1/billing/plans/${planId}`, {
+				method: 'GET',
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					'Content-Type': 'application/json'
+				}
+			}),
+			PAYPAL_API_TIMEOUT_MS,
+			'PayPal plan validation'
+		);
+
+		if (response.ok) {
+			return { exists: true };
+		}
+
+		if (response.status === 404) {
+			return { exists: false, error: 'Plan not found in PayPal' };
+		}
+
+		const errorBody = await response.text();
+		return { exists: false, error: `PayPal API error: ${response.status}` };
+	} catch (error) {
+		console.error('[PayPal] Error validating plan:', error);
+		return { exists: false, error: 'Failed to connect to PayPal' };
 	}
 }

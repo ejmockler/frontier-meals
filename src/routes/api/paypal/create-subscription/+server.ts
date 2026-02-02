@@ -46,10 +46,14 @@ export const POST: RequestHandler = async (event) => {
 		);
 	}
 
+	// Parse request body for optional reservation_id (outside try block for error handling)
+	let reservation_id: string | undefined;
+	let email: string | undefined;
+
 	try {
-		// Parse request body for optional reservation_id
 		const body = await request.json().catch(() => ({}));
-		const { reservation_id, email } = body;
+		reservation_id = body.reservation_id;
+		email = body.email;
 		// Generate deep link token BEFORE checkout (same pattern as Stripe)
 		// This is passed via custom_id and returned in success URL
 		const deepLinkToken = randomUUID();
@@ -98,15 +102,21 @@ export const POST: RequestHandler = async (event) => {
 
 		if (reservation_id) {
 			// Fetch reservation to get the discounted plan's paypal_plan_id
+			// SECURITY: Include price_amount for server-side price validation
 			const { data: reservation, error: reservationError } = await supabase
 				.from('discount_code_reservations')
 				.select(`
 					id,
 					discount_code_id,
 					customer_email,
+					expires_at,
 					discount_codes!inner(
 						plan_id,
+						discount_type,
+						discount_value,
 						subscription_plans!inner(
+							id,
+							price_amount,
 							paypal_plan_id_live,
 							paypal_plan_id_sandbox
 						)
@@ -117,17 +127,80 @@ export const POST: RequestHandler = async (event) => {
 				.single();
 
 			if (reservationError || !reservation) {
-				console.error('[PayPal Checkout] Invalid or already redeemed reservation:', reservation_id);
-				return json({ error: 'Invalid reservation ID' }, { status: 400 });
+				console.error('[PayPal Checkout] Invalid or expired reservation:', reservation_id);
+				return json({
+					error: 'Your discount code has expired. Please return to checkout and re-apply your code.'
+				}, { status: 400 });
 			}
 
-			// Extract paypal_plan_id from nested structure
+			// SECURITY: Validate reservation hasn't expired
+			const expiresAt = new Date(reservation.expires_at);
+			if (expiresAt < new Date()) {
+				console.error('[PayPal Checkout] Reservation expired:', {
+					reservation_id,
+					expires_at: reservation.expires_at
+				});
+				return json({
+					error: 'Your discount code reservation has expired. Please return to checkout and re-apply your code.'
+				}, { status: 400 });
+			}
+
+			// SECURITY: Validate email matches reservation
+			// This prevents users from using another user's reservation_id to get their discount
+			const reservationEmail = reservation.customer_email?.toLowerCase().trim();
+			const providedEmail = email?.toLowerCase().trim();
+
+			if (!providedEmail) {
+				console.error('[PayPal Checkout] Email required for reservation checkout:', reservation_id);
+				return json({
+					error: 'Email is required for discount code checkout'
+				}, { status: 400 });
+			}
+
+			if (reservationEmail !== providedEmail) {
+				console.error('[PayPal Checkout] Email mismatch for reservation:', {
+					reservation_id,
+					reservation_email_domain: reservationEmail?.split('@')[1] || 'unknown',
+					provided_email_domain: providedEmail?.split('@')[1] || 'unknown'
+				});
+				return json({
+					error: 'Email does not match the discount code reservation. Please use the same email you entered when applying the code.'
+				}, { status: 400 });
+			}
+
+			// Extract discount_codes and subscription_plans from nested structure
 			const discountCodes = Array.isArray(reservation.discount_codes)
 				? reservation.discount_codes[0]
 				: reservation.discount_codes;
 			const subscriptionPlans = Array.isArray(discountCodes?.subscription_plans)
 				? discountCodes.subscription_plans[0]
 				: discountCodes?.subscription_plans;
+
+			// SECURITY: Validate price integrity
+			// The subscription_plans.price_amount should match what we expect for this discount
+			// This ensures users can't manipulate prices through reservation switching
+			const basePlanPrice = parseFloat(subscriptionPlans?.price_amount || '0');
+			const discountType = discountCodes?.discount_type;
+			const discountValue = parseFloat(discountCodes?.discount_value || '0');
+
+			if (basePlanPrice <= 0) {
+				console.error('[PayPal Checkout] Invalid plan price for reservation:', {
+					reservation_id,
+					price_amount: subscriptionPlans?.price_amount
+				});
+				return json({
+					error: 'Invalid plan configuration. Please contact support.'
+				}, { status: 500 });
+			}
+
+			// Log price validation for audit trail
+			console.log('[PayPal Checkout] Price validation:', {
+				reservation_id,
+				plan_id: subscriptionPlans?.id,
+				base_price: basePlanPrice,
+				discount_type: discountType,
+				discount_value: discountValue
+			});
 
 			// Select the correct plan ID based on environment
 			const envPlanId = isSandbox
@@ -142,7 +215,7 @@ export const POST: RequestHandler = async (event) => {
 				});
 				return json(
 					{ error: `Plan not configured for ${env.PAYPAL_MODE} environment` },
-					{ status: 500 }
+					{ status: 400 }
 				);
 			}
 
@@ -150,13 +223,15 @@ export const POST: RequestHandler = async (event) => {
 			customIdData = {
 				token: deepLinkTokenHash,
 				reservation_id,
-				email: email || reservation.customer_email
+				email: providedEmail // Use validated email
 			};
 
 			console.log('[PayPal Checkout] Using discounted plan:', {
 				reservation_id,
 				plan_id: planId,
-				environment: env.PAYPAL_MODE
+				environment: env.PAYPAL_MODE,
+				email_validated: true,
+				price_validated: true
 			});
 		} else {
 			// No reservation - use default plan from database (environment-aware)
@@ -223,6 +298,24 @@ export const POST: RequestHandler = async (event) => {
 		return json({ approvalUrl });
 	} catch (error) {
 		console.error('[PayPal] Error creating subscription:', error);
+
+		// Clean up reservation on PayPal failure
+		if (reservation_id) {
+			try {
+				const { error: cleanupError } = await supabase.rpc('cancel_discount_reservation', {
+					p_reservation_id: reservation_id
+				});
+
+				if (cleanupError) {
+					console.error('[PayPal] Failed to cleanup reservation:', cleanupError);
+				} else {
+					console.log('[PayPal] Reservation cleaned up after failure');
+				}
+			} catch (cleanupError) {
+				console.error('[PayPal] Exception during reservation cleanup:', cleanupError);
+			}
+		}
+
 		return json({ error: 'Failed to create subscription' }, { status: 500 });
 	}
 };

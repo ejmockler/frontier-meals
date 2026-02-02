@@ -4,9 +4,9 @@ import { getEnv, getSupabaseAdmin } from '$lib/server/env';
 import { sendEmail } from '$lib/email/send';
 import { renderTemplate } from '$lib/email/templates';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
-import { verifyPayPalWebhook, type PayPalEnv } from '$lib/integrations/paypal';
+import { verifyPayPalWebhook, getPayPalSubscription, type PayPalEnv } from '$lib/integrations/paypal';
 import { redactPII } from '$lib/utils/logging';
-import { sendAdminAlert } from '$lib/utils/alerts';
+import { sendAdminAlert, alertEmailFailure } from '$lib/utils/alerts';
 import { checkRateLimit, RateLimitKeys } from '$lib/utils/rate-limit';
 
 // PayPal webhook event types
@@ -76,12 +76,14 @@ export const POST: RequestHandler = async (event) => {
 		console.warn('[PayPal Webhook] Rate limit exceeded for IP:', redactPII({ ip: clientIp }).ip);
 
 		// Log rate limit event for monitoring
+		// C3/C4 FIX: Redact IP in subject field to prevent PII in audit logs
+		const redactedIp = redactPII({ ip: clientIp }).ip as string;
 		await supabase.from('audit_log').insert({
 			actor: 'system',
 			action: 'webhook_rate_limit_exceeded',
-			subject: `webhook:paypal:${clientIp}`,
+			subject: `webhook:paypal:${redactedIp}`,
 			metadata: {
-				ip: redactPII({ ip: clientIp }).ip,
+				ip: redactedIp,
 				reset_at: rateLimitResult.resetAt.toISOString()
 			}
 		});
@@ -129,23 +131,81 @@ export const POST: RequestHandler = async (event) => {
 		event_type: eventObj.event_type
 	});
 
-	// Idempotency check (same pattern as Stripe)
+	// Idempotency check with retry support for failed events (C7 fix)
+	// 1. Try to insert new event
+	// 2. If duplicate, check if it's a failed event that can be retried
+	// 3. Allow up to 3 attempts before giving up
+	const MAX_RETRY_ATTEMPTS = 3;
+
 	const { error: insertError } = await supabase
 		.from('webhook_events')
 		.insert({
 			source: 'paypal',
 			event_id: eventObj.id,
 			event_type: eventObj.event_type,
-			status: 'processing'
+			status: 'processing',
+			attempts: 1,
+			last_attempted_at: new Date().toISOString()
 		});
 
 	// Check for duplicate (PostgreSQL error code 23505)
 	if (insertError?.code === '23505') {
-		console.log('[PayPal Webhook] Duplicate event, skipping:', eventObj.id);
-		return json({ received: true });
-	}
+		// Event exists - check if it's a failed event that can be retried
+		const { data: existingEvent, error: fetchError } = await supabase
+			.from('webhook_events')
+			.select('status, attempts')
+			.eq('event_id', eventObj.id)
+			.single();
 
-	if (insertError) {
+		if (fetchError) {
+			console.error('[PayPal Webhook] Error fetching existing event:', fetchError);
+			return json({ error: 'Database error' }, { status: 500 });
+		}
+
+		// If already processed successfully, skip
+		if (existingEvent.status === 'processed') {
+			console.log('[PayPal Webhook] Event already processed, skipping:', eventObj.id);
+			return json({ received: true });
+		}
+
+		// If still processing (another instance handling it), skip
+		if (existingEvent.status === 'processing') {
+			console.log('[PayPal Webhook] Event already being processed, skipping:', eventObj.id);
+			return json({ received: true });
+		}
+
+		// If failed, check retry limit
+		if (existingEvent.status === 'failed') {
+			if (existingEvent.attempts >= MAX_RETRY_ATTEMPTS) {
+				console.warn('[PayPal Webhook] Event exceeded max retries, skipping:', {
+					event_id: eventObj.id,
+					attempts: existingEvent.attempts
+				});
+				return json({ received: true });
+			}
+
+			// Reset to processing and increment attempts for retry
+			console.log('[PayPal Webhook] Retrying failed event:', {
+				event_id: eventObj.id,
+				attempt: existingEvent.attempts + 1
+			});
+
+			const { error: updateError } = await supabase
+				.from('webhook_events')
+				.update({
+					status: 'processing',
+					attempts: existingEvent.attempts + 1,
+					last_attempted_at: new Date().toISOString(),
+					error_message: null // Clear previous error
+				})
+				.eq('event_id', eventObj.id);
+
+			if (updateError) {
+				console.error('[PayPal Webhook] Error updating event for retry:', updateError);
+				return json({ error: 'Database error' }, { status: 500 });
+			}
+		}
+	} else if (insertError) {
 		console.error('[PayPal Webhook] Error inserting event:', insertError);
 		return json({ error: 'Database error' }, { status: 500 });
 	}
@@ -319,82 +379,165 @@ async function handleSubscriptionActivated(
 		})
 	);
 
-	// Check if customer already exists (by PayPal payer ID)
-	const { data: existingCustomer } = await supabase
+	// C2 FIX: Use UPSERT to prevent race condition between concurrent webhooks
+	// Two simultaneous BILLING.SUBSCRIPTION.ACTIVATED webhooks could both find no customer
+	// and both attempt INSERT, causing one to fail with unique constraint violation.
+	// UPSERT with onConflict ensures exactly one customer record is created/updated atomically.
+	//
+	// NOTE: We deliberately omit telegram_handle from the upsert to preserve any existing
+	// value for returning customers who have already linked their Telegram account.
+	// The column defaults to NULL for new customers (INSERT) and remains unchanged for
+	// existing customers (UPDATE via ON CONFLICT).
+	console.log(
+		'[DB] Upserting customer record (PayPal):',
+		redactPII({
+			paypal_payer_id: paypalPayerId,
+			email,
+			name
+		})
+	);
+
+	const { data: customer, error: customerError } = await supabase
 		.from('customers')
-		.select('id')
-		.eq('paypal_payer_id', paypalPayerId)
-		.single();
-
-	let customerId: string;
-
-	if (existingCustomer) {
-		// Customer exists - update with latest PayPal info (email/name may have changed)
-		customerId = existingCustomer.id;
-		console.log('[PayPal] Existing customer found, updating:', customerId);
-
-		await supabase
-			.from('customers')
-			.update({
-				email,
-				name
-			})
-			.eq('id', customerId);
-	} else {
-		// Create new customer (NO telegram_handle - will be resolved by bot)
-		console.log(
-			'[DB] Creating customer record (PayPal):',
-			redactPII({
-				paypal_payer_id: paypalPayerId,
-				email,
-				name
-			})
-		);
-
-		const { data: customer, error: customerError } = await supabase
-			.from('customers')
-			.insert({
+		.upsert(
+			{
 				payment_provider: 'paypal',
 				paypal_payer_id: paypalPayerId,
 				email,
-				name,
-				telegram_handle: null // Will be set by Telegram bot interaction
-			})
-			.select()
-			.single();
+				name
+				// telegram_handle intentionally omitted - defaults to NULL on INSERT,
+				// unchanged on UPDATE (preserves existing value for returning customers)
+			},
+			{
+				onConflict: 'paypal_payer_id',
+				ignoreDuplicates: false // Update on conflict (email/name may have changed)
+			}
+		)
+		.select()
+		.single();
 
-		if (customerError) {
-			console.error('[DB ERROR] Error creating customer:', customerError);
-			throw customerError;
-		}
-
-		customerId = customer.id;
-		console.log('[DB SUCCESS] Customer created:', customerId);
+	if (customerError) {
+		console.error('[DB ERROR] Error upserting customer:', customerError);
+		throw customerError;
 	}
 
-	// Extract billing dates from PayPal
+	const customerId = customer.id;
+	console.log('[DB SUCCESS] Customer upserted:', customerId);
+
+	// ============================================================================
+	// C5 FIX: Subscription State Race Condition - NULL Period Dates Handling
+	// ============================================================================
+	// PROBLEM: If period_start/period_end are NULL, the subscription ends up in
+	// "approval_pending" zombie state where QR codes can't be issued.
+	//
+	// SOLUTION:
+	// 1. First try webhook data (billing_info.last_payment.time / next_billing_time)
+	// 2. If NULL, fetch fresh data from PayPal's API using subscription ID
+	// 3. If API also returns NULL, calculate reasonable defaults (now + 1 month)
+	// 4. ALWAYS set subscription to 'active' with valid dates - never leave in zombie state
+	// ============================================================================
+
+	// Extract billing dates from webhook payload
 	const billingInfo = resource.billing_info;
-	const nextBillingTime = billingInfo?.next_billing_time;
-	const lastPaymentTime = billingInfo?.last_payment?.time;
+	let periodStart = billingInfo?.last_payment?.time;
+	let periodEnd = billingInfo?.next_billing_time;
+	let dateSource = 'webhook';
 
-	// CRITICAL: Only set 'active' if we have valid period dates
-	// Without dates, QR job cannot issue codes (date comparison fails on NULL)
-	// QR job queries: .lte('current_period_start', today) AND .gte('current_period_end', today)
-	const hasValidPeriod = lastPaymentTime && nextBillingTime;
-	const derivedStatus = hasValidPeriod
-		? resource.status.toLowerCase()
-		: 'approval_pending';  // Will be updated when PAYMENT.SALE.COMPLETED arrives with dates
+	// Build PayPal env for API calls if needed
+	// NOTE: Parent POST handler already validates these exist (returns 500 if not)
+	const paypalEnv: PayPalEnv = {
+		PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID!,
+		PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET!,
+		PAYPAL_WEBHOOK_ID: env.PAYPAL_WEBHOOK_ID!,
+		PAYPAL_PLAN_ID: env.PAYPAL_PLAN_ID || '',
+		PAYPAL_MODE: env.PAYPAL_MODE || 'sandbox'
+	};
 
-	// Log fallback for operational visibility
-	if (!hasValidPeriod) {
-		console.warn('[PayPal] NULL period dates detected - falling back to approval_pending:', {
+	// If dates are missing from webhook, try fetching fresh data from PayPal API
+	if (!periodStart || !periodEnd) {
+		console.log('[PayPal] C5 FIX: NULL period dates in webhook - fetching from PayPal API:', {
 			paypal_subscription_id: paypalSubscriptionId,
-			paypal_status: resource.status,
-			derived_status: derivedStatus,
-			has_last_payment: !!lastPaymentTime,
-			has_next_billing: !!nextBillingTime
+			has_period_start: !!periodStart,
+			has_period_end: !!periodEnd
+		});
+
+		try {
+			const freshSubscription = await getPayPalSubscription(paypalEnv, paypalSubscriptionId);
+			const freshBillingInfo = freshSubscription.billing_info;
+
+			// Use API data if available
+			if (!periodStart && freshBillingInfo?.last_payment?.time) {
+				periodStart = freshBillingInfo.last_payment.time;
+				dateSource = 'api';
+				console.log('[PayPal] C5 FIX: Got period_start from API:', periodStart);
+			}
+			if (!periodEnd && freshBillingInfo?.next_billing_time) {
+				periodEnd = freshBillingInfo.next_billing_time;
+				dateSource = 'api';
+				console.log('[PayPal] C5 FIX: Got period_end from API:', periodEnd);
+			}
+		} catch (apiError) {
+			console.error('[PayPal] C5 FIX: Failed to fetch subscription from API (will use defaults):', {
+				error: apiError instanceof Error ? apiError.message : String(apiError),
+				paypal_subscription_id: paypalSubscriptionId
+			});
+		}
+	}
+
+	// If dates are STILL missing after API call, calculate reasonable defaults
+	// This ensures subscription NEVER gets stuck in zombie state
+	if (!periodStart || !periodEnd) {
+		const now = new Date();
+		const oneMonthLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+		if (!periodStart) {
+			periodStart = now.toISOString();
+			console.warn('[PayPal] C5 FIX: Using DEFAULT period_start (now):', periodStart);
+		}
+		if (!periodEnd) {
+			periodEnd = oneMonthLater.toISOString();
+			console.warn('[PayPal] C5 FIX: Using DEFAULT period_end (now + 30 days):', periodEnd);
+		}
+		dateSource = dateSource === 'webhook' ? 'defaults' : `${dateSource}+defaults`;
+
+		// CRITICAL: Log loudly when defaults are used so admins can investigate
+		console.warn('[PayPal] C5 FIX: ADMIN ALERT - Using calculated default dates for subscription:', {
+			paypal_subscription_id: paypalSubscriptionId,
+			period_start: periodStart,
+			period_end: periodEnd,
+			date_source: dateSource,
+			action_required: 'Investigate why PayPal did not provide billing dates'
+		});
+
+		// Audit log for admin visibility
+		await supabase.from('audit_log').insert({
+			actor: 'system',
+			action: 'subscription_dates_defaulted',
+			subject: `subscription:${paypalSubscriptionId}`,
+			metadata: {
+				payment_provider: 'paypal',
+				paypal_subscription_id: paypalSubscriptionId,
+				default_period_start: periodStart,
+				default_period_end: periodEnd,
+				date_source: dateSource,
+				webhook_had_last_payment: !!billingInfo?.last_payment?.time,
+				webhook_had_next_billing: !!billingInfo?.next_billing_time,
+				note: 'C5 FIX: Used default dates to prevent zombie subscription state'
+			}
 		});
 	}
+
+	// Now we're guaranteed to have valid dates - always set to active
+	// C5 FIX: Never leave subscription in approval_pending zombie state
+	const derivedStatus = 'active';
+
+	console.log('[PayPal] C5 FIX: Subscription will be activated with valid dates:', {
+		paypal_subscription_id: paypalSubscriptionId,
+		period_start: periodStart,
+		period_end: periodEnd,
+		date_source: dateSource,
+		status: derivedStatus
+	});
 
 	// UPSERT subscription record (idempotent - handles duplicate ACTIVATED webhooks)
 	console.log(
@@ -406,6 +549,8 @@ async function handleSubscriptionActivated(
 		})
 	);
 
+	// C5 FIX: Use resolved period dates (from webhook, API, or defaults)
+	// periodStart and periodEnd are guaranteed non-null at this point
 	const { error: subError } = await supabase
 		.from('subscriptions')
 		.upsert(
@@ -415,9 +560,9 @@ async function handleSubscriptionActivated(
 				paypal_subscription_id: paypalSubscriptionId,
 				paypal_plan_id: resource.plan_id,
 				status: derivedStatus,
-				current_period_start: lastPaymentTime ? new Date(lastPaymentTime).toISOString() : null,
-				current_period_end: nextBillingTime ? new Date(nextBillingTime).toISOString() : null,
-				next_billing_time: nextBillingTime ? new Date(nextBillingTime).toISOString() : null
+				current_period_start: new Date(periodStart).toISOString(),
+				current_period_end: new Date(periodEnd).toISOString(),
+				next_billing_time: new Date(periodEnd).toISOString()
 			},
 			{
 				onConflict: 'paypal_subscription_id',
@@ -432,15 +577,21 @@ async function handleSubscriptionActivated(
 
 	console.log('[DB SUCCESS] Subscription upserted');
 
-	// Initialize telegram_link_status
-	const { error: linkStatusError } = await supabase.from('telegram_link_status').insert({
-		customer_id: customerId,
-		is_linked: false
-	});
+	// Initialize telegram_link_status (UPSERT for idempotency - don't overwrite if already linked)
+	const { error: linkStatusError } = await supabase.from('telegram_link_status').upsert(
+		{
+			customer_id: customerId,
+			is_linked: false
+		},
+		{
+			onConflict: 'customer_id',
+			ignoreDuplicates: true // Don't overwrite if already exists (preserves is_linked: true)
+		}
+	);
 
-	if (linkStatusError && linkStatusError.code !== '23505') {
-		// Ignore duplicate error
-		console.error('[DB ERROR] Error creating telegram_link_status:', linkStatusError);
+	if (linkStatusError) {
+		console.error('[DB ERROR] Error upserting telegram_link_status:', linkStatusError);
+		// Don't throw - this is not critical for subscription activation
 	}
 
 	// ============================================================================
@@ -468,26 +619,84 @@ async function handleSubscriptionActivated(
 	}
 
 	// Parse custom_id - it may be JSON (with reservation_id) or plain SHA-256 hash
+	// C2/C6 FIX: Proper validation of parsed JSON and token field
 	let customData: { token: string; reservation_id?: string; email?: string };
+	const SHA256_REGEX = /^[a-f0-9]{64}$/i;
+
 	try {
 		// Try parsing as JSON first (new format with discount codes)
-		customData = JSON.parse(paypalCustomId);
+		const parsed = JSON.parse(paypalCustomId);
+
+		// C2/C6 FIX: Validate that parsed object is actually an object (not null, array, or primitive)
+		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+			console.error('[PayPal Webhook] Parsed custom_id is not a valid object:', {
+				type: typeof parsed,
+				isNull: parsed === null,
+				isArray: Array.isArray(parsed)
+			});
+			throw new Error('custom_id JSON must be an object');
+		}
+
+		// C2/C6 FIX: Validate that token field exists and is a non-empty string
+		if (typeof parsed.token !== 'string' || parsed.token.length === 0) {
+			console.error('[PayPal Webhook] Parsed custom_id missing or invalid token field:', {
+				hasToken: 'token' in parsed,
+				tokenType: typeof parsed.token,
+				tokenLength: typeof parsed.token === 'string' ? parsed.token.length : 'N/A'
+			});
+			throw new Error('custom_id JSON must contain a non-empty token string');
+		}
+
+		// C2/C6 FIX: Validate token is a valid SHA-256 hash
+		if (!SHA256_REGEX.test(parsed.token)) {
+			console.error('[PayPal Webhook] Token in custom_id JSON is not a valid SHA-256 hash:', {
+				length: parsed.token.length,
+				prefix: parsed.token.slice(0, 8)
+			});
+			throw new Error('token in custom_id must be a valid SHA-256 hash');
+		}
+
+		// Validate reservation_id if present (must be string if provided)
+		if (parsed.reservation_id !== undefined && typeof parsed.reservation_id !== 'string') {
+			console.error('[PayPal Webhook] Invalid reservation_id type in custom_id:', {
+				type: typeof parsed.reservation_id
+			});
+			throw new Error('reservation_id in custom_id must be a string');
+		}
+
+		customData = {
+			token: parsed.token,
+			reservation_id: parsed.reservation_id,
+			email: typeof parsed.email === 'string' ? parsed.email : undefined
+		};
+
 		console.log('[PayPal Webhook] Parsed custom_id as JSON:', {
-			has_token: !!customData.token,
+			has_token: true,
 			has_reservation: !!customData.reservation_id
 		});
-	} catch {
-		// Fall back to plain hash (legacy format)
-		const SHA256_REGEX = /^[a-f0-9]{64}$/i;
-		if (!SHA256_REGEX.test(paypalCustomId)) {
-			console.error('[PayPal Webhook] Invalid custom_id format:', {
-				length: paypalCustomId.length,
-				prefix: paypalCustomId.slice(0, 8)
-			});
-			throw new Error('Invalid custom_id format in PayPal subscription');
+	} catch (parseError) {
+		// Check if this was a validation error (our thrown errors) vs JSON parse error
+		if (parseError instanceof SyntaxError) {
+			// JSON parse failed - fall back to plain hash (legacy format)
+			if (!SHA256_REGEX.test(paypalCustomId)) {
+				console.error('[PayPal Webhook] Invalid custom_id format (not JSON and not SHA-256):', {
+					length: paypalCustomId.length,
+					prefix: paypalCustomId.slice(0, 8)
+				});
+				throw new Error('Invalid custom_id format in PayPal subscription');
+			}
+			customData = { token: paypalCustomId };
+			console.log('[PayPal Webhook] Using legacy custom_id format (plain hash)');
+		} else {
+			// Validation error from our checks above - re-throw
+			throw parseError;
 		}
-		customData = { token: paypalCustomId };
-		console.log('[PayPal Webhook] Using legacy custom_id format (plain hash)');
+	}
+
+	// C2/C6 FIX: Final null check before using token (defensive programming)
+	if (!customData || !customData.token) {
+		console.error('[PayPal Webhook] customData or token is null after parsing');
+		throw new Error('Failed to extract token from custom_id');
 	}
 
 	const tokenHash = customData.token;
@@ -640,6 +849,15 @@ async function handleSubscriptionActivated(
 			console.log('[EMAIL SUCCESS] Telegram link email sent');
 		} catch (emailError) {
 			console.error('[EMAIL ERROR] Failed to send telegram link email:', emailError);
+			// Alert admin - customer won't receive their welcome/link email
+			await alertEmailFailure({
+				customerId,
+				customerEmail: email,
+				emailType: 'telegram_link',
+				errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+				provider: 'paypal',
+				subscriptionId: paypalSubscriptionId
+			});
 			// Don't throw - email failure shouldn't fail the webhook
 		}
 	} else {
@@ -649,62 +867,176 @@ async function handleSubscriptionActivated(
 	// ============================================================================
 	// DISCOUNT CODE REDEMPTION
 	// ============================================================================
-	// If reservation_id exists in custom_id, redeem the discount code
-	// This is idempotent - safe to call multiple times
+	// If reservation_id exists in custom_id, validate and redeem the discount code
+	// Validation ensures reservation exists, is not expired, and is not already redeemed
 	// ============================================================================
 
 	if (customData.reservation_id) {
-		try {
-			console.log('[PayPal Webhook] Redeeming discount code for reservation:', {
+		// Validate reservation before redemption
+		const { data: reservation, error: reservationError } = await supabase
+			.from('discount_code_reservations')
+			.select('id, customer_email, expires_at, redeemed_at, discount_code_id')
+			.eq('id', customData.reservation_id)
+			.single();
+
+		if (reservationError || !reservation) {
+			console.error('[PayPal Webhook] Reservation not found:', {
 				reservation_id: customData.reservation_id,
-				customer_id: customerId,
-				paypal_subscription_id: paypalSubscriptionId
+				error: reservationError?.message
 			});
-
-			const { data: redeemed, error: redeemError } = await supabase.rpc('redeem_discount_code', {
-				p_reservation_id: customData.reservation_id,
-				p_customer_id: customerId,
-				p_paypal_subscription_id: paypalSubscriptionId
+			// Log to audit but don't fail webhook - subscription already created
+			await supabase.from('audit_log').insert({
+				actor: 'system',
+				action: 'discount_reservation_not_found',
+				subject: `customer:${customerId}`,
+				metadata: {
+					reservation_id: customData.reservation_id,
+					paypal_subscription_id: paypalSubscriptionId
+				}
 			});
+			// Skip redemption but continue webhook processing
+		} else if (reservation.redeemed_at) {
+			console.log('[PayPal Webhook] Reservation already redeemed (idempotent):', {
+				reservation_id: customData.reservation_id
+			});
+			// Already redeemed - this is fine, just skip
+		} else if (new Date(reservation.expires_at) < new Date()) {
+			console.warn('[PayPal Webhook] Reservation expired:', {
+				reservation_id: customData.reservation_id,
+				expired_at: reservation.expires_at
+			});
+			await supabase.from('audit_log').insert({
+				actor: 'system',
+				action: 'discount_reservation_expired_at_redemption',
+				subject: `customer:${customerId}`,
+				metadata: {
+					reservation_id: customData.reservation_id,
+					expired_at: reservation.expires_at,
+					paypal_subscription_id: paypalSubscriptionId
+				}
+			});
+			// Expired - log but continue (user still gets subscription)
+		} else {
+			// ============================================================================
+			// C3 FIX: Verify discount code is still valid before redemption
+			// The code was "reserved" at checkout, but admin may have deactivated it since
+			// We honor the grace_period_minutes field to allow recent deactivations
+			// ============================================================================
+			const { data: discountCode, error: codeError } = await supabase
+				.from('discount_codes')
+				.select('id, code, is_active, valid_from, valid_until, max_uses, current_uses, deactivated_at, grace_period_minutes')
+				.eq('id', reservation.discount_code_id)
+				.single();
 
-			if (redeemError) {
-				// Log error but don't fail the webhook
-				// The subscription is already created, redemption failure shouldn't block
-				console.error('[PayPal Webhook] Error redeeming discount code (non-fatal):', {
-					error: redeemError.message,
-					reservation_id: customData.reservation_id
-				});
+			let codeValidationError: string | null = null;
 
-				// Audit log for failed redemption
-				await supabase.from('audit_log').insert({
-					actor: 'system',
-					action: 'discount_redemption_failed',
-					subject: `customer:${customerId}`,
-					metadata: {
-						payment_provider: 'paypal',
-						paypal_subscription_id: paypalSubscriptionId,
-						reservation_id: customData.reservation_id,
-						error: redeemError.message
+			if (codeError || !discountCode) {
+				codeValidationError = 'Discount code not found in database';
+			} else {
+				const now = new Date();
+
+				// Check if code is active OR within grace period after deactivation
+				if (!discountCode.is_active) {
+					if (discountCode.deactivated_at && discountCode.grace_period_minutes) {
+						const deactivatedAt = new Date(discountCode.deactivated_at);
+						const graceEndTime = new Date(deactivatedAt.getTime() + discountCode.grace_period_minutes * 60 * 1000);
+						if (now > graceEndTime) {
+							codeValidationError = `Code deactivated and grace period expired (deactivated: ${discountCode.deactivated_at}, grace: ${discountCode.grace_period_minutes}min)`;
+						}
+						// Within grace period - allow redemption
+					} else {
+						// Deactivated with no grace period info - reject
+						codeValidationError = 'Code has been deactivated by admin';
 					}
-				});
-			} else if (redeemed) {
-				console.log('[PayPal Webhook] ✓ Discount code redeemed successfully');
+				}
 
-				// Audit log for successful redemption
-				await supabase.from('audit_log').insert({
-					actor: 'system',
-					action: 'discount_redeemed',
-					subject: `customer:${customerId}`,
-					metadata: {
-						payment_provider: 'paypal',
-						paypal_subscription_id: paypalSubscriptionId,
-						reservation_id: customData.reservation_id
+				// Check if code is not yet valid (valid_from)
+				if (!codeValidationError && discountCode.valid_from) {
+					const validFrom = new Date(discountCode.valid_from);
+					if (now < validFrom) {
+						codeValidationError = `Code is not yet valid (starts ${discountCode.valid_from})`;
 					}
-				});
+				}
+
+				// Check if code has expired (valid_until)
+				if (!codeValidationError && discountCode.valid_until) {
+					const validUntil = new Date(discountCode.valid_until);
+					if (now > validUntil) {
+						codeValidationError = `Code expired on ${discountCode.valid_until}`;
+					}
+				}
+
+				// Check if max uses has been reached
+				if (!codeValidationError && discountCode.max_uses !== null) {
+					if (discountCode.current_uses >= discountCode.max_uses) {
+						codeValidationError = `Code has reached maximum uses (${discountCode.current_uses}/${discountCode.max_uses})`;
+					}
+				}
 			}
-		} catch (error) {
-			// Catch any unexpected errors - don't fail the webhook
-			console.error('[PayPal Webhook] Unexpected error during discount redemption (non-fatal):', error);
+
+			if (codeValidationError) {
+				// Log warning but don't fail webhook - subscription is already active at PayPal
+				console.warn('[PayPal Webhook] Discount code validation failed (non-fatal):', {
+					reservation_id: customData.reservation_id,
+					discount_code_id: reservation.discount_code_id,
+					code: discountCode?.code,
+					reason: codeValidationError
+				});
+				await supabase.from('audit_log').insert({
+					actor: 'system',
+					action: 'discount_code_validation_failed',
+					subject: `customer:${customerId}`,
+					metadata: {
+						reservation_id: customData.reservation_id,
+						discount_code_id: reservation.discount_code_id,
+						discount_code: discountCode?.code,
+						validation_error: codeValidationError,
+						paypal_subscription_id: paypalSubscriptionId,
+						note: 'Discount not applied - code became invalid between checkout and webhook'
+					}
+				});
+				// Skip redemption but continue webhook processing
+			} else {
+				// Valid reservation AND valid discount code - proceed with redemption
+				try {
+					const { data: redeemed, error: redeemError } = await supabase.rpc('redeem_discount_code', {
+						p_reservation_id: customData.reservation_id,
+						p_customer_id: customerId,
+						p_paypal_subscription_id: paypalSubscriptionId
+					});
+
+					if (redeemError) {
+						console.error('[PayPal Webhook] Error redeeming discount code (non-fatal):', {
+							error: redeemError.message,
+							reservation_id: customData.reservation_id
+						});
+						await supabase.from('audit_log').insert({
+							actor: 'system',
+							action: 'discount_redemption_failed',
+							subject: `customer:${customerId}`,
+							metadata: {
+								error: redeemError.message,
+								reservation_id: customData.reservation_id,
+								paypal_subscription_id: paypalSubscriptionId
+							}
+						});
+					} else {
+						console.log('[PayPal Webhook] Discount code redeemed successfully');
+						await supabase.from('audit_log').insert({
+							actor: 'system',
+							action: 'discount_redeemed',
+							subject: `customer:${customerId}`,
+							metadata: {
+								reservation_id: customData.reservation_id,
+								discount_code_id: reservation.discount_code_id,
+								paypal_subscription_id: paypalSubscriptionId
+							}
+						});
+					}
+				} catch (error) {
+					console.error('[PayPal Webhook] Unexpected error during discount redemption (non-fatal):', error);
+				}
+			}
 		}
 	}
 
@@ -821,6 +1153,15 @@ async function handlePaymentCompleted(
 					console.log('[EMAIL SUCCESS] Payment recovery email sent');
 				} catch (emailError) {
 					console.error('[EMAIL ERROR] Failed to send payment recovery email:', emailError);
+					// Alert admin - customer won't know their payment was recovered
+					await alertEmailFailure({
+						customerId: customer.id,
+						customerEmail: customer.email,
+						emailType: 'subscription_payment_recovered',
+						errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+						provider: 'paypal',
+						subscriptionId: billingAgreementId
+					});
 					// Don't throw - email failure shouldn't fail the webhook
 				}
 			}
@@ -940,6 +1281,15 @@ async function handlePaymentFailed(
 		console.log('[EMAIL SUCCESS] Dunning email sent:', emailSlug);
 	} catch (emailError) {
 		console.error('[EMAIL ERROR] Failed to send dunning email:', emailError);
+		// CRITICAL: Alert admin - customer won't know about failed payment
+		await alertEmailFailure({
+			customerId: customer.id,
+			customerEmail: customer.email,
+			emailType: emailSlug,
+			errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+			provider: 'paypal',
+			subscriptionId: paypalSubscriptionId
+		});
 	}
 
 	// Audit log (MT-3: Include failure count for audit trail)
@@ -1011,6 +1361,15 @@ async function handleSubscriptionSuspended(
 		console.log('[EMAIL SUCCESS] Suspension notice sent');
 	} catch (emailError) {
 		console.error('[EMAIL ERROR] Failed to send suspension notice:', emailError);
+		// Alert admin - customer won't know their subscription is suspended
+		await alertEmailFailure({
+			customerId: customer.id,
+			customerEmail: customer.email,
+			emailType: 'subscription_suspended',
+			errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+			provider: 'paypal',
+			subscriptionId: paypalSubscriptionId
+		});
 	}
 
 	// Audit log
@@ -1076,6 +1435,15 @@ async function handleSubscriptionCancelled(
 		console.log('[EMAIL SUCCESS] Cancellation notice sent');
 	} catch (emailError) {
 		console.error('[EMAIL ERROR] Failed to send cancellation notice:', emailError);
+		// Alert admin - customer won't receive cancellation confirmation
+		await alertEmailFailure({
+			customerId: customer.id,
+			customerEmail: customer.email,
+			emailType: 'canceled_notice',
+			errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+			provider: 'paypal',
+			subscriptionId: paypalSubscriptionId
+		});
 	}
 
 	// Audit log
@@ -1237,6 +1605,15 @@ async function handleSubscriptionReactivated(
 		console.log('[EMAIL SUCCESS] Reactivation email sent');
 	} catch (emailError) {
 		console.error('[EMAIL ERROR] Failed to send reactivation email:', emailError);
+		// Alert admin - customer won't know their subscription is reactivated
+		await alertEmailFailure({
+			customerId: customer.id,
+			customerEmail: customer.email,
+			emailType: 'subscription_reactivated',
+			errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+			provider: 'paypal',
+			subscriptionId: paypalSubscriptionId
+		});
 	}
 
 	// Audit log
@@ -1306,6 +1683,15 @@ async function handleSubscriptionExpired(
 		console.log('[EMAIL SUCCESS] Expiration notice sent');
 	} catch (emailError) {
 		console.error('[EMAIL ERROR] Failed to send expiration notice:', emailError);
+		// Alert admin - customer won't know their subscription expired
+		await alertEmailFailure({
+			customerId: customer.id,
+			customerEmail: customer.email,
+			emailType: 'subscription_expired',
+			errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+			provider: 'paypal',
+			subscriptionId: paypalSubscriptionId
+		});
 	}
 
 	// Audit log
@@ -1446,6 +1832,15 @@ async function handlePaymentReversed(
 		console.log('[EMAIL SUCCESS] Chargeback notification sent to customer');
 	} catch (emailError) {
 		console.error('[EMAIL ERROR] Failed to send chargeback notification:', emailError);
+		// Alert admin - customer won't know about chargeback suspension
+		await alertEmailFailure({
+			customerId: customer.id,
+			customerEmail: customer.email,
+			emailType: 'subscription_chargeback',
+			errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+			provider: 'paypal',
+			subscriptionId: billingAgreementId
+		});
 		// Don't throw - email failure shouldn't fail the webhook
 	}
 
