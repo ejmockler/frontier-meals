@@ -9,3 +9,14 @@ export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY |
 export const QR_PRIVATE_KEY = process.env.QR_PRIVATE_KEY || 'test-qr-key';
 export const CRON_SECRET = process.env.CRON_SECRET || 'test-cron-secret';
 export const SESSION_SECRET = process.env.SESSION_SECRET || 'test-session-secret-key-min-32-chars';
+
+// PayPal test credentials - use sandbox mode for tests
+export const PAYPAL_MODE = 'sandbox';
+export const PAYPAL_CLIENT_ID_SANDBOX = process.env.PAYPAL_CLIENT_ID_SANDBOX || 'test-paypal-client-id-sandbox';
+export const PAYPAL_CLIENT_SECRET_SANDBOX = process.env.PAYPAL_CLIENT_SECRET_SANDBOX || 'test-paypal-client-secret-sandbox';
+export const PAYPAL_CLIENT_ID_LIVE = process.env.PAYPAL_CLIENT_ID_LIVE;
+export const PAYPAL_CLIENT_SECRET_LIVE = process.env.PAYPAL_CLIENT_SECRET_LIVE;
+export const PAYPAL_WEBHOOK_ID_SANDBOX = process.env.PAYPAL_WEBHOOK_ID_SANDBOX || 'test-webhook-id-sandbox';
+export const PAYPAL_WEBHOOK_ID_LIVE = process.env.PAYPAL_WEBHOOK_ID_LIVE;
+export const PAYPAL_PLAN_ID_SANDBOX = process.env.PAYPAL_PLAN_ID_SANDBOX || 'test-plan-id-sandbox';
+export const PAYPAL_PLAN_ID_LIVE = process.env.PAYPAL_PLAN_ID_LIVE;

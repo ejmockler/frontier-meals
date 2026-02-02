@@ -18,6 +18,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import type Stripe from 'stripe';
+import { createMockRequestEvent } from '../../../../../test-setup';
 
 dotenv.config();
 
@@ -165,15 +166,17 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
 			// Execute handler
-			const response = await POST({ request: mockRequest } as any);
+			const response = await POST(mockEvent);
 			const result = await response.json();
 
 			expect(result).toEqual({ received: true });
@@ -309,14 +312,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			await POST({ request: mockRequest } as any);
+			await POST(mockEvent);
 
 			// Verify subscription created with NULL period dates
 			const { data: customer } = await supabase
@@ -384,14 +389,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			const response = await POST({ request: mockRequest } as any);
+			const response = await POST(mockEvent);
 			const result = await response.json();
 
 			// Should fail gracefully
@@ -491,14 +498,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			const response = await POST({ request: mockRequest } as any);
+			const response = await POST(mockEvent);
 
 			// Should fail due to validation
 			expect(response.status).toBe(500);
@@ -579,14 +588,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			const response = await POST({ request: mockRequest } as any);
+			const response = await POST(mockEvent);
 
 			// Should succeed but skip update (logged warning)
 			expect(response.status).toBe(200);
@@ -673,14 +684,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			await POST({ request: mockRequest } as any);
+			await POST(mockEvent);
 
 			// Verify existing dates NOT overwritten
 			const { data: subscription } = await supabase
@@ -763,14 +776,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			const response = await POST({ request: mockRequest } as any);
+			const response = await POST(mockEvent);
 			expect(response.status).toBe(200);
 
 			// Verify period dates updated
@@ -852,14 +867,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			const response = await POST({ request: mockRequest } as any);
+			const response = await POST(mockEvent);
 			expect(response.status).toBe(200);
 
 			// Verify soft email sent
@@ -946,14 +963,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			await POST({ request: mockRequest } as any);
+			await POST(mockEvent);
 
 			// Verify retry email sent
 			const { sendEmail } = await import('$lib/email/send');
@@ -1018,14 +1037,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			await POST({ request: mockRequest } as any);
+			await POST(mockEvent);
 
 			// Verify final email sent
 			const { sendEmail } = await import('$lib/email/send');
@@ -1077,14 +1098,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			await POST({ request: mockRequest } as any);
+			await POST(mockEvent);
 
 			// Verify portal session created
 			expect(stripe.billingPortal.sessions.create).toHaveBeenCalledWith({
@@ -1134,14 +1157,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			const response = await POST({ request: mockRequest } as any);
+			const response = await POST(mockEvent);
 			expect(response.status).toBe(200);
 
 			// Verify subscription status updated to canceled
@@ -1197,15 +1222,17 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
 			// Should not throw
-			const response = await POST({ request: mockRequest } as any);
+			const response = await POST(mockEvent);
 			expect(response.status).toBe(200);
 
 			// Email should NOT be sent
@@ -1252,14 +1279,16 @@ describe('Stripe Webhook Handlers - Business Logic (Real DB)', () => {
 
 			stripe.webhooks.constructEventAsync.mockResolvedValue(webhookEvent);
 
-			const mockRequest = {
-				text: () => Promise.resolve(JSON.stringify(webhookEvent)),
-				headers: {
-					get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+			const mockEvent = createMockRequestEvent({
+				request: {
+					text: () => Promise.resolve(JSON.stringify(webhookEvent)),
+					headers: {
+						get: (name: string) => name === 'stripe-signature' ? 'valid-signature' : null
+					}
 				}
-			};
+			});
 
-			const response = await POST({ request: mockRequest } as any);
+			const response = await POST(mockEvent);
 			expect(response.status).toBe(200);
 
 			// Customer should NOT be created (duplicate)
