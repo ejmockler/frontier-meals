@@ -9,13 +9,14 @@
 	export let form;
 
 	// Form state
-	let embedInput = '';
-	let extractedPlanId = '';
+	let embedInputLive = '';
+	let embedInputSandbox = '';
+	let extractedPlanIdLive = '';
+	let extractedPlanIdSandbox = '';
 	let businessName = '';
 	let priceAmount = '';
 	let billingCycle = 'monthly';
 	let isDefault = false;
-	let isExtracting = false;
 
 	// Edit state
 	let editingPlan: SubscriptionPlan | null = null;
@@ -23,25 +24,32 @@
 	let planToDelete: SubscriptionPlan | null = null;
 
 	// Extract PayPal Plan ID from URL or embed code
-	function extractPlanId() {
-		isExtracting = true;
+	function extractPlanId(input: string): string {
 		const planIdRegex = /P-[A-Z0-9]{20,}/g;
-		const matches = embedInput.match(planIdRegex);
+		const matches = input.match(planIdRegex);
+		return matches && matches.length > 0 ? matches[0] : '';
+	}
 
-		if (matches && matches.length > 0) {
-			extractedPlanId = matches[0];
-			toasts.show('Plan ID extracted successfully', 'success');
-		} else {
-			extractedPlanId = '';
-			toasts.show('No Plan ID found. Please check your input.', 'error', 5000);
+	function handleLiveInput() {
+		extractedPlanIdLive = extractPlanId(embedInputLive);
+		if (extractedPlanIdLive) {
+			toasts.show('Live Plan ID extracted', 'success');
 		}
-		isExtracting = false;
+	}
+
+	function handleSandboxInput() {
+		extractedPlanIdSandbox = extractPlanId(embedInputSandbox);
+		if (extractedPlanIdSandbox) {
+			toasts.show('Sandbox Plan ID extracted', 'success');
+		}
 	}
 
 	// Clear form
 	function clearForm() {
-		embedInput = '';
-		extractedPlanId = '';
+		embedInputLive = '';
+		embedInputSandbox = '';
+		extractedPlanIdLive = '';
+		extractedPlanIdSandbox = '';
 		businessName = '';
 		priceAmount = '';
 		billingCycle = 'monthly';
@@ -52,8 +60,10 @@
 	// Start editing a plan
 	function startEdit(plan: SubscriptionPlan) {
 		editingPlan = plan;
-		embedInput = '';
-		extractedPlanId = plan.paypal_plan_id;
+		embedInputLive = '';
+		embedInputSandbox = '';
+		extractedPlanIdLive = plan.paypal_plan_id_live;
+		extractedPlanIdSandbox = plan.paypal_plan_id_sandbox || '';
 		businessName = plan.business_name;
 		priceAmount = plan.price_amount.toString();
 		billingCycle = plan.billing_cycle;
@@ -79,8 +89,9 @@
 	}
 
 	// Truncate Plan ID for display
-	function truncatePlanId(planId: string): string {
-		return planId.slice(0, 8) + '...';
+	function truncatePlanId(planId: string | null): string {
+		if (!planId) return '—';
+		return planId.slice(0, 10) + '...';
 	}
 
 	// Handle form response
@@ -120,7 +131,7 @@
 			</h1>
 		</div>
 		<p class="text-[#5C5A56] ml-9">
-			Import your PayPal subscription plans to create discount codes for them.
+			Import your PayPal subscription plans for both Live and Sandbox environments.
 		</p>
 	</div>
 
@@ -148,50 +159,78 @@
 				<input type="hidden" name="plan_id" value={editingPlan.id} />
 			{/if}
 
-			{#if !editingPlan}
-				<!-- Paste PayPal URL/Embed Code -->
-				<div>
-					<label
-						for="embed_input"
-						class="block text-sm font-bold text-[#1A1816] mb-2"
-					>
-						Paste PayPal plan URL or button embed code:
-					</label>
+			<!-- Environment Plan IDs -->
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+				<!-- Live Plan ID -->
+				<div class="p-4 bg-[#52A675]/5 border-2 border-[#52A675]/30 rounded-sm">
+					<div class="flex items-center gap-2 mb-3">
+						<span class="px-2 py-0.5 text-xs font-bold rounded-sm bg-[#52A675] text-white">
+							LIVE
+						</span>
+						<span class="text-sm font-bold text-[#1A1816]">Production Plan ID</span>
+					</div>
+
+					{#if !editingPlan}
+						<textarea
+							bind:value={embedInputLive}
+							on:input={handleLiveInput}
+							placeholder="Paste PayPal plan URL or button embed code..."
+							rows="2"
+							class="w-full px-3 py-2 text-sm border-2 border-[#52A675]/30 rounded-sm focus:ring-2 focus:ring-[#52A675] focus:border-[#52A675] outline-none font-medium text-[#1A1816] bg-white mb-2"
+						></textarea>
+					{/if}
+
+					{#if extractedPlanIdLive}
+						<div class="flex items-center gap-2 p-2 bg-[#52A675]/10 rounded-sm">
+							<svg class="w-4 h-4 text-[#52A675] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+								<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+							</svg>
+							<span class="font-mono text-xs text-[#1A1816]">{extractedPlanIdLive}</span>
+						</div>
+					{:else if !editingPlan}
+						<p class="text-xs text-[#5C5A56]">Required for production checkout</p>
+					{/if}
+
+					<input type="hidden" name="paypal_plan_id_live" value={extractedPlanIdLive} />
+				</div>
+
+				<!-- Sandbox Plan ID -->
+				<div class="p-4 bg-[#E67E50]/5 border-2 border-[#E67E50]/30 rounded-sm">
+					<div class="flex items-center gap-2 mb-3">
+						<span class="px-2 py-0.5 text-xs font-bold rounded-sm bg-[#E67E50] text-white">
+							SANDBOX
+						</span>
+						<span class="text-sm font-bold text-[#1A1816]">Testing Plan ID</span>
+						<span class="text-xs text-[#5C5A56]">(optional)</span>
+					</div>
+
 					<textarea
-						id="embed_input"
-						bind:value={embedInput}
-						on:input={extractPlanId}
-						placeholder="https://www.paypal.com/webapps/billing/plans/subscribe?plan_id=P-..."
-						rows="4"
-						class="w-full px-4 py-2 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none font-medium text-[#1A1816] bg-white"
+						bind:value={embedInputSandbox}
+						on:input={handleSandboxInput}
+						placeholder="Paste PayPal sandbox plan URL..."
+						rows="2"
+						class="w-full px-3 py-2 text-sm border-2 border-[#E67E50]/30 rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none font-medium text-[#1A1816] bg-white mb-2"
 					></textarea>
-				</div>
-			{/if}
 
-			<!-- Extracted Plan ID -->
-			{#if extractedPlanId}
-				<div
-					class="p-4 bg-[#52A675]/10 border-2 border-[#52A675] rounded-sm flex items-center gap-2"
-				>
-					<svg class="w-5 h-5 text-[#52A675] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-						<path
-							fill-rule="evenodd"
-							d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-							clip-rule="evenodd"
-						/>
-					</svg>
-					<span class="font-bold text-[#1A1816]">
-						Found Plan: <span class="font-mono">{extractedPlanId}</span>
-					</span>
-				</div>
-			{/if}
+					{#if extractedPlanIdSandbox}
+						<div class="flex items-center gap-2 p-2 bg-[#E67E50]/10 rounded-sm">
+							<svg class="w-4 h-4 text-[#E67E50] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+								<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+							</svg>
+							<span class="font-mono text-xs text-[#1A1816]">{extractedPlanIdSandbox}</span>
+						</div>
+					{:else}
+						<p class="text-xs text-[#5C5A56]">Optional - for testing discount codes</p>
+					{/if}
 
-			<input type="hidden" name="paypal_plan_id" value={extractedPlanId} />
+					<input type="hidden" name="paypal_plan_id_sandbox" value={extractedPlanIdSandbox} />
+				</div>
+			</div>
 
 			<!-- Business Name -->
 			<div>
 				<label for="business_name" class="block text-sm font-bold text-[#1A1816] mb-2">
-					Give it a friendly name:
+					Friendly Name:
 				</label>
 				<input
 					id="business_name"
@@ -279,7 +318,7 @@
 				{/if}
 				<button
 					type="submit"
-					disabled={!extractedPlanId || !businessName || !priceAmount}
+					disabled={!extractedPlanIdLive || !businessName || !priceAmount}
 					class="px-6 py-2 text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] hover:shadow-xl shadow-lg rounded-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					{editingPlan ? 'Update Plan' : 'Add Plan'}
@@ -316,7 +355,7 @@
 			<div class="divide-y-2 divide-[#D9D7D2]">
 				{#each data.plans as plan}
 					<div class="p-6 hover:bg-gray-50 transition-colors">
-						<div class="flex items-center justify-between gap-4">
+						<div class="flex items-start justify-between gap-4">
 							<div class="flex-1">
 								<div class="flex items-center gap-3 mb-2">
 									<h3 class="text-lg font-extrabold tracking-tight text-[#1A1816]">
@@ -330,11 +369,30 @@
 										</span>
 									{/if}
 								</div>
-								<div class="flex items-center gap-4 text-sm text-[#5C5A56]">
-									<span class="font-mono text-xs">{truncatePlanId(plan.paypal_plan_id)}</span>
+
+								<!-- Price -->
+								<div class="text-sm text-[#5C5A56] mb-3">
 									<span class="font-medium">
 										${plan.price_amount.toFixed(2)} / {plan.billing_cycle}
 									</span>
+								</div>
+
+								<!-- Environment Plan IDs -->
+								<div class="flex flex-wrap gap-3 text-xs">
+									<div class="flex items-center gap-1.5">
+										<span class="px-1.5 py-0.5 font-bold rounded bg-[#52A675] text-white">LIVE</span>
+										<span class="font-mono text-[#5C5A56]">{truncatePlanId(plan.paypal_plan_id_live)}</span>
+									</div>
+									<div class="flex items-center gap-1.5">
+										<span class="px-1.5 py-0.5 font-bold rounded bg-[#E67E50] text-white">SANDBOX</span>
+										<span class="font-mono text-[#5C5A56]">
+											{#if plan.paypal_plan_id_sandbox}
+												{truncatePlanId(plan.paypal_plan_id_sandbox)}
+											{:else}
+												<span class="italic text-[#B8B6B1]">not configured</span>
+											{/if}
+										</span>
+									</div>
 								</div>
 							</div>
 

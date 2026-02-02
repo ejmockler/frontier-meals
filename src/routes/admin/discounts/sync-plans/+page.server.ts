@@ -36,20 +36,26 @@ export const actions: Actions = {
 			return fail(403, { error: 'Invalid CSRF token' });
 		}
 
-		const paypalPlanId = formData.get('paypal_plan_id') as string;
+		const paypalPlanIdLive = formData.get('paypal_plan_id_live') as string;
+		const paypalPlanIdSandbox = (formData.get('paypal_plan_id_sandbox') as string) || null;
 		const businessName = formData.get('business_name') as string;
 		const priceAmount = formData.get('price_amount') as string;
 		const billingCycle = formData.get('billing_cycle') as string;
 		const isDefault = formData.get('is_default') === 'true';
 
-		// Validate required fields
-		if (!paypalPlanId || !businessName || !priceAmount || !billingCycle) {
-			return fail(400, { error: 'All fields are required' });
+		// Validate required fields (live plan ID is required, sandbox is optional)
+		if (!paypalPlanIdLive || !businessName || !priceAmount || !billingCycle) {
+			return fail(400, { error: 'All fields are required (sandbox plan ID is optional)' });
 		}
 
-		// Validate PayPal Plan ID format
-		if (!/^P-[A-Z0-9]{20,}$/.test(paypalPlanId)) {
-			return fail(400, { error: 'Invalid PayPal Plan ID format' });
+		// Validate PayPal Plan ID format (live)
+		if (!/^P-[A-Z0-9]{20,}$/.test(paypalPlanIdLive)) {
+			return fail(400, { error: 'Invalid Live PayPal Plan ID format' });
+		}
+
+		// Validate PayPal Plan ID format (sandbox, if provided)
+		if (paypalPlanIdSandbox && !/^P-[A-Z0-9]{20,}$/.test(paypalPlanIdSandbox)) {
+			return fail(400, { error: 'Invalid Sandbox PayPal Plan ID format' });
 		}
 
 		// Validate price
@@ -64,15 +70,28 @@ export const actions: Actions = {
 		}
 
 		try {
-			// Check if PayPal Plan ID already exists
-			const { data: existing } = await supabase
+			// Check if Live PayPal Plan ID already exists
+			const { data: existingLive } = await supabase
 				.from('subscription_plans')
 				.select('id')
-				.eq('paypal_plan_id', paypalPlanId)
+				.eq('paypal_plan_id_live', paypalPlanIdLive)
 				.maybeSingle();
 
-			if (existing) {
-				return fail(400, { error: 'This PayPal Plan ID already exists' });
+			if (existingLive) {
+				return fail(400, { error: 'This Live PayPal Plan ID already exists' });
+			}
+
+			// Check if Sandbox PayPal Plan ID already exists (if provided)
+			if (paypalPlanIdSandbox) {
+				const { data: existingSandbox } = await supabase
+					.from('subscription_plans')
+					.select('id')
+					.eq('paypal_plan_id_sandbox', paypalPlanIdSandbox)
+					.maybeSingle();
+
+				if (existingSandbox) {
+					return fail(400, { error: 'This Sandbox PayPal Plan ID already exists' });
+				}
 			}
 
 			// If setting as default, unset current default
@@ -85,7 +104,8 @@ export const actions: Actions = {
 
 			// Insert new plan
 			const { error: insertError } = await supabase.from('subscription_plans').insert({
-				paypal_plan_id: paypalPlanId,
+				paypal_plan_id_live: paypalPlanIdLive,
+				paypal_plan_id_sandbox: paypalPlanIdSandbox,
 				business_name: businessName,
 				price_amount: price,
 				price_currency: 'USD',
@@ -117,6 +137,7 @@ export const actions: Actions = {
 		}
 
 		const planId = formData.get('plan_id') as string;
+		const paypalPlanIdSandbox = (formData.get('paypal_plan_id_sandbox') as string) || null;
 		const businessName = formData.get('business_name') as string;
 		const priceAmount = formData.get('price_amount') as string;
 		const billingCycle = formData.get('billing_cycle') as string;
@@ -125,6 +146,11 @@ export const actions: Actions = {
 		// Validate required fields
 		if (!planId || !businessName || !priceAmount || !billingCycle) {
 			return fail(400, { error: 'All fields are required' });
+		}
+
+		// Validate PayPal Plan ID format (sandbox, if provided)
+		if (paypalPlanIdSandbox && !/^P-[A-Z0-9]{20,}$/.test(paypalPlanIdSandbox)) {
+			return fail(400, { error: 'Invalid Sandbox PayPal Plan ID format' });
 		}
 
 		// Validate price
@@ -139,6 +165,20 @@ export const actions: Actions = {
 		}
 
 		try {
+			// Check if Sandbox Plan ID already exists (if provided and not the same plan)
+			if (paypalPlanIdSandbox) {
+				const { data: existingSandbox } = await supabase
+					.from('subscription_plans')
+					.select('id')
+					.eq('paypal_plan_id_sandbox', paypalPlanIdSandbox)
+					.neq('id', planId)
+					.maybeSingle();
+
+				if (existingSandbox) {
+					return fail(400, { error: 'This Sandbox PayPal Plan ID already exists' });
+				}
+			}
+
 			// If setting as default, unset current default
 			if (isDefault) {
 				await supabase
@@ -148,10 +188,11 @@ export const actions: Actions = {
 					.neq('id', planId);
 			}
 
-			// Update plan
+			// Update plan (live plan ID is immutable after creation)
 			const { error: updateError } = await supabase
 				.from('subscription_plans')
 				.update({
+					paypal_plan_id_sandbox: paypalPlanIdSandbox,
 					business_name: businessName,
 					price_amount: price,
 					billing_cycle: billingCycle,
