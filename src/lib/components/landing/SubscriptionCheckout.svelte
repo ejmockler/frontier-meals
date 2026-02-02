@@ -13,6 +13,7 @@
 	 */
 
 	import DiscountCodeInput from './DiscountCodeInput.svelte';
+	import Input from '$lib/components/ui/input.svelte';
 
 	interface Props {
 		onPayPalCheckout: (reservationId?: string) => void;
@@ -31,6 +32,10 @@
 	// Commitment threshold state
 	let agreed = $state(false);
 
+	// Email state
+	let customerEmail = $state(email || '');
+	let emailError = $state<string | null>(null);
+
 	// Discount state
 	let reservationId = $state<string | undefined>(undefined);
 	let discountedPrice = $state<number | undefined>(undefined);
@@ -45,12 +50,35 @@
 		}
 	});
 
+	// Email validation regex
+	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+	// Derived: email is valid
+	let isEmailValid = $derived(emailRegex.test(customerEmail.trim()));
+
 	// Derived: buttons unlocked when agreement is checked
 	let unlocked = $derived(agreed && !loading);
 
 	// Derived: final price to display
 	let finalPrice = $derived(discountedPrice ?? originalPrice);
 	let hasDiscount = $derived(discountedPrice !== undefined && discountedPrice !== originalPrice);
+
+	/**
+	 * Validate email
+	 */
+	function validateEmail() {
+		const trimmed = customerEmail.trim();
+		if (!trimmed) {
+			emailError = 'Email is required';
+			return false;
+		}
+		if (!emailRegex.test(trimmed)) {
+			emailError = 'Please enter a valid email address';
+			return false;
+		}
+		emailError = null;
+		return true;
+	}
 
 	/**
 	 * Handle discount code applied
@@ -169,13 +197,36 @@
 			</li>
 		</ul>
 
+		<!-- Email Input Section -->
+		<div class="mb-5 pt-3 border-t-2 border-[#E8E6E1]">
+			<label for="customer-email" class="text-sm font-medium text-[#1A1816] block mb-2">
+				Email Address <span class="text-[#C85C35]">*</span>
+			</label>
+			<Input
+				id="customer-email"
+				type="email"
+				placeholder="your.email@example.com"
+				bind:value={customerEmail}
+				error={emailError !== null}
+				onblur={validateEmail}
+				class="w-full"
+				aria-label="Email address"
+				required
+			/>
+			{#if emailError}
+				<p class="text-xs text-[#C85C35] mt-1">{emailError}</p>
+			{/if}
+			<p class="text-xs text-[#5C5A56] mt-1">Required for discount codes and order confirmation</p>
+		</div>
+
 		<!-- Discount Code Section -->
 		<div class="mb-5 pt-3 border-t-2 border-[#E8E6E1]">
 			<DiscountCodeInput
 				planPrice={originalPrice}
 				onDiscountApplied={handleDiscountApplied}
 				onDiscountRemoved={handleDiscountRemoved}
-				{email}
+				email={customerEmail}
+				disabled={!isEmailValid}
 			/>
 		</div>
 

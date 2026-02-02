@@ -6,6 +6,38 @@
 
 	export let data: PageData;
 
+	// Type for discount list items with joined plan data
+	interface DiscountWithPlan {
+		id: string;
+		code: string;
+		plan_id: string;
+		admin_notes: string | null;
+		max_uses: number | null;
+		current_uses: number;
+		reserved_uses: number;
+		max_uses_per_customer: number;
+		valid_from: string | null;
+		valid_until: string | null;
+		is_active: boolean;
+		deactivated_at: string | null;
+		grace_period_minutes: number;
+		created_by: string | null;
+		created_at: string;
+		updated_at: string;
+		plan: {
+			id: string;
+			business_name: string;
+			price_amount: number;
+			billing_cycle: string;
+		} | null;
+	}
+
+	// Processed discount with computed fields
+	interface ProcessedDiscount extends DiscountWithPlan {
+		status: DiscountStatus;
+		discount_display: string;
+	}
+
 	// Success notification state
 	let showSuccess = false;
 	let successMessage = '';
@@ -29,7 +61,7 @@
 	});
 
 	// Get discount display text from price delta
-	function getDiscountDisplay(discount: any, defaultPlanPrice: number): string {
+	function getDiscountDisplay(discount: DiscountWithPlan, defaultPlanPrice: number): string {
 		if (!discount.plan) return 'Unknown discount';
 
 		const planPrice = discount.plan.price_amount;
@@ -42,7 +74,7 @@
 	}
 
 	// Calculate discount status
-	function getStatus(discount: any): DiscountStatus {
+	function getStatus(discount: DiscountWithPlan): DiscountStatus {
 		// Error: Referenced plan no longer exists
 		if (!discount.plan) {
 			return 'error';
@@ -137,7 +169,7 @@
 	}
 
 	// Format usage display
-	function formatUsage(discount: any): string {
+	function formatUsage(discount: DiscountWithPlan): string {
 		if (discount.max_uses === null) {
 			return `${discount.current_uses} / ∞`;
 		}
@@ -148,7 +180,7 @@
 	$: defaultPlanPrice = data.defaultPlanPrice || 29;
 
 	// Process discounts with status
-	$: processedDiscounts = data.discounts.map((discount) => ({
+	$: processedDiscounts = data.discounts.map((discount): ProcessedDiscount => ({
 		...discount,
 		status: getStatus(discount),
 		discount_display: getDiscountDisplay(discount, defaultPlanPrice)

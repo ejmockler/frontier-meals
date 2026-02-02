@@ -1,5 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import { browser } from '$app/environment';
+  import { onMount } from 'svelte';
   import Card from '$lib/components/ui/card.svelte';
 
   let { data } = $props();
@@ -10,6 +12,15 @@
 
   let copied = $state(false);
 
+  // Discount information
+  let discountInfo = $state<{
+    code?: string;
+    savings?: number;
+    savingsPercent?: number;
+    originalPrice?: number;
+    finalPrice?: number;
+  } | null>(null);
+
   function copyLink() {
     if (deepLink) {
       navigator.clipboard.writeText(deepLink);
@@ -17,6 +28,28 @@
       setTimeout(() => copied = false, 2000);
     }
   }
+
+  onMount(() => {
+    if (browser) {
+      try {
+        const saved = sessionStorage.getItem('discount_reservation');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          discountInfo = {
+            code: parsed.code,
+            savings: parsed.savings,
+            savingsPercent: parsed.discount?.percent_off,
+            originalPrice: parsed.original_price,
+            finalPrice: parsed.plan?.price
+          };
+          // Clear after reading (one-time display)
+          sessionStorage.removeItem('discount_reservation');
+        }
+      } catch (e) {
+        console.error('Error reading discount info:', e);
+      }
+    }
+  });
 </script>
 
 <div class="min-h-screen bg-[#F5F3EF] frontier-texture flex items-center justify-center px-4 py-8">
@@ -34,6 +67,42 @@
         <h1 class="text-3xl font-extrabold tracking-tight text-[#1A1816] mb-2">Welcome to Frontier Meals! 🍽️</h1>
         <p class="text-[#5C5A56]">We're setting up your subscription now.</p>
       </div>
+
+      {#if discountInfo}
+        <!-- Discount Confirmation -->
+        <div class="bg-[#d1fae5] border-2 border-[#059669]/30 rounded-sm p-6 space-y-3">
+          <div class="flex items-center justify-center gap-2 mb-2">
+            <svg class="w-5 h-5 text-[#059669]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+            </svg>
+            <h3 class="font-extrabold tracking-tight text-[#1A1816] text-lg">Discount Applied!</h3>
+          </div>
+
+          <div class="bg-white/80 rounded-sm border border-[#059669]/20 p-4 space-y-2">
+            <div class="flex items-center justify-center gap-2">
+              <span class="text-sm text-[#5C5A56]">Code:</span>
+              <span class="font-mono font-bold text-[#1A1816] text-lg">{discountInfo.code}</span>
+            </div>
+
+            {#if discountInfo.savings && discountInfo.savings > 0}
+              <div class="text-center pt-2 border-t border-[#059669]/10">
+                <p class="text-sm text-[#5C5A56] mb-1">You saved</p>
+                <p class="text-2xl font-extrabold text-[#059669]">
+                  ${discountInfo.savings.toFixed(2)}
+                  {#if discountInfo.savingsPercent}
+                    <span class="text-base font-bold">({discountInfo.savingsPercent}% off)</span>
+                  {/if}
+                </p>
+                {#if discountInfo.finalPrice}
+                  <p class="text-sm text-[#5C5A56] mt-2">
+                    Your price: <span class="font-bold text-[#1A1816]">${discountInfo.finalPrice.toFixed(2)}/month</span>
+                  </p>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        </div>
+      {/if}
 
       {#if deepLink}
         <!-- Telegram Connection Box -->

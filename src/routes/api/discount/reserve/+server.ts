@@ -152,6 +152,20 @@ export const POST: RequestHandler = async (event) => {
 		});
 
 		if (error) {
+			// Check for row lock error (concurrent validation)
+			if (error.code === '55P03') {
+				return json(
+					{
+						success: false,
+						error: {
+							code: 'CODE_LOCKED',
+							message: 'This code is being validated by another user. Please try again in a moment.'
+						}
+					} satisfies DiscountValidationResult,
+					{ status: 409 }  // Conflict
+				);
+			}
+
 			console.error('[Discount Reserve] Database error:', error);
 			return json(
 				{

@@ -14,7 +14,7 @@ export const load: PageServerLoad = async ({ depends }) => {
 	// Load active subscription plans for dropdown
 	const { data: plans, error } = await supabase
 		.from('subscription_plans')
-		.select('*')
+		.select('id, business_name, price_amount, billing_cycle, is_default, paypal_plan_id_live, paypal_plan_id_sandbox')
 		.eq('is_active', true)
 		.order('sort_order', { ascending: true });
 

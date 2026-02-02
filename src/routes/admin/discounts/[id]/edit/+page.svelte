@@ -213,12 +213,26 @@
 									{:else if defaultPlan}
 										(Save ${(defaultPlan.price_amount - plan.price_amount).toFixed(2)})
 									{/if}
+									{#if !plan.paypal_plan_id_sandbox}
+										— ⚠️ Live only
+									{/if}
 								</option>
 							{/each}
 						</select>
-						<p class="text-xs text-[#5C5A56] mt-1">
-							Select the PayPal plan with discounted pricing
+						<p class="text-sm text-gray-500 mt-1">
+							Plans marked "Live only" will not work in sandbox/testing mode.
+							<a href="/admin/discounts/sync-plans" class="text-blue-600 underline">
+								Configure sandbox plan IDs
+							</a>
 						</p>
+						{#if selectedPlan && !selectedPlan.paypal_plan_id_sandbox}
+							<div class="bg-yellow-50 border border-yellow-200 rounded p-3 mt-2">
+								<p class="text-yellow-800 text-sm">
+									⚠️ This plan has no sandbox Plan ID configured.
+									Discount codes using this plan will fail during testing.
+								</p>
+							</div>
+						{/if}
 					</div>
 
 					<!-- Collapsible Limits section -->

@@ -6,6 +6,8 @@ import { fail } from '@sveltejs/kit';
 import { validateCSRFFromFormData } from '$lib/auth/csrf';
 import { getAdminSession } from '$lib/auth/session';
 import type { SubscriptionPlan } from '$lib/types/discount';
+import { validatePayPalPlanExists, type PayPalEnv } from '$lib/integrations/paypal';
+import { getEnv } from '$lib/server/env';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -27,7 +29,7 @@ export const load: PageServerLoad = async ({ depends }) => {
 };
 
 export const actions: Actions = {
-	createPlan: async ({ request, cookies }) => {
+	createPlan: async ({ request, cookies, platform }) => {
 		const formData = await request.formData();
 
 		// Validate CSRF
@@ -67,6 +69,46 @@ export const actions: Actions = {
 		// Validate billing cycle
 		if (!['monthly', 'annual'].includes(billingCycle)) {
 			return fail(400, { error: 'Invalid billing cycle' });
+		}
+
+		// Get environment variables for PayPal API access
+		const env = await getEnv({ platform, cookies, request } as any);
+
+		// Validate plan exists in PayPal (for live plan ID)
+		const paypalEnvLive: PayPalEnv = {
+			PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID_LIVE || '',
+			PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET_LIVE || '',
+			PAYPAL_WEBHOOK_ID: env.PAYPAL_WEBHOOK_ID_LIVE || '',
+			PAYPAL_PLAN_ID: '',
+			PAYPAL_MODE: 'live'
+		};
+
+		const liveValidation = await validatePayPalPlanExists(paypalEnvLive, paypalPlanIdLive);
+		if (!liveValidation.exists) {
+			return fail(400, {
+				error: `Live Plan ID not found in PayPal: ${liveValidation.error}`
+			});
+		}
+
+		// If sandbox plan ID provided, validate it too
+		if (paypalPlanIdSandbox) {
+			const paypalEnvSandbox: PayPalEnv = {
+				PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID_SANDBOX || '',
+				PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET_SANDBOX || '',
+				PAYPAL_WEBHOOK_ID: env.PAYPAL_WEBHOOK_ID_SANDBOX || '',
+				PAYPAL_PLAN_ID: '',
+				PAYPAL_MODE: 'sandbox'
+			};
+
+			const sandboxValidation = await validatePayPalPlanExists(
+				paypalEnvSandbox,
+				paypalPlanIdSandbox
+			);
+			if (!sandboxValidation.exists) {
+				return fail(400, {
+					error: `Sandbox Plan ID not found in PayPal: ${sandboxValidation.error}`
+				});
+			}
 		}
 
 		try {
@@ -127,7 +169,7 @@ export const actions: Actions = {
 		}
 	},
 
-	updatePlan: async ({ request, cookies }) => {
+	updatePlan: async ({ request, cookies, platform }) => {
 		const formData = await request.formData();
 
 		// Validate CSRF
@@ -162,6 +204,30 @@ export const actions: Actions = {
 		// Validate billing cycle
 		if (!['monthly', 'annual'].includes(billingCycle)) {
 			return fail(400, { error: 'Invalid billing cycle' });
+		}
+
+		// Get environment variables for PayPal API access
+		const env = await getEnv({ platform, cookies, request } as any);
+
+		// If sandbox plan ID provided, validate it exists in PayPal
+		if (paypalPlanIdSandbox) {
+			const paypalEnvSandbox: PayPalEnv = {
+				PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID_SANDBOX || '',
+				PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET_SANDBOX || '',
+				PAYPAL_WEBHOOK_ID: env.PAYPAL_WEBHOOK_ID_SANDBOX || '',
+				PAYPAL_PLAN_ID: '',
+				PAYPAL_MODE: 'sandbox'
+			};
+
+			const sandboxValidation = await validatePayPalPlanExists(
+				paypalEnvSandbox,
+				paypalPlanIdSandbox
+			);
+			if (!sandboxValidation.exists) {
+				return fail(400, {
+					error: `Sandbox Plan ID not found in PayPal: ${sandboxValidation.error}`
+				});
+			}
 		}
 
 		try {

@@ -36,6 +36,8 @@
 		email?: string;
 		/** Mobile breakpoint (default: 640px) */
 		mobileBreakpoint?: number;
+		/** Disable input until email is valid */
+		disabled?: boolean;
 	}
 
 	let {
@@ -43,7 +45,8 @@
 		onDiscountApplied,
 		onDiscountRemoved,
 		email = '',
-		mobileBreakpoint = 640
+		mobileBreakpoint = 640,
+		disabled = false
 	}: Props = $props();
 
 	// Component state
@@ -55,6 +58,15 @@
 	// Validation result
 	let validationResult = $state<DiscountValidationResult | null>(null);
 	let isApplied = $derived(validationResult?.success === true);
+
+	// Countdown timer state
+	let expiresAt = $state<Date | null>(null);
+	let timeRemaining = $state<string | null>(null);
+	let isExpiringSoon = $state(false);
+	let countdownInterval: NodeJS.Timeout | null = null;
+
+	// Expiration message state
+	let expirationMessage = $state<string | null>(null);
 
 	// Session storage key
 	const SESSION_KEY = 'discount_reservation';
@@ -81,6 +93,10 @@
 					savings: reservation.savings
 				};
 				code = reservation.code;
+				expiresAt = new Date(reservation.expires_at);
+
+				// Start countdown timer
+				startCountdown();
 
 				// Notify parent component with the discounted price (plan.price)
 				const discountedPrice = reservation.plan?.price;
@@ -88,8 +104,9 @@
 					onDiscountApplied(reservation.reservation_id, discountedPrice);
 				}
 			} else {
-				// Expired - clear it
+				// Expired - show message instead of silently clearing
 				sessionStorage.removeItem(SESSION_KEY);
+				expirationMessage = 'Your previous discount code expired. Please re-enter your code.';
 			}
 		} catch (error) {
 			console.error('[DiscountCode] Error loading saved reservation:', error);
@@ -140,6 +157,11 @@
 
 		loading = true;
 		validationResult = null;
+		expirationMessage = null;
+
+		// Create abort controller with 10-second timeout
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 10000);
 
 		try {
 			const response = await fetch('/api/discount/reserve', {
@@ -150,15 +172,49 @@
 				body: JSON.stringify({
 					code: code.trim(),
 					email: email || 'customer@example.com' // Fallback for now
-				})
+				}),
+				signal: controller.signal
 			});
+
+			clearTimeout(timeoutId); // Clear timeout on success
+
+			// Handle HTTP status codes
+			if (!response.ok) {
+				if (response.status === 429) {
+					const retryAfter = response.headers.get('Retry-After') || '60';
+					validationResult = {
+						success: false,
+						error: {
+							code: 'RATE_LIMITED',
+							message: `Too many attempts. Please wait ${retryAfter} seconds.`
+						}
+					};
+					return;
+				}
+				if (response.status >= 500) {
+					validationResult = {
+						success: false,
+						error: {
+							code: 'SERVER_ERROR',
+							message: 'Server error. Please try again later.'
+						}
+					};
+					return;
+				}
+			}
 
 			const result: DiscountValidationResult = await response.json();
 			validationResult = result;
 
 			if (result.success) {
+				// Set expiration time (15 minutes from now)
+				expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
 				// Save to sessionStorage
 				saveReservation(result);
+
+				// Start countdown timer
+				startCountdown();
 
 				// Notify parent component with the discounted price (plan.price)
 				const discountedPrice = result.plan?.price;
@@ -167,14 +223,28 @@
 				}
 			}
 		} catch (error) {
-			console.error('[DiscountCode] Error validating code:', error);
-			validationResult = {
-				success: false,
-				error: {
-					code: 'INTERNAL_ERROR',
-					message: 'Failed to validate code. Please try again.'
-				}
-			};
+			clearTimeout(timeoutId);
+
+			// Check if it was a timeout
+			if (error instanceof Error && error.name === 'AbortError') {
+				console.error('[DiscountCode] Request timed out');
+				validationResult = {
+					success: false,
+					error: {
+						code: 'TIMEOUT',
+						message: 'Request timed out. Please check your connection and try again.'
+					}
+				};
+			} else {
+				console.error('[DiscountCode] Error validating code:', error);
+				validationResult = {
+					success: false,
+					error: {
+						code: 'INTERNAL_ERROR',
+						message: 'Failed to validate code. Please try again.'
+					}
+				};
+			}
 		} finally {
 			loading = false;
 		}
@@ -195,9 +265,58 @@
 	function removeDiscount() {
 		validationResult = null;
 		code = '';
+		expiresAt = null;
+		timeRemaining = null;
+		isExpiringSoon = false;
+		expirationMessage = null;
+		stopCountdown();
 		sessionStorage.removeItem(SESSION_KEY);
 		if (onDiscountRemoved) {
 			onDiscountRemoved();
+		}
+	}
+
+	/**
+	 * Start countdown timer
+	 */
+	function startCountdown() {
+		stopCountdown(); // Clear any existing interval
+
+		const updateCountdown = () => {
+			if (!expiresAt) return;
+
+			const now = new Date();
+			const diff = expiresAt.getTime() - now.getTime();
+
+			if (diff <= 0) {
+				// Expired
+				stopCountdown();
+				timeRemaining = null;
+				expirationMessage = 'Your discount code expired. Please re-apply.';
+				removeDiscount();
+				return;
+			}
+
+			// Calculate minutes and seconds
+			const minutes = Math.floor(diff / 60000);
+			const seconds = Math.floor((diff % 60000) / 1000);
+			timeRemaining = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+			// Mark as expiring soon if less than 5 minutes
+			isExpiringSoon = minutes < 5;
+		};
+
+		updateCountdown();
+		countdownInterval = setInterval(updateCountdown, 1000);
+	}
+
+	/**
+	 * Stop countdown timer
+	 */
+	function stopCountdown() {
+		if (countdownInterval) {
+			clearInterval(countdownInterval);
+			countdownInterval = null;
 		}
 	}
 
@@ -213,6 +332,19 @@
 	 */
 	function toggleExpanded() {
 		expanded = !expanded;
+		if (expanded) {
+			// Clear expiration message when user tries again
+			expirationMessage = null;
+		}
+	}
+
+	/**
+	 * Handle code input change - clear expiration message
+	 */
+	function handleCodeInput() {
+		if (expirationMessage) {
+			expirationMessage = null;
+		}
 	}
 
 	// Mount lifecycle
@@ -229,6 +361,7 @@
 
 		return () => {
 			window.removeEventListener('resize', handleResize);
+			stopCountdown();
 		};
 	});
 </script>
@@ -236,14 +369,40 @@
 {#if isMobile}
 	<!-- Mobile Layout: Collapsible -->
 	<div class="w-full">
+		<!-- Expiration message -->
+		{#if expirationMessage}
+			<div class="bg-[#fef3c7] border-2 border-[#f59e0b]/30 rounded-md p-3 mb-3">
+				<p class="text-sm text-[#92400e] flex items-start gap-2">
+					<svg class="w-4 h-4 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<span>{expirationMessage}</span>
+				</p>
+			</div>
+		{/if}
+
 		{#if !expanded && !isApplied}
 			<!-- Collapsed state: Enhanced tap target -->
 			<button
 				onclick={toggleExpanded}
-				class="w-full min-h-[44px] py-3 px-4 bg-white border-2 border-[#D9D7D2] rounded-md text-[#5C5A56] text-sm font-medium hover:bg-[#F5F3EF] hover:border-[#B8B6B1] transition-all active:scale-[0.98] cursor-pointer"
+				disabled={disabled}
+				class="w-full min-h-[44px] py-3 px-4 bg-white border-2 rounded-md text-sm font-medium transition-all"
+				class:border-[#D9D7D2]={!disabled}
+				class:text-[#5C5A56]={!disabled}
+				class:hover:bg-[#F5F3EF]={!disabled}
+				class:hover:border-[#B8B6B1]={!disabled}
+				class:active:scale-[0.98]={!disabled}
+				class:cursor-pointer={!disabled}
+				class:border-[#E8E6E1]={disabled}
+				class:text-[#B8B6B1]={disabled}
+				class:cursor-not-allowed={disabled}
 				aria-label="Enter promo code"
 			>
-				Have a promo code? Tap to enter
+				{#if disabled}
+					Enter email above to use promo code
+				{:else}
+					Have a promo code? Tap to enter
+				{/if}
 			</button>
 		{:else if expanded && !isApplied}
 			<!-- Expanded state: Input + Apply -->
@@ -252,17 +411,21 @@
 					type="text"
 					placeholder="Enter code"
 					bind:value={code}
-					disabled={loading}
+					disabled={loading || disabled}
 					class="text-base"
 					aria-label="Discount code"
 					autofocus
+					oninput={handleCodeInput}
 				/>
+				{#if disabled}
+					<p class="text-xs text-[#C85C35]">Please enter a valid email address first</p>
+				{/if}
 				<div class="flex gap-2">
 					<Button
 						variant="default"
 						class="flex-1"
 						onclick={validateCode}
-						disabled={loading || !code.trim()}
+						disabled={loading || !code.trim() || disabled}
 					>
 						{#if loading}
 							<svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -311,6 +474,11 @@
 									Applied
 								{/if}
 							</p>
+							{#if timeRemaining}
+								<p class="text-xs mt-1" class:text-[#d97706]={isExpiringSoon} class:text-[#5C5A56]={!isExpiringSoon}>
+									Code reserved for {timeRemaining}
+								</p>
+							{/if}
 						</div>
 					</div>
 					<button
@@ -374,6 +542,18 @@
 {:else}
 	<!-- Desktop Layout: Always-visible optional input -->
 	<div class="space-y-4">
+		<!-- Expiration message -->
+		{#if expirationMessage}
+			<div class="bg-[#fef3c7] border-2 border-[#f59e0b]/30 rounded-lg px-3 py-2">
+				<p class="text-sm text-[#92400e] flex items-start gap-2">
+					<svg class="w-4 h-4 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<span>{expirationMessage}</span>
+				</p>
+			</div>
+		{/if}
+
 		<div class="flex items-start justify-between">
 			<label for="discount-code" class="text-sm font-medium text-[#1A1816]">
 				Promo Code <span class="text-[#8E8C87]">(optional)</span>
@@ -406,21 +586,25 @@
 				<Input
 					id="discount-code"
 					type="text"
-					placeholder="Enter code"
+					placeholder={disabled ? "Enter email first" : "Enter code"}
 					bind:value={code}
-					disabled={loading}
+					disabled={loading || disabled}
 					error={validationResult?.success === false}
 					class="flex-1"
 					aria-label="Discount code"
+					oninput={handleCodeInput}
 				/>
 				<Button
 					variant="outline"
 					onclick={validateCode}
-					disabled={loading || !code.trim()}
+					disabled={loading || !code.trim() || disabled}
 				>
 					Apply
 				</Button>
 			</div>
+			{#if disabled}
+				<p class="text-xs text-[#C85C35]">Please enter a valid email address first</p>
+			{/if}
 		{:else}
 			<!-- Applied state -->
 			<div class="flex gap-2">
@@ -440,11 +624,18 @@
 
 		<!-- Success message -->
 		{#if isApplied && validationResult}
-			<div class="bg-[#d1fae5]/50 rounded-lg px-3 py-2 text-sm text-[#059669]">
-				{#if validationResult.savings && validationResult.savings > 0}
-					✓ Save ${validationResult.savings.toFixed(2)} ({validationResult.savings_percent}% off)
-				{:else}
-					✓ Code applied
+			<div class="bg-[#d1fae5]/50 rounded-lg px-3 py-2 text-sm">
+				<p class="text-[#059669]">
+					{#if validationResult.savings && validationResult.savings > 0}
+						✓ Save ${validationResult.savings.toFixed(2)} ({validationResult.savings_percent}% off)
+					{:else}
+						✓ Code applied
+					{/if}
+				</p>
+				{#if timeRemaining}
+					<p class="text-xs mt-1" class:text-[#d97706]={isExpiringSoon} class:text-[#5C5A56]={!isExpiringSoon}>
+						Code reserved for {timeRemaining}
+					</p>
 				{/if}
 			</div>
 		{/if}
