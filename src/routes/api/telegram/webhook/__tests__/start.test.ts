@@ -283,25 +283,29 @@ describe('Telegram /start Integration - Activation Critical (Real DB)', () => {
 			expect(error?.code).toBe('PGRST116');
 		});
 
-		it('EDGE CASE: Multiple tokens per customer', async () => {
+		it('EDGE CASE: Unique constraint prevents multiple tokens per customer', async () => {
 			const { customer } = await createTestCustomerWithToken();
 
-			// Create second token
+			// Attempt to create second token - should fail due to unique constraint
 			const tokenHash2 = `sha256_${TEST_PREFIX}_2`;
-			await supabase.from('telegram_deep_link_tokens').insert({
+			const { error } = await supabase.from('telegram_deep_link_tokens').insert({
 				customer_id: customer.id,
 				token_hash: tokenHash2,
 				expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
 				used: false
 			});
 
-			// Query all tokens for customer
+			// Should fail with unique constraint violation
+			expect(error).not.toBeNull();
+			expect(error?.code).toBe('23505'); // Unique violation
+
+			// Verify only one token exists
 			const { data: tokens } = await supabase
 				.from('telegram_deep_link_tokens')
 				.select('*')
 				.eq('customer_id', customer.id);
 
-			expect(tokens?.length).toBe(2);
+			expect(tokens?.length).toBe(1);
 		});
 	});
 
