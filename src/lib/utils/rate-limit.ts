@@ -126,25 +126,55 @@ export async function cleanupRateLimits(
 }
 
 /**
+ * Simple hash function for rate limit keys (non-cryptographic, fast)
+ * Uses djb2 algorithm - good distribution for rate limiting purposes
+ */
+function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
+  }
+  // Convert to unsigned 32-bit and then to hex
+  return (hash >>> 0).toString(16);
+}
+
+/**
  * Rate limit key generators for common use cases
  */
 export const RateLimitKeys = {
   /**
    * Generate key for kiosk redemption rate limiting
-   * @param kioskSessionToken - Kiosk session token or session ID
+   *
+   * C4 FIX: Previously used first 16 chars of token, but ES256 JWTs all start
+   * with the same header (`eyJhbGciOiJFUzI1...`), causing all sessions to share
+   * the same rate limit bucket (collision attack vector).
+   *
+   * Now uses a hash of the full token for unique bucketing per session.
+   *
+   * @param kioskSessionToken - Kiosk session token (full JWT)
    */
   kiosk(kioskSessionToken: string): string {
-    // Use first 16 chars of token to avoid overly long keys
-    const shortToken = kioskSessionToken.substring(0, 16);
-    return `kiosk:${shortToken}`;
+    // Hash the full token for unique rate limiting per session
+    // This prevents collision attacks where all ES256 JWTs share the same bucket
+    const tokenHash = simpleHash(kioskSessionToken);
+    return `kiosk:${tokenHash}`;
   },
 
   /**
-   * Generate key for admin magic link rate limiting
+   * Generate key for admin magic link request rate limiting
    * @param email - Normalized email address (lowercase, trimmed)
    */
   magicLink(email: string): string {
     return `magic:${email.toLowerCase().trim()}`;
+  },
+
+  /**
+   * C6 FIX: Generate key for magic link verification rate limiting
+   * Rate limits verification attempts to prevent brute force attacks on tokens.
+   * @param ip - IP address of the requester
+   */
+  magicLinkVerify(ip: string): string {
+    return `magic-verify:${ip}`;
   },
 
   /**

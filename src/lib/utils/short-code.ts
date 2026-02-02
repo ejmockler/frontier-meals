@@ -1,22 +1,46 @@
 /**
- * Generate short, human-friendly codes for QR codes
- * These are much easier to scan than full JWTs
+ * Short Code Generator
+ *
+ * Generates human-friendly codes for QR codes that are much easier to scan than full JWTs.
+ *
+ * Configuration:
+ * - Alphabet of 32 chars = 5 bits per char
+ * - 10 chars = 50 bits of entropy (~1.1 quadrillion combinations)
+ * - Note: 256 % 32 = 0, so no modulo bias in generation
  */
 
-const ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // Excludes 0,1,O,I to avoid confusion
+// =============================================================================
+// Configuration Constants
+// =============================================================================
+
+/**
+ * Character alphabet for short codes.
+ * Excludes 0, 1, O, I to avoid visual confusion.
+ * 32 characters = 5 bits of entropy per character.
+ */
+const SHORT_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+/** Minimum allowed short code length */
+const MIN_SHORT_CODE_LENGTH = 8;
+
+/** Maximum allowed short code length */
+const MAX_SHORT_CODE_LENGTH = 12;
+
+/** Default short code length if not specified */
+const DEFAULT_SHORT_CODE_LENGTH = 8;
 
 /**
  * Generate a random short code
  * @param length - Length of code (default: 8)
  * @returns Uppercase alphanumeric code (e.g., "3K7P9WXR")
  */
-export function generateShortCode(length = 8): string {
+export function generateShortCode(length = DEFAULT_SHORT_CODE_LENGTH): string {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
 
   let code = '';
   for (let i = 0; i < length; i++) {
-    code += ALPHABET[bytes[i] % ALPHABET.length];
+    code += SHORT_CODE_ALPHABET[bytes[i] % SHORT_CODE_ALPHABET.length];
   }
 
   return code;
@@ -41,13 +65,14 @@ export function isValidShortCode(code: string): boolean {
   // Remove dashes for validation
   const normalized = code.replace(/-/g, '');
 
-  // Check length (8-12 characters)
-  if (normalized.length < 8 || normalized.length > 12) {
+  // Check length
+  if (normalized.length < MIN_SHORT_CODE_LENGTH || normalized.length > MAX_SHORT_CODE_LENGTH) {
     return false;
   }
 
   // Check characters (only valid alphabet)
-  return /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]+$/.test(normalized);
+  const validCharsRegex = new RegExp(`^[${SHORT_CODE_ALPHABET}]+$`);
+  return validCharsRegex.test(normalized);
 }
 
 /**

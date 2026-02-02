@@ -283,7 +283,7 @@
     class="hidden"
   >
     <input type="hidden" name="customerId" value={selectedCustomer.id} />
-    <input type="hidden" name="qrPrivateKey" value={import.meta.env.QR_PRIVATE_KEY || ''} />
+    <!-- C11 FIX: QR_PRIVATE_KEY removed from client - now accessed server-side only -->
     <input type="hidden" name="csrf_token" value={data.csrfToken} />
   </form>
 {/if}

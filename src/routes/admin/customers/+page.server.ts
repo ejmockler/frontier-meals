@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
-import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
+import { SUPABASE_SERVICE_ROLE_KEY, QR_PRIVATE_KEY } from '$env/static/private';
 import type { PageServerLoad, Actions } from './$types';
 import { fail } from '@sveltejs/kit';
 import * as jose from 'jose';
@@ -57,10 +57,10 @@ export const actions: Actions = {
     }
 
     const customerId = formData.get('customerId') as string;
-    const qrPrivateKey = formData.get('qrPrivateKey') as string;
+    // C11 FIX: QR_PRIVATE_KEY is now imported from $env/static/private, not from form data
 
-    if (!customerId || !qrPrivateKey) {
-      return fail(400, { error: 'Missing required fields' });
+    if (!customerId) {
+      return fail(400, { error: 'Missing customer ID' });
     }
 
     try {
@@ -79,8 +79,8 @@ export const actions: Actions = {
       const jti = randomUUID();
       const expiresAt = new Date(today + 'T23:59:59-07:00');
 
-      // Generate JWT
-      const privateKey = await jose.importPKCS8(qrPrivateKey, 'ES256');
+      // Generate JWT (C11 FIX: using server-side private key)
+      const privateKey = await jose.importPKCS8(QR_PRIVATE_KEY, 'ES256');
       const jwt = await new jose.SignJWT({ service_date: today })
         .setProtectedHeader({ alg: 'ES256' })
         .setIssuer('frontier-meals-kiosk')

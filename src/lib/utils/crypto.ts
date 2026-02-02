@@ -79,15 +79,21 @@ export async function createHmacBase64(algorithm: 'sha256', key: string, data: s
 
 /**
  * Timing-safe string comparison
+ * Runs in constant time regardless of input length to prevent timing attacks
  */
 export function timingSafeEqual(a: string, b: string): boolean {
-	if (a.length !== b.length) {
-		return false;
-	}
+	const aBytes = new TextEncoder().encode(a);
+	const bBytes = new TextEncoder().encode(b);
 
-	let result = 0;
-	for (let i = 0; i < a.length; i++) {
-		result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+	// Use the longer length to ensure we always compare same amount
+	const maxLength = Math.max(aBytes.length, bBytes.length);
+
+	let result = aBytes.length === bBytes.length ? 0 : 1;
+
+	for (let i = 0; i < maxLength; i++) {
+		const aByte = i < aBytes.length ? aBytes[i] : 0;
+		const bByte = i < bBytes.length ? bBytes[i] : 0;
+		result |= aByte ^ bByte;
 	}
 
 	return result === 0;
