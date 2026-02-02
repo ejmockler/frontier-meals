@@ -9,7 +9,7 @@ Frontier Meals runs on a serverless stack optimized for scalability and cost eff
 - **Payments**: Stripe
 - **Email**: Resend
 - **Messaging**: Telegram Bot API
-- **Cron Jobs**: GitHub Actions
+- **Cron Jobs**: Cloudflare Workers (primary) + GitHub Actions (fallback/other jobs)
 
 ## Deployment
 
@@ -80,29 +80,57 @@ export const POST: RequestHandler = async (event) => {
 
 ## Cron Jobs
 
-Cron jobs are triggered via **GitHub Actions** since Cloudflare Pages doesn't support native cron triggers.
+### Architecture
 
-### Setup
+**Critical jobs** (daily QR issuance) are triggered by a dedicated **Cloudflare Worker** with cron triggers. This eliminates dependency on GitHub Actions runner availability.
 
-1. Add secrets to your GitHub repository settings:
-   - `CRON_SECRET`: Same value as Cloudflare secret
-   - `PRODUCTION_URL`: `https://frontiermeals.com`
+**Non-critical jobs** (cleanup, retry) remain on GitHub Actions since they can tolerate occasional delays.
 
-2. Push the workflow files to enable scheduled runs
+### Daily QR Issuance (Cloudflare Worker)
 
-### Schedules
+The `frontier-meals-cron` Worker triggers QR code generation at 12:00 PM PT (19:00 UTC).
+
+**Worker location**: `workers/cron-trigger/`
+
+**Deployment**:
+```bash
+cd workers/cron-trigger
+wrangler deploy
+```
+
+**Set secrets** (one-time, after first deployment):
+```bash
+wrangler secret put CRON_SECRET        # Must match Pages Function
+wrangler secret put TELEGRAM_BOT_TOKEN # For failure alerts
+```
+
+**Manual trigger** (via Worker HTTP endpoint):
+```bash
+curl -X POST https://frontier-meals-cron.<account>.workers.dev \
+  -H "Cron-Secret: $CRON_SECRET"
+```
+
+**Logs**:
+```bash
+cd workers/cron-trigger
+wrangler tail
+```
+
+### Other Jobs (GitHub Actions)
+
+Non-critical jobs remain on GitHub Actions:
 
 | Job | Schedule | Workflow File |
 |-----|----------|---------------|
-| Issue QR Codes | Daily at 12pm PT | `cron-jobs.yml` |
 | Check Telegram Links | Daily (after QR) | `cron-jobs.yml` |
 | Retry Failed Emails | Every 6 hours | `cron-retry-emails.yml` |
 | Cleanup Rate Limits | Weekly (Sunday 3am UTC) | `cron-cleanup.yml` |
 | Cleanup Expired Tokens | Weekly (Sunday 2am UTC) | `cron-cleanup.yml` |
+| Cleanup Discount Reservations | Every 5 min | `cron-discount-cleanup.yml` |
 
-### Manual Trigger
+### Manual Triggers (GitHub Actions)
 
-Run jobs manually from GitHub Actions UI or via CLI:
+Run jobs manually from GitHub Actions UI or CLI:
 
 ```bash
 gh workflow run "Scheduled Jobs" -f job=issue-qr
@@ -204,9 +232,15 @@ pnpm test
 - Supabase project may be paused (free tier pauses after inactivity)
 - Resume at: https://supabase.com/dashboard/project/[project-id]
 
-### Cron jobs not running
-- Verify `CRON_SECRET` matches in both GitHub and Cloudflare
+### QR cron job not running
+- Check Cloudflare Worker logs: `cd workers/cron-trigger && wrangler tail`
+- Verify Worker is deployed: `wrangler deployments list`
+- Verify `CRON_SECRET` matches between Worker and Pages Function
+- Fallback: trigger manually via `gh workflow run "Scheduled Jobs" -f job=issue-qr`
+
+### Other cron jobs not running
 - Check GitHub Actions workflow runs for errors
+- Verify `CRON_SECRET` matches in both GitHub and Cloudflare
 - Ensure workflows are on the default branch
 
 ### Environment variables undefined

@@ -15,19 +15,37 @@
 
 ## Diagnosis
 
-### 1. Check Cron Execution
+### 1. Check Cloudflare Worker (Primary Trigger)
 
-**Supabase:**
-```sql
-SELECT * FROM cron.job_run_details
-WHERE jobname = 'daily-qr-issuance'
-ORDER BY start_time DESC
-LIMIT 5;
+```bash
+# View recent Worker logs
+cd workers/cron-trigger
+wrangler tail --format=pretty
+
+# Check deployment status
+wrangler deployments list
 ```
 
-**Vercel:**
+In Cloudflare Dashboard:
+- Workers & Pages > frontier-meals-cron > Logs
+- Check for errors around 19:00 UTC
+
+### 2. Check Pages Function Logs
+
 ```bash
-vercel logs --since 1h | grep '/api/cron/issue-qr'
+# Tail Pages Function logs
+npx wrangler pages deployment tail --project-name frontier-meals
+```
+
+Filter for `[Cron]` or `[QR Job]` log prefixes.
+
+### 3. Check Supabase (if QR tokens were created)
+
+```sql
+SELECT * FROM qr_tokens
+WHERE service_date = CURRENT_DATE
+ORDER BY issued_at DESC
+LIMIT 10;
 ```
 
 ### 2. Identify Root Cause
@@ -43,12 +61,25 @@ vercel logs --since 1h | grep '/api/cron/issue-qr'
 
 ## Resolution
 
-### Option A: Manual Retry (Immediate)
+### Option A: Trigger via Cloudflare Worker (Preferred)
 
 ```bash
-curl -X POST https://api.frontier-meals.com/api/cron/issue-qr \
-  -H "Authorization: Bearer <CRON_SECRET>" \
+curl -X POST https://frontier-meals-cron.<account>.workers.dev \
+  -H "Cron-Secret: <CRON_SECRET>"
+```
+
+### Option B: Trigger via Pages Function Directly
+
+```bash
+curl -X POST https://frontiermeals.com/api/cron/issue-qr \
+  -H "Cron-Secret: <CRON_SECRET>" \
   -H "Content-Type: application/json"
+```
+
+### Option C: Trigger via GitHub Actions
+
+```bash
+gh workflow run "Scheduled Jobs" -f job=issue-qr
 ```
 
 **Expected Output:**
