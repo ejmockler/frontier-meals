@@ -1,13 +1,24 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import { browser } from '$app/environment';
   import type { PageData } from './$types';
   import jsQR from 'jsqr';
 
   let { data }: { data: PageData } = $props();
 
-  // Debug: log kiosk session on mount
-  console.log('[Kiosk] Page loaded with data:', data);
-  console.log('[Kiosk] Kiosk session:', data.kiosk);
+  // C2: Strip session token from URL after validation to prevent leakage
+  // Token can leak via browser history, server logs, and Referer headers
+  onMount(() => {
+    if (browser && window.location.search.includes('session=')) {
+      // Replace URL without the session parameter, preserving other params
+      const url = new URL(window.location.href);
+      url.searchParams.delete('session');
+      window.history.replaceState({}, '', url.pathname + url.search);
+    }
+  });
+
+  // C3: REMOVED debug console.log statements that exposed session token
+  // Previously logged: data.kiosk which contains sessionToken
 
   let videoElement: HTMLVideoElement;
   let canvasElement: HTMLCanvasElement;
@@ -558,6 +569,16 @@
             Already Redeemed
           {:else if errorCode === 'SUBSCRIPTION_INACTIVE'}
             Subscription Issue
+          {:else if errorCode === 'INVALID_SHORT_CODE'}
+            Invalid QR Code
+          {:else if errorCode === 'INVALID_TOKEN'}
+            Invalid QR Code
+          {:else if errorCode === 'NO_ENTITLEMENT'}
+            No Meal Scheduled
+          {:else if errorCode === 'CUSTOMER_NOT_FOUND'}
+            Customer Not Found
+          {:else if errorCode === 'TOKEN_MISMATCH'}
+            QR Code Mismatch
           {:else}
             Something's not right
           {/if}
@@ -569,6 +590,30 @@
           <div class="bg-[#E8E6E1] rounded-sm p-8 border-2 border-[#D9D7D2] shadow-lg">
             <p class="text-2xl text-[#5C5A56] font-medium">
               Please check your email or contact support to resolve payment issues
+            </p>
+          </div>
+        {:else if errorCode === 'INVALID_SHORT_CODE' || errorCode === 'INVALID_TOKEN'}
+          <div class="bg-[#E8E6E1] rounded-sm p-8 border-2 border-[#D9D7D2] shadow-lg">
+            <p class="text-2xl text-[#5C5A56] font-medium">
+              Invalid QR code. Please try scanning again.
+            </p>
+          </div>
+        {:else if errorCode === 'NO_ENTITLEMENT'}
+          <div class="bg-[#E8E6E1] rounded-sm p-8 border-2 border-[#D9D7D2] shadow-lg">
+            <p class="text-2xl text-[#5C5A56] font-medium">
+              No meal scheduled for today.
+            </p>
+          </div>
+        {:else if errorCode === 'CUSTOMER_NOT_FOUND'}
+          <div class="bg-[#E8E6E1] rounded-sm p-8 border-2 border-[#D9D7D2] shadow-lg">
+            <p class="text-2xl text-[#5C5A56] font-medium">
+              Customer not found. Please contact support.
+            </p>
+          </div>
+        {:else if errorCode === 'TOKEN_MISMATCH'}
+          <div class="bg-[#E8E6E1] rounded-sm p-8 border-2 border-[#D9D7D2] shadow-lg">
+            <p class="text-2xl text-[#5C5A56] font-medium">
+              This QR code doesn't match your account.
             </p>
           </div>
         {:else if errorCode !== 'ALREADY_REDEEMED'}
