@@ -142,21 +142,27 @@ export const POST: RequestHandler = async (event) => {
 			});
 		} else {
 			// No reservation - use default plan
-			const { data: defaultPlan } = await supabase
-				.from('subscription_plans')
-				.select('paypal_plan_id')
-				.eq('is_default', true)
-				.eq('is_active', true)
-				.single();
+			// In sandbox mode, use env var directly to avoid database having live plan IDs
+			if (env.PAYPAL_MODE === 'sandbox') {
+				planId = env.PAYPAL_PLAN_ID;
+				console.log('[PayPal Checkout] Sandbox mode - using env plan:', { plan_id: planId });
+			} else {
+				const { data: defaultPlan } = await supabase
+					.from('subscription_plans')
+					.select('paypal_plan_id')
+					.eq('is_default', true)
+					.eq('is_active', true)
+					.single();
 
-			planId = defaultPlan?.paypal_plan_id || env.PAYPAL_PLAN_ID;
+				planId = defaultPlan?.paypal_plan_id || env.PAYPAL_PLAN_ID;
+				console.log('[PayPal Checkout] Using default plan:', { plan_id: planId });
+			}
+
 			customIdData = { token: deepLinkTokenHash };
 
 			if (email) {
 				customIdData.email = email;
 			}
-
-			console.log('[PayPal Checkout] Using default plan:', { plan_id: planId });
 		}
 
 		const paypalEnv: PayPalEnv = {
