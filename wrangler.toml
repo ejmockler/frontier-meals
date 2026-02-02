@@ -11,10 +11,9 @@ PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_rnrAvb3tthXs5WEEgqiPIw_LGVhhXWL"
 PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_51SXVLZLerddLeJrdfyxRaTL6uHayv9q4I0dWumvTs14UfvXIvDDYkZeWHYqGjcmrwIc72NKCvkwhrbW6Z5mVIcsX00XOSw2HqS"
 
 # Runtime secrets (set via: npx wrangler pages secret put <NAME> --project-name frontier-meals)
+#
+# Core Services:
 # - SUPABASE_SERVICE_ROLE_KEY
-# - STRIPE_SECRET_KEY
-# - STRIPE_WEBHOOK_SECRET
-# - STRIPE_PRICE_ID
 # - TELEGRAM_BOT_TOKEN
 # - TELEGRAM_SECRET_TOKEN
 # - RESEND_API_KEY
@@ -22,9 +21,31 @@ PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_51SXVLZLerddLeJrdfyxRaTL6uHayv9q4I0dWum
 # - SESSION_SECRET
 # - CSRF_SECRET
 # - CRON_SECRET
+# - SITE_URL (runtime site URL for emails/cron jobs, defaults to https://frontiermeals.com)
+# - DEMO_MODE
+#
+# Signing Keys:
 # - QR_PRIVATE_KEY
 # - QR_PUBLIC_KEY
 # - KIOSK_PRIVATE_KEY
 # - KIOSK_PUBLIC_KEY
-# - DEMO_MODE
-# - SITE_URL (runtime site URL for emails/cron jobs, defaults to https://frontiermeals.com)
+#
+# Stripe (toggle via STRIPE_MODE: 'live' | 'test'):
+# - STRIPE_MODE
+# - STRIPE_SECRET_KEY_LIVE
+# - STRIPE_SECRET_KEY_TEST
+# - STRIPE_WEBHOOK_SECRET_LIVE
+# - STRIPE_WEBHOOK_SECRET_TEST
+# - STRIPE_PRICE_ID_LIVE
+# - STRIPE_PRICE_ID_TEST
+#
+# PayPal (toggle via PAYPAL_MODE: 'live' | 'sandbox'):
+# - PAYPAL_MODE
+# - PAYPAL_CLIENT_ID_LIVE
+# - PAYPAL_CLIENT_ID_SANDBOX
+# - PAYPAL_CLIENT_SECRET_LIVE
+# - PAYPAL_CLIENT_SECRET_SANDBOX
+# - PAYPAL_WEBHOOK_ID_LIVE
+# - PAYPAL_WEBHOOK_ID_SANDBOX
+# - PAYPAL_PLAN_ID_LIVE
+# - PAYPAL_PLAN_ID_SANDBOX
