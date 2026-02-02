@@ -4,30 +4,59 @@ import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY, QR_PUBLIC_KEY } from '$env/static/private';
 import * as jose from 'jose';
-import { validateKioskSession } from '$lib/auth/kiosk';
+import { validateKioskSessionWithRevocation } from '$lib/auth/kiosk';
 import { isValidShortCode, normalizeShortCode } from '$lib/utils/short-code';
 import { checkRateLimit, RateLimitKeys } from '$lib/utils/rate-limit';
+
+// =============================================================================
+// Configuration Constants
+// =============================================================================
+
+/** Maximum redemption attempts per kiosk session within the rate limit window */
+const RATE_LIMIT_MAX_REQUESTS = 10;
+
+/** Rate limit window duration in minutes */
+const RATE_LIMIT_WINDOW_MINUTES = 1;
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 export const POST: RequestHandler = async ({ request }) => {
-  const { qrToken, kioskSessionToken } = await request.json();
+  let qrToken: string;
+  let kioskSessionToken: string;
+  try {
+    const body = await request.json();
+    qrToken = body.qrToken;
+    kioskSessionToken = body.kioskSessionToken;
+  } catch {
+    return json({ error: 'Invalid request body', code: 'INVALID_REQUEST' }, { status: 400 });
+  }
 
   if (!qrToken || !kioskSessionToken) {
-    return json({ error: 'Missing required fields' }, { status: 400 });
+    return json({ error: 'Missing required fields', code: 'INVALID_REQUEST' }, { status: 400 });
   }
 
-  const kioskSession = await validateKioskSession(kioskSessionToken);
+  // C1: Validate kiosk session with revocation check
+  // This verifies JWT signature AND checks if session has been revoked in the database
+  const kioskSession = await validateKioskSessionWithRevocation(kioskSessionToken, supabase);
   if (!kioskSession.valid) {
-    return json({ error: 'Invalid kiosk session' }, { status: 401 });
+    // W11: Include error code for specific error handling
+    const errorMessage = kioskSession.error_code === 'SESSION_REVOKED'
+      ? 'Kiosk session has been revoked'
+      : kioskSession.error_code === 'SESSION_EXPIRED'
+        ? 'Kiosk session has expired'
+        : 'Invalid kiosk session';
+
+    return json({
+      error: errorMessage,
+      code: kioskSession.error_code || 'INVALID_SESSION'
+    }, { status: 401 });
   }
 
-  // Rate limiting: 10 requests per minute per kiosk session
-  // Prevents brute force attacks on QR codes
+  // Rate limiting per kiosk session to prevent brute force attacks on QR codes
   const rateLimitResult = await checkRateLimit(supabase, {
     key: RateLimitKeys.kiosk(kioskSessionToken),
-    maxRequests: 10,
-    windowMinutes: 1
+    maxRequests: RATE_LIMIT_MAX_REQUESTS,
+    windowMinutes: RATE_LIMIT_WINDOW_MINUTES
   });
 
   if (!rateLimitResult.allowed) {
@@ -83,9 +112,7 @@ export const POST: RequestHandler = async ({ request }) => {
         return json({
           error: 'QR code already used',
           code: 'ALREADY_USED',
-          debug: {
-            used_at: tokenData.used_at
-          }
+          ...(process.env.NODE_ENV !== 'production' && { debug: { used_at: tokenData.used_at } })
         }, { status: 400 });
       }
 
@@ -148,11 +175,13 @@ export const POST: RequestHandler = async ({ request }) => {
         {
           error: redemptionResult.error_message,
           code: redemptionResult.error_code,
-          debug: {
-            customer_id: customerId,
-            service_date: serviceDate,
-            jti: jti.substring(0, 8) + '...' // Partial JTI for debugging
-          }
+          ...(process.env.NODE_ENV !== 'production' && {
+            debug: {
+              customer_id: customerId,
+              service_date: serviceDate,
+              jti: jti.substring(0, 8) + '...' // Partial JTI for debugging
+            }
+          })
         },
         { status: statusCode }
       );
@@ -197,7 +226,7 @@ export const POST: RequestHandler = async ({ request }) => {
       }, { status: 400 });
     }
 
-    // Return detailed error for debugging
+    // Build detailed error for debugging (only in non-production)
     const errorDetails = {
       type: error?.constructor?.name || 'Unknown',
       message: error instanceof Error ? error.message : String(error),
@@ -209,7 +238,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({
       error: 'Invalid QR code',
       code: 'INVALID_TOKEN',
-      debug: errorDetails
+      ...(process.env.NODE_ENV !== 'production' && { debug: errorDetails })
     }, { status: 400 });
   }
 };

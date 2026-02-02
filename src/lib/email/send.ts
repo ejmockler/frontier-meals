@@ -52,13 +52,14 @@ export async function sendEmail(options: EmailOptions) {
     payload.tags = options.tags;
   }
 
-  const headers: any = {};
-  if (options.idempotencyKey) {
-    headers['Idempotency-Key'] = options.idempotencyKey;
-  }
-
   try {
-    const response = await resend.emails.send(payload);
+    // Pass idempotency key as second parameter if provided
+    // This ensures Resend won't send duplicate emails if the same key is used
+    const sendOptions = options.idempotencyKey
+      ? { idempotencyKey: options.idempotencyKey }
+      : undefined;
+
+    const response = await resend.emails.send(payload, sendOptions);
     return { success: true, data: response };
   } catch (error) {
     console.error('[Email] Resend error:', error);

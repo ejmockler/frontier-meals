@@ -9,6 +9,28 @@ import { isServiceDay } from '$lib/utils/service-calendar';
 import { generateShortCode } from '$lib/utils/short-code';
 import { sendAdminAlert, formatJobErrorAlert } from '$lib/utils/alerts';
 
+// =============================================================================
+// Configuration Constants
+// =============================================================================
+
+/** Length of short codes for QR tokens (10 chars = ~50 bits entropy) */
+const SHORT_CODE_LENGTH = 10;
+
+/** QR code cell size in pixels (larger = easier to scan) */
+const QR_CELL_SIZE = 12;
+
+/** QR code margin in cells */
+const QR_MARGIN = 4;
+
+/** QR code error correction level: L(7%), M(15%), Q(25%), H(30%) */
+const QR_ERROR_CORRECTION = 'M';
+
+/** Telegram chat ID for admin alerts */
+const ADMIN_TELEGRAM_CHAT_ID = '1413464598';
+
+/** Warn if execution time exceeds this threshold (Cloudflare timeout is 30s) */
+const EXECUTION_WARNING_THRESHOLD_MS = 20000;
+
 interface IssueDailyQRCodesResult {
   issued: number;
   errors: Array<{ customer_id: string; email?: string; error: string }>;
@@ -55,13 +77,11 @@ export async function issueDailyQRCodes(config: {
     // Send alert via Telegram if bot token is available
     if (config.telegramBotToken) {
       try {
-        const NOAH_TELEGRAM_ID = '1413464598'; // @noahchonlee
-
         await fetch(`https://api.telegram.org/bot${config.telegramBotToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            chat_id: NOAH_TELEGRAM_ID,
+            chat_id: ADMIN_TELEGRAM_CHAT_ID,
             text: alertMessage,
             parse_mode: 'Markdown'
           })
@@ -128,36 +148,43 @@ export async function issueDailyQRCodes(config: {
 
       const mealsAllowed = skip ? 0 : 1;
 
-      // Upsert entitlement for today
+      // Upsert entitlement for today atomically
       // CRITICAL: Only set meals_redeemed on INSERT, not UPDATE
       // If customer already redeemed their meal, we must NOT reset the counter
       // We only update meals_allowed (in case skip status changed)
-      const { data: existingEntitlement } = await supabase
+      //
+      // Strategy: Try insert first; if unique constraint violation (23505),
+      // then update. This avoids TOCTOU race condition where:
+      // 1. Check shows no entitlement
+      // 2. Another cron instance inserts
+      // 3. This instance tries to insert and fails
+      const { error: insertEntitlementError } = await supabase
         .from('entitlements')
-        .select('meals_redeemed')
-        .eq('customer_id', customer.id)
-        .eq('service_date', today)
-        .single();
+        .insert({
+          customer_id: customer.id,
+          service_date: today,
+          meals_allowed: mealsAllowed,
+          meals_redeemed: 0
+        });
 
-      if (existingEntitlement) {
-        // Entitlement exists - only update meals_allowed, preserve meals_redeemed
-        await supabase
-          .from('entitlements')
-          .update({
-            meals_allowed: mealsAllowed
-          })
-          .eq('customer_id', customer.id)
-          .eq('service_date', today);
-      } else {
-        // New entitlement - insert with meals_redeemed = 0
-        await supabase
-          .from('entitlements')
-          .insert({
-            customer_id: customer.id,
-            service_date: today,
-            meals_allowed: mealsAllowed,
-            meals_redeemed: 0
-          });
+      if (insertEntitlementError) {
+        if (insertEntitlementError.code === '23505') {
+          // Entitlement already exists (race condition or re-run)
+          // Only update meals_allowed, preserve meals_redeemed
+          const { error: updateError } = await supabase
+            .from('entitlements')
+            .update({ meals_allowed: mealsAllowed })
+            .eq('customer_id', customer.id)
+            .eq('service_date', today);
+
+          if (updateError) {
+            throw updateError;
+          }
+          console.log(`[QR Job] Updated existing entitlement for customer ${customer.id}`);
+        } else {
+          // Other database error - throw to be caught by outer error handler
+          throw insertEntitlementError;
+        }
       }
 
       // Skip QR generation if meal was skipped
@@ -213,7 +240,7 @@ export async function issueDailyQRCodes(config: {
             .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
             .sign(privateKey);
 
-          shortCode = generateShortCode(10); // 10 chars for better security/collision resistance
+          shortCode = generateShortCode(SHORT_CODE_LENGTH);
 
           // Update with short code and JWT
           await supabase
@@ -244,7 +271,7 @@ export async function issueDailyQRCodes(config: {
           .sign(privateKey);
 
         // Generate short code for QR
-        shortCode = generateShortCode(10); // 10 chars = ~58 bits entropy (32^10)
+        shortCode = generateShortCode(SHORT_CODE_LENGTH);
 
         // Store QR token metadata using INSERT (not UPSERT)
         // This will fail with unique constraint violation if another cron already created it
@@ -293,10 +320,11 @@ export async function issueDailyQRCodes(config: {
 
       // Generate QR code image using qrcode-generator (pure JS, Cloudflare Workers compatible)
       // IMPORTANT: Use short code instead of JWT for much simpler, easier-to-scan QR codes
-      const qr = qrcode(0, 'M'); // 0 = auto type number, 'M' = medium error correction (lower than 'H' since code is shorter)
+      // Generate QR code: 0 = auto type number, error correction level from config
+      const qr = qrcode(0, QR_ERROR_CORRECTION);
       qr.addData(shortCode);
       qr.make();
-      const qrCodeDataUrl = qr.createDataURL(12, 4); // cellSize=12, margin=4 (larger cells for easier scanning)
+      const qrCodeDataUrl = qr.createDataURL(QR_CELL_SIZE, QR_MARGIN);
 
       // Extract base64 content from data URL (format: "data:image/gif;base64,...")
       const base64Content = qrCodeDataUrl.split(',')[1];
@@ -369,8 +397,8 @@ export async function issueDailyQRCodes(config: {
   const executionTime = Date.now() - jobStartTime;
   console.log(`[QR Job] Complete. Issued: ${results.issued}, Errors: ${results.errors.length}, Time: ${executionTime}ms`);
 
-  // Alert if approaching Cloudflare Pages timeout (30s = 30000ms)
-  if (executionTime > 20000) {
+  // Alert if approaching Cloudflare Pages timeout (30s)
+  if (executionTime > EXECUTION_WARNING_THRESHOLD_MS) {
     console.warn(`[QR Job] ⚠️  WARNING: Execution time ${executionTime}ms is approaching timeout threshold (30s)`);
   }
 

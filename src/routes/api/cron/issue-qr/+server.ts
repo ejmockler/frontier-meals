@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { issueDailyQRCodes } from '$lib/cron/issue-qr';
+import { timingSafeEqual } from '$lib/utils/crypto';
 import {
   PUBLIC_SUPABASE_URL
 } from '$env/static/public';
@@ -20,10 +21,10 @@ import {
  * Authorization: Cron-Secret header must match CRON_SECRET env variable
  */
 export const POST: RequestHandler = async ({ request }) => {
-  // Verify cron secret
+  // Verify cron secret using timing-safe comparison
   const cronSecret = request.headers.get('cron-secret');
 
-  if (cronSecret !== CRON_SECRET) {
+  if (!cronSecret || !CRON_SECRET || !timingSafeEqual(cronSecret, CRON_SECRET)) {
     console.error('[Cron] Unauthorized attempt to trigger QR issuance');
     return json({ error: 'Unauthorized' }, { status: 401 });
   }
