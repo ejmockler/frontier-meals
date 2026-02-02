@@ -5,6 +5,32 @@ import {
 	getActiveCustomerCount
 } from '$lib/email/schedule-notifications';
 import { getAdminSession } from '$lib/auth/session';
+import { validateCSRFFromFormData } from '$lib/auth/csrf';
+
+// C2 FIX: Date format validation helper
+const DATE_FORMAT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+function isValidDateFormat(date: string): boolean {
+	return DATE_FORMAT_REGEX.test(date);
+}
+
+// C3 FIX: Recurrence rule validation helper
+interface RecurrenceRule {
+	type: 'floating';
+	month: number;
+	week: number;
+	dayOfWeek: number;
+}
+
+function isValidRecurrenceRule(rule: unknown): rule is RecurrenceRule {
+	if (typeof rule !== 'object' || rule === null) return false;
+	const r = rule as Record<string, unknown>;
+	return (
+		r.type === 'floating' &&
+		typeof r.month === 'number' && r.month >= 1 && r.month <= 12 &&
+		typeof r.week === 'number' && r.week >= 1 && r.week <= 5 &&
+		typeof r.dayOfWeek === 'number' && r.dayOfWeek >= 0 && r.dayOfWeek <= 6
+	);
+}
 
 export const load: PageServerLoad = async ({ locals: { supabase }, parent, depends }) => {
 	depends('app:schedule-config');
@@ -45,6 +71,13 @@ export const actions: Actions = {
 			return fail(401, { error: 'Unauthorized' });
 		}
 
+		const formData = await request.formData();
+
+		// C10 FIX: Validate CSRF token
+		if (!await validateCSRFFromFormData(formData, session.sessionId)) {
+			return fail(403, { error: 'Invalid CSRF token' });
+		}
+
 		// Get staff ID from email
 		const { data: staff } = await supabase
 			.from('staff_accounts')
@@ -52,14 +85,29 @@ export const actions: Actions = {
 			.eq('email', session.email)
 			.single();
 
-		const formData = await request.formData();
 		const serviceDaysStr = formData.get('service_days') as string;
 
 		if (!serviceDaysStr) {
 			return fail(400, { error: 'Missing service_days' });
 		}
 
-		const serviceDays = JSON.parse(serviceDaysStr);
+		// C1 FIX: Wrap JSON.parse in try-catch
+		let serviceDays: unknown;
+		try {
+			serviceDays = JSON.parse(serviceDaysStr);
+		} catch {
+			return fail(400, { error: 'Invalid service_days format. Please provide valid JSON.' });
+		}
+
+		// C4 FIX: Validate service_days array contains only integers 0-6
+		if (!Array.isArray(serviceDays)) {
+			return fail(400, { error: 'service_days must be an array' });
+		}
+		for (const day of serviceDays) {
+			if (!Number.isInteger(day) || day < 0 || day > 6) {
+				return fail(400, { error: 'service_days must contain only integers from 0 (Sunday) to 6 (Saturday)' });
+			}
+		}
 
 		const { error } = await supabase
 			.from('service_schedule_config')
@@ -84,6 +132,13 @@ export const actions: Actions = {
 			return fail(401, { error: 'Unauthorized' });
 		}
 
+		const formData = await request.formData();
+
+		// C10 FIX: Validate CSRF token
+		if (!await validateCSRFFromFormData(formData, session.sessionId)) {
+			return fail(403, { error: 'Invalid CSRF token' });
+		}
+
 		// Get staff ID from email
 		const { data: staff } = await supabase
 			.from('staff_accounts')
@@ -91,7 +146,6 @@ export const actions: Actions = {
 			.eq('email', session.email)
 			.single();
 
-		const formData = await request.formData();
 		const date = formData.get('date') as string;
 		const type = formData.get('type') as string;
 		const name = formData.get('name') as string;
@@ -103,13 +157,33 @@ export const actions: Actions = {
 			return fail(400, { error: 'Missing required fields' });
 		}
 
+		// C2 FIX: Validate date format
+		if (!isValidDateFormat(date)) {
+			return fail(400, { error: 'Invalid date format. Please use YYYY-MM-DD format.' });
+		}
+
+		// C3 FIX: Validate recurrence_rule if provided
+		let parsedRecurrenceRule: RecurrenceRule | null = null;
+		if (recurrenceRule) {
+			try {
+				parsedRecurrenceRule = JSON.parse(recurrenceRule);
+			} catch {
+				return fail(400, { error: 'Invalid recurrence_rule format. Please provide valid JSON.' });
+			}
+			if (!isValidRecurrenceRule(parsedRecurrenceRule)) {
+				return fail(400, {
+					error: 'Invalid recurrence_rule structure. Expected: { type: "floating", month: 1-12, week: 1-5, dayOfWeek: 0-6 }'
+				});
+			}
+		}
+
 		const { error } = await supabase.from('service_exceptions').insert({
 			date,
 			type,
 			name,
 			is_service_day: isServiceDay,
 			recurring: recurring || 'one-time',
-			recurrence_rule: recurrenceRule || null,
+			recurrence_rule: parsedRecurrenceRule,
 			created_by: staff?.id || null
 		});
 
@@ -128,6 +202,12 @@ export const actions: Actions = {
 		}
 
 		const formData = await request.formData();
+
+		// C10 FIX: Validate CSRF token
+		if (!await validateCSRFFromFormData(formData, session.sessionId)) {
+			return fail(403, { error: 'Invalid CSRF token' });
+		}
+
 		const id = formData.get('id') as string;
 		const date = formData.get('date') as string;
 		const type = formData.get('type') as string;
@@ -140,6 +220,26 @@ export const actions: Actions = {
 			return fail(400, { error: 'Missing required fields' });
 		}
 
+		// C2 FIX: Validate date format
+		if (!isValidDateFormat(date)) {
+			return fail(400, { error: 'Invalid date format. Please use YYYY-MM-DD format.' });
+		}
+
+		// C3 FIX: Validate recurrence_rule if provided
+		let parsedRecurrenceRule: RecurrenceRule | null = null;
+		if (recurrenceRule) {
+			try {
+				parsedRecurrenceRule = JSON.parse(recurrenceRule);
+			} catch {
+				return fail(400, { error: 'Invalid recurrence_rule format. Please provide valid JSON.' });
+			}
+			if (!isValidRecurrenceRule(parsedRecurrenceRule)) {
+				return fail(400, {
+					error: 'Invalid recurrence_rule structure. Expected: { type: "floating", month: 1-12, week: 1-5, dayOfWeek: 0-6 }'
+				});
+			}
+		}
+
 		const { error } = await supabase
 			.from('service_exceptions')
 			.update({
@@ -148,7 +248,7 @@ export const actions: Actions = {
 				name,
 				is_service_day: isServiceDay,
 				recurring: recurring || 'one-time',
-				recurrence_rule: recurrenceRule || null,
+				recurrence_rule: parsedRecurrenceRule,
 				updated_at: new Date().toISOString()
 			})
 			.eq('id', id);
@@ -168,6 +268,12 @@ export const actions: Actions = {
 		}
 
 		const formData = await request.formData();
+
+		// C10 FIX: Validate CSRF token
+		if (!await validateCSRFFromFormData(formData, session.sessionId)) {
+			return fail(403, { error: 'Invalid CSRF token' });
+		}
+
 		const id = formData.get('id') as string;
 
 		if (!id) {
@@ -191,6 +297,12 @@ export const actions: Actions = {
 		}
 
 		const formData = await request.formData();
+
+		// C10 FIX: Validate CSRF token
+		if (!await validateCSRFFromFormData(formData, session.sessionId)) {
+			return fail(403, { error: 'Invalid CSRF token' });
+		}
+
 		const changeType = formData.get('change_type') as 'service_pattern' | 'holiday' | 'special_event';
 		const changeAction = formData.get('change_action') as 'added' | 'updated' | 'deleted';
 		const message = formData.get('message') as string;
@@ -201,7 +313,18 @@ export const actions: Actions = {
 			return fail(400, { error: 'Missing required notification fields' });
 		}
 
-		const affectedDates = affectedDatesStr ? JSON.parse(affectedDatesStr) : [];
+		// C1 FIX: Wrap JSON.parse in try-catch
+		let affectedDates: string[] = [];
+		if (affectedDatesStr) {
+			try {
+				affectedDates = JSON.parse(affectedDatesStr);
+			} catch {
+				return fail(400, { error: 'Invalid affected_dates format. Please provide valid JSON.' });
+			}
+			if (!Array.isArray(affectedDates)) {
+				return fail(400, { error: 'affected_dates must be an array' });
+			}
+		}
 
 		try {
 			const result = await sendScheduleChangeNotification({
