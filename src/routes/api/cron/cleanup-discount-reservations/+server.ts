@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEnv, getSupabaseAdmin } from '$lib/server/env';
 import { cleanupDiscountReservations } from '$lib/cron/cleanup-discount-reservations';
+import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 
 /**
  * Discount Code Reservation Cleanup Cron Job
@@ -35,8 +36,8 @@ export const POST: RequestHandler = async (event) => {
 
 	try {
 		const result = await cleanupDiscountReservations({
-			supabaseUrl: env.SUPABASE_URL,
-			supabaseServiceKey: env.SUPABASE_SERVICE_KEY
+			supabaseUrl: PUBLIC_SUPABASE_URL,
+			supabaseServiceKey: env.SUPABASE_SERVICE_ROLE_KEY
 		});
 
 		// Query stats after cleanup using admin client

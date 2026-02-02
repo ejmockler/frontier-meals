@@ -1,0 +1,77 @@
+# Deploy Cron Workers to Cloudflare
+#
+# This workflow deploys all cron trigger Workers when changes are made.
+# Workers call the existing Pages Function endpoints on schedule.
+#
+# Required GitHub Secrets:
+#   - CLOUDFLARE_API_TOKEN: API token with Workers:Edit permission
+#   - CLOUDFLARE_ACCOUNT_ID: Your Cloudflare account ID
+#
+# After first deployment, set Worker secrets for each:
+#   wrangler secret put CRON_SECRET --name <worker-name>
+
+name: Deploy Cron Workers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'workers/**'
+  workflow_dispatch:
+    inputs:
+      worker:
+        description: 'Worker to deploy (or "all")'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - cron-trigger
+          - cron-frequent
+          - cron-weekly
+
+jobs:
+  deploy-cron-trigger:
+    name: Deploy QR Cron (cron-trigger)
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'push' ||
+      github.event.inputs.worker == 'all' ||
+      github.event.inputs.worker == 'cron-trigger'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/cron-trigger
+
+  deploy-cron-frequent:
+    name: Deploy Frequent Cron (cron-frequent)
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'push' ||
+      github.event.inputs.worker == 'all' ||
+      github.event.inputs.worker == 'cron-frequent'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/cron-frequent
+
+  deploy-cron-weekly:
+    name: Deploy Weekly Cron (cron-weekly)
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'push' ||
+      github.event.inputs.worker == 'all' ||
+      github.event.inputs.worker == 'cron-weekly'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/cron-weekly

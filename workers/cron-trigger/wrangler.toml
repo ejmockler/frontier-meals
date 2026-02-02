@@ -1,0 +1,28 @@
+# Cloudflare Worker: QR Code Cron Trigger
+#
+# This Worker triggers the daily QR code issuance at 12:00 PM PT.
+# It calls the existing Pages Function endpoint - all business logic stays there.
+#
+# Deployment:
+#   cd workers/cron-trigger
+#   wrangler deploy
+#
+# Secrets (must be set before deploying):
+#   wrangler secret put CRON_SECRET        # Same value as Pages Function
+#   wrangler secret put TELEGRAM_BOT_TOKEN # For failure alerts
+
+name = "frontier-meals-cron"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[triggers]
+# 19:00 UTC = 12:00 PM PDT (11:00 AM PST in winter)
+# Note: Cloudflare crons use UTC, not local time
+crons = ["0 19 * * *"]
+
+[vars]
+TARGET_URL = "https://frontiermeals.com/api/cron/issue-qr"
+
+# Secrets (set via `wrangler secret put <NAME>`):
+# - CRON_SECRET: Must match the Pages Function's CRON_SECRET
+# - TELEGRAM_BOT_TOKEN: For sending failure alerts (optional but recommended)

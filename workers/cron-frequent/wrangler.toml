@@ -1,0 +1,27 @@
+# Cloudflare Worker: Frequent Cron Triggers
+#
+# Triggers high-frequency jobs that need reliable execution.
+#
+# Deployment:
+#   cd workers/cron-frequent
+#   wrangler deploy
+#
+# Secrets (set after first deploy):
+#   wrangler secret put CRON_SECRET
+
+name = "frontier-meals-cron-frequent"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[triggers]
+crons = [
+  "*/5 * * * *",   # cleanup-discount-reservations (every 5 min)
+  "0 */6 * * *",   # retry-emails (every 6 hours: 00:00, 06:00, 12:00, 18:00 UTC)
+  "0 20 * * *"     # check-telegram-links (daily 20:00 UTC, 1hr after QR issuance)
+]
+
+[vars]
+BASE_URL = "https://frontiermeals.com"
+
+# Secrets (set via `wrangler secret put CRON_SECRET`):
+# - CRON_SECRET: Must match the Pages Function's CRON_SECRET

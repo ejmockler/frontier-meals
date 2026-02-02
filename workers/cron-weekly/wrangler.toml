@@ -1,0 +1,25 @@
+# Cloudflare Worker: Weekly Cleanup Cron Triggers
+#
+# Triggers weekly cleanup jobs on Sunday mornings.
+# Jobs are offset by 10 minutes to avoid database contention.
+#
+# Deployment:
+#   cd workers/cron-weekly
+#   wrangler deploy
+#
+# Secrets (set after first deploy):
+#   wrangler secret put CRON_SECRET
+
+name = "frontier-meals-cron-weekly"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[triggers]
+# Single trigger runs all 3 cleanup jobs sequentially (saves cron slots)
+crons = ["0 3 * * SUN"]  # Sunday 03:00 UTC - runs all cleanup jobs
+
+[vars]
+BASE_URL = "https://frontiermeals.com"
+
+# Secrets (set via `wrangler secret put CRON_SECRET`):
+# - CRON_SECRET: Must match the Pages Function's CRON_SECRET
