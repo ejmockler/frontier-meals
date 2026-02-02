@@ -88,6 +88,10 @@ export const POST: RequestHandler = async (event) => {
 			expires_at: tokenExpiresAt.toISOString()
 		});
 
+		// Determine which PayPal Plan ID column to use based on environment
+		const isSandbox = env.PAYPAL_MODE === 'sandbox';
+		const planIdColumn = isSandbox ? 'paypal_plan_id_sandbox' : 'paypal_plan_id_live';
+
 		// Determine which PayPal Plan ID to use
 		let planId: string;
 		let customIdData: { token: string; reservation_id?: string; email?: string };
@@ -103,7 +107,8 @@ export const POST: RequestHandler = async (event) => {
 					discount_codes!inner(
 						plan_id,
 						subscription_plans!inner(
-							paypal_plan_id
+							paypal_plan_id_live,
+							paypal_plan_id_sandbox
 						)
 					)
 				`)
@@ -124,12 +129,24 @@ export const POST: RequestHandler = async (event) => {
 				? discountCodes.subscription_plans[0]
 				: discountCodes?.subscription_plans;
 
-			if (!subscriptionPlans?.paypal_plan_id) {
-				console.error('[PayPal Checkout] No PayPal plan ID found for reservation:', reservation_id);
-				return json({ error: 'Invalid plan configuration' }, { status: 500 });
+			// Select the correct plan ID based on environment
+			const envPlanId = isSandbox
+				? subscriptionPlans?.paypal_plan_id_sandbox
+				: subscriptionPlans?.paypal_plan_id_live;
+
+			if (!envPlanId) {
+				console.error('[PayPal Checkout] No PayPal plan ID found for environment:', {
+					reservation_id,
+					environment: env.PAYPAL_MODE,
+					column: planIdColumn
+				});
+				return json(
+					{ error: `Plan not configured for ${env.PAYPAL_MODE} environment` },
+					{ status: 500 }
+				);
 			}
 
-			planId = subscriptionPlans.paypal_plan_id;
+			planId = envPlanId;
 			customIdData = {
 				token: deepLinkTokenHash,
 				reservation_id,
@@ -138,25 +155,30 @@ export const POST: RequestHandler = async (event) => {
 
 			console.log('[PayPal Checkout] Using discounted plan:', {
 				reservation_id,
-				plan_id: planId
+				plan_id: planId,
+				environment: env.PAYPAL_MODE
 			});
 		} else {
-			// No reservation - use default plan
-			// In sandbox mode, use env var directly to avoid database having live plan IDs
-			if (env.PAYPAL_MODE === 'sandbox') {
-				planId = env.PAYPAL_PLAN_ID;
-				console.log('[PayPal Checkout] Sandbox mode - using env plan:', { plan_id: planId });
-			} else {
-				const { data: defaultPlan } = await supabase
-					.from('subscription_plans')
-					.select('paypal_plan_id')
-					.eq('is_default', true)
-					.eq('is_active', true)
-					.single();
+			// No reservation - use default plan from database (environment-aware)
+			const { data: defaultPlan } = await supabase
+				.from('subscription_plans')
+				.select(`paypal_plan_id_live, paypal_plan_id_sandbox`)
+				.eq('is_default', true)
+				.eq('is_active', true)
+				.single();
 
-				planId = defaultPlan?.paypal_plan_id || env.PAYPAL_PLAN_ID;
-				console.log('[PayPal Checkout] Using default plan:', { plan_id: planId });
-			}
+			const dbPlanId = isSandbox
+				? defaultPlan?.paypal_plan_id_sandbox
+				: defaultPlan?.paypal_plan_id_live;
+
+			// Fall back to env var if database plan not configured for this environment
+			planId = dbPlanId || env.PAYPAL_PLAN_ID;
+
+			console.log('[PayPal Checkout] Using default plan:', {
+				plan_id: planId,
+				source: dbPlanId ? 'database' : 'env_fallback',
+				environment: env.PAYPAL_MODE
+			});
 
 			customIdData = { token: deepLinkTokenHash };
 
