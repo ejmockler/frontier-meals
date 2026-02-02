@@ -18,6 +18,7 @@ import {
   infoBoxTitleStyle,
   infoBoxTextStyle,
 } from './base';
+import { escapeHtml } from './utils';
 
 export interface TelegramCorrectionEmailData {
   customer_name: string;
@@ -39,7 +40,7 @@ export function getTelegramCorrectionEmail(data: TelegramCorrectionEmailData) {
   const secondaryButtonStyle = buttonStyle({ ...brandColors.green });
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
     <p style="${styles.p}">We noticed you haven't connected your Telegram account yet. This might be because your username was mistyped during signup.</p>
 

@@ -13,10 +13,12 @@ import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { getQRDailyEmail } from './qr-daily';
 import { getTelegramLinkEmail } from './telegram-link';
+import { getTelegramVerificationEmail } from './telegram-verification';
 import { getTelegramCorrectionEmail } from './telegram-correction';
 import { getDunningSoftEmail, getDunningRetryEmail, getDunningFinalEmail, getCanceledNoticeEmail, getSubscriptionSuspendedEmail, getSubscriptionReactivatedEmail, getSubscriptionExpiredEmail, getSubscriptionChargebackEmail, getSubscriptionPaymentRecoveredEmail } from './dunning';
 import { getAdminMagicLinkEmail } from './admin-magic-link';
 import { getScheduleChangeEmail, type ScheduleChangeEmailData } from './schedule-change';
+import { escapeHtml } from './utils';
 
 // Template cache with TTL (5 minutes)
 interface CachedTemplate {
@@ -36,6 +38,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const CODE_TEMPLATES: Record<string, (data: any) => { subject: string; html: string }> = {
   'qr_daily': getQRDailyEmail,
   'telegram_link': getTelegramLinkEmail,
+  'telegram_verification': getTelegramVerificationEmail,
   'telegram_correction': getTelegramCorrectionEmail,
   'dunning_soft': getDunningSoftEmail,
   'dunning_retry': getDunningRetryEmail,
@@ -63,12 +66,14 @@ function extractVariables(template: string): string[] {
 /**
  * Replace variables in template string
  * {{variable_name}} -> actual value from variables object
+ * HTML-escapes all variable values to prevent XSS/injection attacks
  */
 function replaceVariables(template: string, variables: Record<string, string>): string {
   return template.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
     const trimmedName = varName.trim();
     if (trimmedName in variables) {
-      return variables[trimmedName];
+      // Escape HTML to prevent injection attacks from user-provided content
+      return escapeHtml(variables[trimmedName]);
     }
     // Keep the placeholder if variable not provided
     console.warn(`[Template] Variable not provided: ${trimmedName}`);

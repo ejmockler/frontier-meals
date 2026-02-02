@@ -10,6 +10,7 @@ import {
   infoBoxTitleStyle,
   infoBoxTextStyle,
 } from './base';
+import { escapeHtml } from './utils';
 
 export function getDunningSoftEmail(data: { customer_name: string; amount_due: string; update_payment_url: string}) {
   const subject = 'Payment issue with your Frontier Meals subscription';
@@ -21,9 +22,9 @@ export function getDunningSoftEmail(data: { customer_name: string; amount_due: s
   `;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
-    <p style="${styles.p}">We had trouble processing your payment of <strong style="color: ${tokens.text.primary};">${data.amount_due}</strong> for your Frontier Meals subscription.</p>
+    <p style="${styles.p}">We had trouble processing your payment of <strong style="color: ${tokens.text.primary};">${escapeHtml(data.amount_due)}</strong> for your Frontier Meals subscription.</p>
 
     <p style="${styles.p}">This happens sometimes! Usually it's due to:</p>
     <ul style="margin: ${tokens.spacing.md} 0; padding-left: ${tokens.spacing.lg}; color: ${tokens.text.secondary};">
@@ -74,7 +75,7 @@ export function getDunningRetryEmail(data: { customer_name: string; update_payme
   `;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
     <p style="${styles.p}">We tried processing your payment again, but it still didn't go through.</p>
 
@@ -120,9 +121,9 @@ export function getDunningFinalEmail(data: { customer_name: string; amount_due: 
   `;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
-    <p style="${styles.p}">This is our final automatic attempt to collect payment of <strong style="color: ${tokens.text.primary};">${data.amount_due}</strong>.</p>
+    <p style="${styles.p}">This is our final automatic attempt to collect payment of <strong style="color: ${tokens.text.primary};">${escapeHtml(data.amount_due)}</strong>.</p>
 
     <!-- Critical Warning Box -->
     <div style="${infoBoxStyle('error')}">
@@ -170,7 +171,7 @@ export function getCanceledNoticeEmail(data: { customer_name: string }) {
   `;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
     <p style="${styles.p}">Your Frontier Meals subscription has been canceled. You'll stop receiving daily QR codes immediately.</p>
 
@@ -205,7 +206,7 @@ export function getSubscriptionSuspendedEmail(data: { customer_name: string; rea
   `;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
     <p style="${styles.p}">Your Frontier Meals subscription has been suspended due to payment issues.</p>
 
@@ -255,7 +256,7 @@ export function getSubscriptionReactivatedEmail(data: { customer_name: string })
   `;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
     <p style="${styles.p}">Great news! Your Frontier Meals subscription has been successfully reactivated.</p>
 
@@ -294,7 +295,7 @@ export function getSubscriptionExpiredEmail(data: { customer_name: string }) {
   `;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
     <p style="${styles.p}">Your Frontier Meals subscription has reached the end of its billing period and has expired.</p>
 
@@ -331,7 +332,7 @@ export function getSubscriptionChargebackEmail(data: { customer_name: string }) 
   `;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
     <p style="${styles.p}">We've detected a payment dispute (chargeback) on your account, and your Frontier Meals subscription has been suspended.</p>
 
@@ -386,7 +387,7 @@ export function getSubscriptionPaymentRecoveredEmail(data: { customer_name: stri
   `;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
     <p style="${styles.p}">Great news! We've successfully processed your payment and your Frontier Meals subscription is now active.</p>
 

@@ -8,6 +8,7 @@ import {
   infoBoxTitleStyle,
   infoBoxTextStyle,
 } from './base';
+import { escapeHtml } from './utils';
 
 export function getQRDailyEmail(data: {
   customer_name: string;
@@ -31,7 +32,7 @@ export function getQRDailyEmail(data: {
   `;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name}!</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)}!</p>
 
     <p style="${styles.p}">Scan this QR code at any kiosk to get your fresh meal today.</p>
 

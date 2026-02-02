@@ -14,6 +14,8 @@ import {
   linkStyle,
   infoBoxStyle,
 } from './base';
+import { escapeHtml } from './utils';
+
 
 export interface ScheduleChangeEmailData {
   customer_name: string;
@@ -40,13 +42,14 @@ function formatDate(dateStr: string): string {
 /**
  * Convert plain text message to HTML paragraphs
  * Preserves line breaks as paragraph breaks
+ * HTML-escapes user content to prevent XSS/injection attacks
  */
 function textToHtml(text: string): string {
   return text
     .split(/\n\n+/) // Split on double newlines (paragraphs)
     .map(para => para.trim())
     .filter(para => para.length > 0)
-    .map(para => `<p style="${styles.p}">${para.replace(/\n/g, '<br>')}</p>`)
+    .map(para => `<p style="${styles.p}">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`)
     .join('');
 }
 
@@ -118,7 +121,7 @@ export function getScheduleChangeEmail(data: ScheduleChangeEmailData): { subject
   }
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
     ${messageHtml}
 

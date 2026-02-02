@@ -9,6 +9,7 @@ import {
   infoBoxTitleStyle,
   infoBoxTextStyle,
 } from './base';
+import { escapeHtml } from './utils';
 
 export function getTelegramLinkEmail(data: {
   customer_name: string;
@@ -28,7 +29,7 @@ export function getTelegramLinkEmail(data: {
   const stepBadge = `background: ${scheme.primary}; color: ${scheme.onPrimary}; width: 28px; height: 28px; border-radius: 50%; text-align: center; font-weight: 700; font-size: ${tokens.fontSize.sm}; line-height: 28px;`;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${data.customer_name},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
 
     <p style="${styles.p}">Your subscription is active! To complete your setup and manage your meals, connect with our Telegram bot.</p>
 
@@ -90,7 +91,7 @@ export function getTelegramLinkEmail(data: {
     <!-- Handle Display -->
     <div style="background: ${tokens.bg.code}; padding: ${tokens.spacing.md}; border-radius: ${tokens.radius.md}; margin: ${tokens.spacing.lg} 0;">
       <p style="margin: 0; color: ${tokens.text.primary};">
-        <strong>Your Telegram Handle:</strong> <code style="${styles.code}; background: ${tokens.bg.card};">${data.telegram_handle}</code>
+        <strong>Your Telegram Handle:</strong> <code style="${styles.code}; background: ${tokens.bg.card};">${escapeHtml(data.telegram_handle)}</code>
       </p>
     </div>
 

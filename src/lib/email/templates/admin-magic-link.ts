@@ -8,6 +8,7 @@ import {
   infoBoxTitleStyle,
   infoBoxTextStyle,
 } from './base';
+import { escapeHtml } from './utils';
 
 export function getAdminMagicLinkEmail(data: {
   email: string;
@@ -54,7 +55,7 @@ export function getAdminMagicLinkEmail(data: {
     <!-- Alternative Link -->
     <div style="margin-top: ${tokens.spacing.xl}; padding-top: ${tokens.spacing.lg}; border-top: 1px solid ${tokens.border.light};">
       <p style="${styles.pMuted}; margin-bottom: ${tokens.spacing.sm};">Or copy and paste this URL into your browser:</p>
-      <code style="${styles.codeBlock}">${data.magic_link}</code>
+      <code style="${styles.codeBlock}">${escapeHtml(data.magic_link)}</code>
     </div>
   `;
 
