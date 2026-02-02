@@ -50,8 +50,11 @@ export interface SubscriptionPlan {
 	/** Billing cycle period */
 	billing_cycle: 'monthly' | 'annual';
 
-	/** PayPal Plan ID (hidden from admin UI) - e.g., "P-5ML4271244454362WXNWU5NQ" */
-	paypal_plan_id: string;
+	/** PayPal Plan ID for LIVE environment - e.g., "P-5ML4271244454362WXNWU5NQ" */
+	paypal_plan_id_live: string;
+
+	/** PayPal Plan ID for SANDBOX environment (nullable if not testing this plan) */
+	paypal_plan_id_sandbox: string | null;
 
 	/** Whether this is the default plan when no discount code is used */
 	is_default: boolean;
