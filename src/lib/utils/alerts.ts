@@ -60,6 +60,45 @@ export async function sendAdminAlert(
 }
 
 /**
+ * Alert admin about email delivery failure
+ * This is CRITICAL - customer never receives important emails without visibility
+ */
+export async function alertEmailFailure(params: {
+  customerId: string;
+  customerEmail?: string;
+  emailType: string;
+  errorMessage: string;
+  provider: 'stripe' | 'paypal';
+  subscriptionId?: string;
+}): Promise<void> {
+  const { customerId, customerEmail, emailType, errorMessage, provider, subscriptionId } = params;
+
+  try {
+    await sendAdminAlert(
+      '📧 *EMAIL DELIVERY FAILURE*',
+      {
+        email_type: emailType,
+        customer_id: customerId,
+        customer_email: customerEmail || 'unknown',
+        provider: provider,
+        subscription_id: subscriptionId || 'N/A',
+        error: errorMessage.substring(0, 200), // Truncate long errors
+        timestamp: new Date().toISOString()
+      }
+    );
+    console.log('[ALERT SUCCESS] Admin notified of email failure');
+  } catch (alertError) {
+    // Double-failure: email failed AND alerting failed
+    // Log prominently but don't throw - we still need the webhook to succeed
+    console.error('[CRITICAL] Email failure alert also failed:', {
+      originalEmailType: emailType,
+      customerId,
+      alertError
+    });
+  }
+}
+
+/**
  * Format a job error alert for cron jobs
  */
 export function formatJobErrorAlert(params: {

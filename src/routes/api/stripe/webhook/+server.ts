@@ -5,7 +5,7 @@ import { getEnv, getSupabaseAdmin } from '$lib/server/env';
 import { sendEmail } from '$lib/email/send';
 import { renderTemplate } from '$lib/email/templates';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
-import { sendAdminAlert } from '$lib/utils/alerts';
+import { sendAdminAlert, alertEmailFailure } from '$lib/utils/alerts';
 import { redactPII } from '$lib/utils/logging';
 import { checkRateLimit, RateLimitKeys } from '$lib/utils/rate-limit';
 
@@ -82,27 +82,82 @@ export const POST: RequestHandler = async (event) => {
 
   console.log('[Stripe Webhook] Event verified:', { event_id: eventObj.id, event_type: eventObj.type });
 
-  // Check for duplicate events (idempotency)
-  // Try to insert event record. If it fails due to unique constraint, it's a duplicate.
-  const { data: existingEvent, error: insertError } = await supabase
+  // Idempotency check with retry support for failed events (C7 fix)
+  // 1. Try to insert new event
+  // 2. If duplicate, check if it's a failed event that can be retried
+  // 3. Allow up to 3 attempts before giving up
+  const MAX_RETRY_ATTEMPTS = 3;
+
+  const { error: insertError } = await supabase
     .from('webhook_events')
     .insert({
       source: 'stripe',
       event_id: eventObj.id,
       event_type: eventObj.type,
-      status: 'processing'
-    })
-    .select()
-    .single();
+      status: 'processing',
+      attempts: 1,
+      last_attempted_at: new Date().toISOString()
+    });
 
   // Check if insert failed due to unique constraint violation (PostgreSQL error code 23505)
   if (insertError?.code === '23505') {
-    console.log('[Webhook] Duplicate event, skipping:', eventObj.id);
-    return json({ received: true });
-  }
+    // Event exists - check if it's a failed event that can be retried
+    const { data: existingEvent, error: fetchError } = await supabase
+      .from('webhook_events')
+      .select('status, attempts')
+      .eq('event_id', eventObj.id)
+      .single();
 
-  if (insertError) {
-    console.error('[Webhook] Error inserting event:', insertError);
+    if (fetchError) {
+      console.error('[Stripe Webhook] Error fetching existing event:', fetchError);
+      return json({ error: 'Database error' }, { status: 500 });
+    }
+
+    // If already processed successfully, skip
+    if (existingEvent.status === 'processed') {
+      console.log('[Stripe Webhook] Event already processed, skipping:', eventObj.id);
+      return json({ received: true });
+    }
+
+    // If still processing (another instance handling it), skip
+    if (existingEvent.status === 'processing') {
+      console.log('[Stripe Webhook] Event already being processed, skipping:', eventObj.id);
+      return json({ received: true });
+    }
+
+    // If failed, check retry limit
+    if (existingEvent.status === 'failed') {
+      if (existingEvent.attempts >= MAX_RETRY_ATTEMPTS) {
+        console.warn('[Stripe Webhook] Event exceeded max retries, skipping:', {
+          event_id: eventObj.id,
+          attempts: existingEvent.attempts
+        });
+        return json({ received: true });
+      }
+
+      // Reset to processing and increment attempts for retry
+      console.log('[Stripe Webhook] Retrying failed event:', {
+        event_id: eventObj.id,
+        attempt: existingEvent.attempts + 1
+      });
+
+      const { error: updateError } = await supabase
+        .from('webhook_events')
+        .update({
+          status: 'processing',
+          attempts: existingEvent.attempts + 1,
+          last_attempted_at: new Date().toISOString(),
+          error_message: null // Clear previous error
+        })
+        .eq('event_id', eventObj.id);
+
+      if (updateError) {
+        console.error('[Stripe Webhook] Error updating event for retry:', updateError);
+        return json({ error: 'Database error' }, { status: 500 });
+      }
+    }
+  } else if (insertError) {
+    console.error('[Stripe Webhook] Error inserting event:', insertError);
     return json({ error: 'Database error' }, { status: 500 });
   }
 
@@ -170,21 +225,29 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe:
     throw new Error('Missing customer details');
   }
 
-  // Create customer record
-  console.log('[DB] Creating customer record:', { stripeCustomerId, email, name, telegram_handle: telegramHandle });
+  // Create or update customer record (UPSERT for idempotency on webhook retries)
+  // Uses stripe_customer_id as the unique key - if customer exists, update non-critical fields
+  console.log('[DB] Upserting customer record:', { stripeCustomerId, email, name, telegram_handle: telegramHandle });
   const { data: customer, error: customerError } = await supabase
     .from('customers')
-    .insert({
-      stripe_customer_id: stripeCustomerId,
-      email,
-      name,
-      telegram_handle: telegramHandle
-    })
+    .upsert(
+      {
+        stripe_customer_id: stripeCustomerId,
+        email,
+        name,
+        telegram_handle: telegramHandle,
+        updated_at: new Date().toISOString()
+      },
+      {
+        onConflict: 'stripe_customer_id',
+        ignoreDuplicates: false  // Update existing record
+      }
+    )
     .select()
     .single();
 
   if (customerError) {
-    console.error('[DB ERROR] Error creating customer:', {
+    console.error('[DB ERROR] Error upserting customer:', {
       code: customerError.code,
       message: customerError.message,
       details: customerError.details,
@@ -195,7 +258,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe:
     throw customerError;
   }
 
-  console.log('[DB SUCCESS] Customer created:', { customer_id: customer.id, email: customer.email });
+  console.log('[DB SUCCESS] Customer upserted:', { customer_id: customer.id, email: customer.email });
 
   // Fetch complete subscription data from Stripe API
   // This ensures we have period dates immediately, regardless of webhook ordering
@@ -221,22 +284,29 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe:
     }
   });
 
-  // Create subscription record with item-level period dates
-  console.log('[DB] Creating subscription record:', { customer_id: customer.id, stripe_subscription_id: stripeSubscriptionId });
-  const { error: subscriptionError } = await supabase.from('subscriptions').insert({
-    customer_id: customer.id,
-    stripe_subscription_id: stripeSubscriptionId,
-    status: subscription.status,
-    current_period_start: periodStart
-      ? new Date(periodStart * 1000).toISOString()
-      : null,
-    current_period_end: periodEnd
-      ? new Date(periodEnd * 1000).toISOString()
-      : null
-  });
+  // Create or update subscription record with item-level period dates (UPSERT for idempotency)
+  console.log('[DB] Upserting subscription record:', { customer_id: customer.id, stripe_subscription_id: stripeSubscriptionId });
+  const { error: subscriptionError } = await supabase.from('subscriptions').upsert(
+    {
+      customer_id: customer.id,
+      stripe_subscription_id: stripeSubscriptionId,
+      status: subscription.status,
+      current_period_start: periodStart
+        ? new Date(periodStart * 1000).toISOString()
+        : null,
+      current_period_end: periodEnd
+        ? new Date(periodEnd * 1000).toISOString()
+        : null,
+      updated_at: new Date().toISOString()
+    },
+    {
+      onConflict: 'stripe_subscription_id',
+      ignoreDuplicates: false  // Update existing record
+    }
+  );
 
   if (subscriptionError) {
-    console.error('[DB ERROR] Error creating subscription:', {
+    console.error('[DB ERROR] Error upserting subscription:', {
       code: subscriptionError.code,
       message: subscriptionError.message,
       details: subscriptionError.details,
@@ -247,17 +317,24 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe:
     throw subscriptionError;
   }
 
-  console.log('[DB SUCCESS] Subscription created');
+  console.log('[DB SUCCESS] Subscription upserted');
 
-  // Initialize telegram_link_status
-  console.log('[DB] Creating telegram_link_status record:', { customer_id: customer.id });
-  const { error: linkStatusError } = await supabase.from('telegram_link_status').insert({
-    customer_id: customer.id,
-    is_linked: false
-  });
+  // Initialize telegram_link_status (UPSERT for idempotency - don't overwrite if already linked)
+  console.log('[DB] Upserting telegram_link_status record:', { customer_id: customer.id });
+  const { error: linkStatusError } = await supabase.from('telegram_link_status').upsert(
+    {
+      customer_id: customer.id,
+      is_linked: false,
+      updated_at: new Date().toISOString()
+    },
+    {
+      onConflict: 'customer_id',
+      ignoreDuplicates: true  // Don't overwrite if already exists (preserves is_linked: true)
+    }
+  );
 
   if (linkStatusError) {
-    console.error('[DB ERROR] Error creating telegram_link_status:', {
+    console.error('[DB ERROR] Error upserting telegram_link_status:', {
       code: linkStatusError.code,
       message: linkStatusError.message,
       details: linkStatusError.details,
@@ -267,7 +344,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe:
     throw linkStatusError;
   }
 
-  console.log('[DB SUCCESS] Telegram link status created');
+  console.log('[DB SUCCESS] Telegram link status upserted');
 
   // Get deep link token from Stripe session metadata
   // Token was pre-generated in create-checkout and included in success URL
@@ -281,17 +358,25 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe:
 
   const deepLink = `https://t.me/frontiermealsbot?start=${deepLinkToken}`;
 
-  // Store HASHED deep link token (7-day expiry)
+  // Store HASHED deep link token (7-day expiry) - UPSERT for idempotency
+  // On duplicate, update expiry to extend token validity (good UX on retry)
   const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-  console.log('[DB] Creating telegram_deep_link_token:', { customer_id: customer.id, expires_at: tokenExpiresAt.toISOString() });
-  const { error: tokenError } = await supabase.from('telegram_deep_link_tokens').insert({
-    customer_id: customer.id,
-    token_hash: deepLinkTokenHash,
-    expires_at: tokenExpiresAt.toISOString()
-  });
+  console.log('[DB] Upserting telegram_deep_link_token:', { customer_id: customer.id, expires_at: tokenExpiresAt.toISOString() });
+  const { error: tokenError } = await supabase.from('telegram_deep_link_tokens').upsert(
+    {
+      customer_id: customer.id,
+      token_hash: deepLinkTokenHash,
+      expires_at: tokenExpiresAt.toISOString(),
+      updated_at: new Date().toISOString()
+    },
+    {
+      onConflict: 'customer_id',
+      ignoreDuplicates: false  // Update expiry on retry (extends token validity)
+    }
+  );
 
   if (tokenError) {
-    console.error('[DB ERROR] Error creating telegram_deep_link_token:', {
+    console.error('[DB ERROR] Error upserting telegram_deep_link_token:', {
       code: tokenError.code,
       message: tokenError.message,
       details: tokenError.details,
@@ -301,7 +386,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe:
     throw tokenError;
   }
 
-  console.log('[DB SUCCESS] Telegram deep link token created');
+  console.log('[DB SUCCESS] Telegram deep link token upserted');
 
   // Send Telegram link email
   console.log('[EMAIL] Sending telegram link email:', { to: email, customer_id: customer.id });
@@ -332,6 +417,15 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe:
       error: emailError,
       to: email,
       customer_id: customer.id
+    });
+    // Alert admin - customer won't receive their welcome/link email
+    await alertEmailFailure({
+      customerId: customer.id,
+      customerEmail: email,
+      emailType: 'telegram_link',
+      errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+      provider: 'stripe',
+      subscriptionId: stripeSubscriptionId
     });
     // Don't throw - email failure shouldn't fail the entire webhook
   }
@@ -521,40 +615,55 @@ async function handleInvoicePaid(invoice: Stripe.Invoice, stripe: Stripe, supaba
         return;
       }
 
+      // UPSERT for idempotency on webhook retries
       const { data: newCustomer, error: customerError } = await supabase
         .from('customers')
-        .insert({
-          stripe_customer_id: stripeCustomerId,
-          email: stripeCustomer.email || 'unknown@example.com',
-          name: stripeCustomer.name || 'Unknown'
-        })
+        .upsert(
+          {
+            stripe_customer_id: stripeCustomerId,
+            email: stripeCustomer.email || 'unknown@example.com',
+            name: stripeCustomer.name || 'Unknown',
+            updated_at: new Date().toISOString()
+          },
+          {
+            onConflict: 'stripe_customer_id',
+            ignoreDuplicates: false
+          }
+        )
         .select()
         .single();
 
       if (customerError) {
-        console.error('[DB ERROR] Error creating customer:', customerError);
+        console.error('[DB ERROR] Error upserting customer:', customerError);
         throw customerError;
       }
 
       customerId = newCustomer.id;
-      console.log('[DB SUCCESS] Customer created:', { customer_id: customerId });
+      console.log('[DB SUCCESS] Customer upserted:', { customer_id: customerId });
     }
 
-    // Create subscription with subscription item period dates (NOT invoice dates!)
-    const { error: insertError } = await supabase.from('subscriptions').insert({
-      customer_id: customerId,
-      stripe_subscription_id: stripeSubscriptionId,
-      status: subscription.status,
-      current_period_start: periodStartISO,
-      current_period_end: periodEndISO
-    });
+    // UPSERT subscription with subscription item period dates (NOT invoice dates!)
+    const { error: insertError } = await supabase.from('subscriptions').upsert(
+      {
+        customer_id: customerId,
+        stripe_subscription_id: stripeSubscriptionId,
+        status: subscription.status,
+        current_period_start: periodStartISO,
+        current_period_end: periodEndISO,
+        updated_at: new Date().toISOString()
+      },
+      {
+        onConflict: 'stripe_subscription_id',
+        ignoreDuplicates: false
+      }
+    );
 
     if (insertError) {
-      console.error('[DB ERROR] Error creating subscription:', insertError);
+      console.error('[DB ERROR] Error upserting subscription:', insertError);
       throw insertError;
     }
 
-    console.log('[DB SUCCESS] Subscription created from invoice.paid');
+    console.log('[DB SUCCESS] Subscription upserted from invoice.paid');
   } else {
     console.log('[DB SUCCESS] Subscription updated');
   }
@@ -644,22 +753,42 @@ async function handlePaymentFailed(invoice: Stripe.Invoice, stripe: Stripe, supa
     };
   }
 
-  const emailTemplate = await renderTemplate(
-    emailSlug,
-    templateVariables,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  // Send dunning email with error handling
+  try {
+    const emailTemplate = await renderTemplate(
+      emailSlug,
+      templateVariables,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
 
-  await sendEmail({
-    to: customer.email,
-    subject: emailTemplate.subject,
-    html: emailTemplate.html,
-    tags: [
-      { name: 'category', value: emailSlug },
-      { name: 'customer_id', value: customer.id }
-    ],
-    idempotencyKey: `${emailSlug}/${invoice.id}`
-  });
+    await sendEmail({
+      to: customer.email,
+      subject: emailTemplate.subject,
+      html: emailTemplate.html,
+      tags: [
+        { name: 'category', value: emailSlug },
+        { name: 'customer_id', value: customer.id }
+      ],
+      idempotencyKey: `${emailSlug}/${invoice.id}`
+    });
+    console.log('[EMAIL SUCCESS] Dunning email sent:', { emailSlug, customer_id: customer.id });
+  } catch (emailError) {
+    console.error('[EMAIL ERROR] Failed to send dunning email:', {
+      error: emailError,
+      emailSlug,
+      customer_id: customer.id
+    });
+    // Alert admin - customer won't know their payment failed
+    await alertEmailFailure({
+      customerId: customer.id,
+      customerEmail: customer.email,
+      emailType: emailSlug,
+      errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+      provider: 'stripe',
+      subscriptionId: stripeSubscriptionId
+    });
+    // Don't throw - email failure shouldn't fail the webhook
+  }
 
   // Log audit event
   await supabase.from('audit_log').insert({
@@ -748,40 +877,55 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription, stri
         return;
       }
 
+      // UPSERT for idempotency on webhook retries
       const { data: newCustomer, error: customerError } = await supabase
         .from('customers')
-        .insert({
-          stripe_customer_id: stripeCustomerId,
-          email: stripeCustomer.email || 'unknown@example.com',
-          name: stripeCustomer.name || 'Unknown'
-        })
+        .upsert(
+          {
+            stripe_customer_id: stripeCustomerId,
+            email: stripeCustomer.email || 'unknown@example.com',
+            name: stripeCustomer.name || 'Unknown',
+            updated_at: new Date().toISOString()
+          },
+          {
+            onConflict: 'stripe_customer_id',
+            ignoreDuplicates: false
+          }
+        )
         .select()
         .single();
 
       if (customerError) {
-        console.error('[DB ERROR] Error creating customer:', customerError);
+        console.error('[DB ERROR] Error upserting customer:', customerError);
         throw customerError;
       }
 
       customerId = newCustomer.id;
-      console.log('[DB SUCCESS] Customer created:', { customer_id: customerId });
+      console.log('[DB SUCCESS] Customer upserted:', { customer_id: customerId });
     }
 
-    // Create subscription
-    const { error: insertError } = await supabase.from('subscriptions').insert({
-      customer_id: customerId,
-      stripe_subscription_id: subscription.id,
-      status: subscription.status,
-      current_period_start: periodStartISO,
-      current_period_end: periodEndISO
-    });
+    // UPSERT subscription for idempotency
+    const { error: insertError } = await supabase.from('subscriptions').upsert(
+      {
+        customer_id: customerId,
+        stripe_subscription_id: subscription.id,
+        status: subscription.status,
+        current_period_start: periodStartISO,
+        current_period_end: periodEndISO,
+        updated_at: new Date().toISOString()
+      },
+      {
+        onConflict: 'stripe_subscription_id',
+        ignoreDuplicates: false
+      }
+    );
 
     if (insertError) {
-      console.error('[DB ERROR] Error creating subscription:', insertError);
+      console.error('[DB ERROR] Error upserting subscription:', insertError);
       throw insertError;
     }
 
-    console.log('[DB SUCCESS] Subscription created from subscription.updated');
+    console.log('[DB SUCCESS] Subscription upserted from subscription.updated');
   } else {
     console.log('[DB SUCCESS] Subscription updated');
   }
@@ -820,6 +964,15 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription, stri
         console.log('[EMAIL SUCCESS] Payment recovery email sent');
       } catch (emailError) {
         console.error('[EMAIL ERROR] Failed to send payment recovery email:', emailError);
+        // Alert admin - customer won't know their payment was recovered
+        await alertEmailFailure({
+          customerId: currentSub.customer_id,
+          customerEmail: customer.email,
+          emailType: 'subscription_payment_recovered',
+          errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+          provider: 'stripe',
+          subscriptionId: subscription.id
+        });
         // Don't throw - email failure shouldn't fail the webhook
       }
     }
@@ -862,24 +1015,42 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription, stri
       .update({ status: 'canceled' })
       .eq('stripe_subscription_id', subscription.id);
 
-    // Send cancellation email
+    // Send cancellation email with error handling
     const customer = Array.isArray(sub.customers) ? sub.customers[0] : sub.customers;
-    const emailTemplate = await renderTemplate(
-      'canceled_notice',
-      { customer_name: customer.name },
-      env.SUPABASE_SERVICE_ROLE_KEY
-    );
+    try {
+      const emailTemplate = await renderTemplate(
+        'canceled_notice',
+        { customer_name: customer.name },
+        env.SUPABASE_SERVICE_ROLE_KEY
+      );
 
-    await sendEmail({
-      to: customer.email,
-      subject: emailTemplate.subject,
-      html: emailTemplate.html,
-      tags: [
-        { name: 'category', value: 'canceled_notice' },
-        { name: 'customer_id', value: sub.customer_id }
-      ],
-      idempotencyKey: `canceled_notice/${sub.customer_id}/${subscription.id}`
-    });
+      await sendEmail({
+        to: customer.email,
+        subject: emailTemplate.subject,
+        html: emailTemplate.html,
+        tags: [
+          { name: 'category', value: 'canceled_notice' },
+          { name: 'customer_id', value: sub.customer_id }
+        ],
+        idempotencyKey: `canceled_notice/${sub.customer_id}/${subscription.id}`
+      });
+      console.log('[EMAIL SUCCESS] Cancellation email sent:', { customer_id: sub.customer_id });
+    } catch (emailError) {
+      console.error('[EMAIL ERROR] Failed to send cancellation email:', {
+        error: emailError,
+        customer_id: sub.customer_id
+      });
+      // Alert admin - customer won't know their subscription was canceled
+      await alertEmailFailure({
+        customerId: sub.customer_id,
+        customerEmail: customer.email,
+        emailType: 'canceled_notice',
+        errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+        provider: 'stripe',
+        subscriptionId: subscription.id
+      });
+      // Don't throw - email failure shouldn't fail the webhook
+    }
 
     // Log audit event
     await supabase.from('audit_log').insert({
@@ -992,6 +1163,15 @@ async function handleDisputeCreated(dispute: Stripe.Dispute, stripe: Stripe, sup
     console.log('[EMAIL SUCCESS] Chargeback notification sent to customer');
   } catch (emailError) {
     console.error('[EMAIL ERROR] Failed to send chargeback notification:', emailError);
+    // Alert admin - customer won't know about chargeback suspension
+    await alertEmailFailure({
+      customerId: customer.id,
+      customerEmail: customer.email,
+      emailType: 'subscription_chargeback',
+      errorMessage: emailError instanceof Error ? emailError.message : String(emailError),
+      provider: 'stripe',
+      subscriptionId: subscriptionStripeIds[0] || undefined
+    });
     // Don't throw - email failure shouldn't fail the webhook
   }
 
