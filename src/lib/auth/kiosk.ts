@@ -33,9 +33,33 @@ export interface KioskSessionResult {
  * This performs JWT signature verification but does NOT check revocation status.
  * For full validation including revocation, use validateKioskSessionWithRevocation().
  */
+/**
+ * Decode the public key from base64 or handle literal \n strings
+ */
+function decodePublicKey(key: string): string {
+  // If it already looks like PEM format, just fix the newlines
+  if (key.includes('-----BEGIN')) {
+    return key.replace(/\\n/g, '\n');
+  }
+
+  // Otherwise assume base64 encoded
+  try {
+    const binaryString = atob(key);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
+  } catch {
+    // If decoding fails, return as-is with newline fix
+    return key.replace(/\\n/g, '\n');
+  }
+}
+
 export async function validateKioskSession(token: string): Promise<KioskSessionResult> {
   try {
-    const publicKey = await jose.importSPKI(KIOSK_PUBLIC_KEY, 'ES256');
+    const decodedKey = decodePublicKey(KIOSK_PUBLIC_KEY);
+    const publicKey = await jose.importSPKI(decodedKey, 'ES256');
 
     const { payload } = await jose.jwtVerify(token, publicKey, {
       issuer: 'frontier-meals-admin',

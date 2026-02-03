@@ -3,6 +3,11 @@ import type { LayoutServerLoad } from './$types';
 import { validateKioskSession } from '$lib/auth/kiosk';
 
 export const load: LayoutServerLoad = async ({ url }) => {
+  // Allow unauthorized page to render without authentication
+  if (url.pathname === '/kiosk/unauthorized') {
+    return { kiosk: null };
+  }
+
   const sessionToken = url.searchParams.get('session');
 
   if (!sessionToken) {
