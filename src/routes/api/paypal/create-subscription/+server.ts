@@ -102,7 +102,7 @@ export const POST: RequestHandler = async (event) => {
 
 		if (reservation_id) {
 			// Fetch reservation to get the discounted plan's paypal_plan_id
-			// SECURITY: Include price_amount for server-side price validation
+			// NOTE: Discount codes link to a specific plan (with its own price), not discount percentages
 			const { data: reservation, error: reservationError } = await supabase
 				.from('discount_code_reservations')
 				.select(`
@@ -111,11 +111,11 @@ export const POST: RequestHandler = async (event) => {
 					customer_email,
 					expires_at,
 					discount_codes!inner(
+						code,
 						plan_id,
-						discount_type,
-						discount_value,
 						subscription_plans!inner(
 							id,
+							business_name,
 							price_amount,
 							paypal_plan_id_live,
 							paypal_plan_id_sandbox
@@ -127,7 +127,10 @@ export const POST: RequestHandler = async (event) => {
 				.single();
 
 			if (reservationError || !reservation) {
-				console.error('[PayPal Checkout] Invalid or expired reservation:', reservation_id);
+				console.error('[PayPal Checkout] Invalid or expired reservation:', {
+					reservation_id,
+					error: reservationError?.message
+				});
 				return json({
 					error: 'Your discount code has expired. Please return to checkout and re-apply your code.'
 				}, { status: 400 });
@@ -176,14 +179,10 @@ export const POST: RequestHandler = async (event) => {
 				? discountCodes.subscription_plans[0]
 				: discountCodes?.subscription_plans;
 
-			// SECURITY: Validate price integrity
-			// The subscription_plans.price_amount should match what we expect for this discount
-			// This ensures users can't manipulate prices through reservation switching
-			const basePlanPrice = parseFloat(subscriptionPlans?.price_amount || '0');
-			const discountType = discountCodes?.discount_type;
-			const discountValue = parseFloat(discountCodes?.discount_value || '0');
+			// SECURITY: Validate plan has valid price
+			const planPrice = parseFloat(subscriptionPlans?.price_amount || '0');
 
-			if (basePlanPrice <= 0) {
+			if (planPrice <= 0) {
 				console.error('[PayPal Checkout] Invalid plan price for reservation:', {
 					reservation_id,
 					price_amount: subscriptionPlans?.price_amount
@@ -193,13 +192,13 @@ export const POST: RequestHandler = async (event) => {
 				}, { status: 500 });
 			}
 
-			// Log price validation for audit trail
-			console.log('[PayPal Checkout] Price validation:', {
+			// Log for audit trail
+			console.log('[PayPal Checkout] Discount code checkout:', {
 				reservation_id,
+				code: discountCodes?.code,
 				plan_id: subscriptionPlans?.id,
-				base_price: basePlanPrice,
-				discount_type: discountType,
-				discount_value: discountValue
+				plan_name: subscriptionPlans?.business_name,
+				plan_price: planPrice
 			});
 
 			// Select the correct plan ID based on environment
