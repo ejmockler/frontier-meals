@@ -8,6 +8,29 @@ import { validateKioskSessionWithRevocation } from '$lib/auth/kiosk';
 import { isValidShortCode, normalizeShortCode } from '$lib/utils/short-code';
 import { checkRateLimit, RateLimitKeys } from '$lib/utils/rate-limit';
 
+/**
+ * Decode the public key from base64 or handle literal \n strings
+ */
+function decodePublicKey(key: string): string {
+  // If it already looks like PEM format, just fix the newlines
+  if (key.includes('-----BEGIN')) {
+    return key.replace(/\\n/g, '\n');
+  }
+
+  // Otherwise assume base64 encoded
+  try {
+    const binaryString = atob(key);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
+  } catch {
+    // If decoding fails, return as-is with newline fix
+    return key.replace(/\\n/g, '\n');
+  }
+}
+
 // =============================================================================
 // Configuration Constants
 // =============================================================================
@@ -125,7 +148,8 @@ export const POST: RequestHandler = async ({ request }) => {
     }
 
     // Verify JWT signature and extract claims
-    const publicKey = await jose.importSPKI(QR_PUBLIC_KEY, 'ES256');
+    const decodedKey = decodePublicKey(QR_PUBLIC_KEY);
+    const publicKey = await jose.importSPKI(decodedKey, 'ES256');
     const { payload } = await jose.jwtVerify(jwt, publicKey, {
       issuer: 'frontier-meals-kiosk'
     });
