@@ -143,8 +143,8 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 			STRIPE_WEBHOOK_SECRET_TEST: (privateEnv as any).STRIPE_WEBHOOK_SECRET_TEST,
 			STRIPE_PRICE_ID_LIVE: (privateEnv as any).STRIPE_PRICE_ID_LIVE,
 			STRIPE_PRICE_ID_TEST: (privateEnv as any).STRIPE_PRICE_ID_TEST,
-			// PayPal Config
-			PAYPAL_MODE: (privateEnv as any).PAYPAL_MODE as 'sandbox' | 'live',
+			// PayPal Config - normalize to lowercase for consistent comparisons
+			PAYPAL_MODE: ((privateEnv as any).PAYPAL_MODE?.toLowerCase() || 'sandbox') as 'sandbox' | 'live',
 			PAYPAL_CLIENT_ID_LIVE: (privateEnv as any).PAYPAL_CLIENT_ID_LIVE,
 			PAYPAL_CLIENT_ID_SANDBOX: (privateEnv as any).PAYPAL_CLIENT_ID_SANDBOX,
 			PAYPAL_CLIENT_SECRET_LIVE: (privateEnv as any).PAYPAL_CLIENT_SECRET_LIVE,
