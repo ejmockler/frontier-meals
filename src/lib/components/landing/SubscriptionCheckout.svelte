@@ -16,7 +16,7 @@
 	import Input from '$lib/components/ui/input.svelte';
 
 	interface Props {
-		onPayPalCheckout: (reservationId?: string) => void;
+		onPayPalCheckout: (reservationId?: string, email?: string) => void;
 		loading?: boolean;
 		price?: string;
 		email?: string; // Customer email for discount reservations
@@ -115,10 +115,10 @@
 	}
 
 	/**
-	 * Handle PayPal checkout with optional reservation ID
+	 * Handle PayPal checkout with optional reservation ID and email
 	 */
 	function handleCheckout() {
-		onPayPalCheckout(reservationId);
+		onPayPalCheckout(reservationId, customerEmail);
 	}
 
 	/**

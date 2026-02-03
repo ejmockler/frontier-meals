@@ -36,14 +36,17 @@
     });
   }
 
-  async function handleCheckout(reservationId?: string) {
+  async function handleCheckout(reservationId?: string, email?: string) {
     loading = true;
     error = '';
 
     try {
-      const body: { reservation_id?: string } = {};
+      const body: { reservation_id?: string; email?: string } = {};
       if (reservationId) {
         body.reservation_id = reservationId;
+      }
+      if (email) {
+        body.email = email;
       }
 
       const response = await fetch('/api/paypal/create-subscription', {

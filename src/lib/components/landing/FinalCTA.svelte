@@ -4,7 +4,7 @@
   import Button from '$lib/components/ui/button.svelte';
 
   interface Props {
-    onCheckout: () => void;
+    onCheckout: (reservationId?: string, email?: string) => void;
     onContact: () => void;
     loading?: boolean;
     price?: string;
