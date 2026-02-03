@@ -36,8 +36,10 @@
 		email?: string;
 		/** Mobile breakpoint (default: 640px) */
 		mobileBreakpoint?: number;
-		/** Disable input until email is valid */
+		/** Disable input until email is valid (only when discount applied) */
 		disabled?: boolean;
+		/** Callback to request email input focus */
+		onEmailRequired?: () => void;
 	}
 
 	let {
@@ -46,8 +48,14 @@
 		onDiscountRemoved,
 		email = '',
 		mobileBreakpoint = 640,
-		disabled = false
+		disabled = false,
+		onEmailRequired
 	}: Props = $props();
+
+	// Email validation
+	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+	let isEmailValid = $derived(email ? emailRegex.test(email.trim()) : false);
+	let needsEmail = $state(false);
 
 	// Component state
 	let code = $state('');
@@ -155,6 +163,16 @@
 	async function validateCode() {
 		if (!code.trim()) return;
 
+		// If email not provided, prompt user to enter it first
+		if (!email || !isEmailValid) {
+			needsEmail = true;
+			if (onEmailRequired) {
+				onEmailRequired();
+			}
+			return;
+		}
+
+		needsEmail = false;
 		loading = true;
 		validationResult = null;
 		expirationMessage = null;
@@ -382,27 +400,13 @@
 		{/if}
 
 		{#if !expanded && !isApplied}
-			<!-- Collapsed state: Enhanced tap target -->
+			<!-- Collapsed state: Enhanced tap target - always accessible -->
 			<button
 				onclick={toggleExpanded}
-				disabled={disabled}
-				class="w-full min-h-[44px] py-3 px-4 bg-white border-2 rounded-md text-sm font-medium transition-all"
-				class:border-[#D9D7D2]={!disabled}
-				class:text-[#5C5A56]={!disabled}
-				class:hover:bg-[#F5F3EF]={!disabled}
-				class:hover:border-[#B8B6B1]={!disabled}
-				class:active:scale-[0.98]={!disabled}
-				class:cursor-pointer={!disabled}
-				class:border-[#E8E6E1]={disabled}
-				class:text-[#B8B6B1]={disabled}
-				class:cursor-not-allowed={disabled}
+				class="w-full min-h-[44px] py-3 px-4 bg-white border-2 rounded-md text-sm font-medium transition-all border-[#D9D7D2] text-[#5C5A56] hover:bg-[#F5F3EF] hover:border-[#B8B6B1] active:scale-[0.98] cursor-pointer"
 				aria-label="Enter promo code"
 			>
-				{#if disabled}
-					Enter email above to use promo code
-				{:else}
-					Have a promo code? Tap to enter
-				{/if}
+				Have a promo code? Tap to enter
 			</button>
 		{:else if expanded && !isApplied}
 			<!-- Expanded state: Input + Apply -->
@@ -411,21 +415,27 @@
 					type="text"
 					placeholder="Enter code"
 					bind:value={code}
-					disabled={loading || disabled}
+					disabled={loading}
 					class="text-base"
 					aria-label="Discount code"
 					autofocus
 					oninput={handleCodeInput}
 				/>
-				{#if disabled}
-					<p class="text-xs text-[#C85C35]">Please enter a valid email address first</p>
+				{#if needsEmail && !isEmailValid}
+					<!-- Perceptual prompt: Email needed for this action -->
+					<div class="bg-[#fef3c7] border border-[#f59e0b]/30 rounded px-3 py-2 text-sm text-[#92400e] flex items-center gap-2">
+						<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<span>Enter your email below to apply this code</span>
+					</div>
 				{/if}
 				<div class="flex gap-2">
 					<Button
 						variant="default"
 						class="flex-1"
 						onclick={validateCode}
-						disabled={loading || !code.trim() || disabled}
+						disabled={loading || !code.trim()}
 					>
 						{#if loading}
 							<svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -581,14 +591,14 @@
 		</div>
 
 		{#if !isApplied}
-			<!-- Input state -->
+			<!-- Input state - always accessible -->
 			<div class="flex gap-2">
 				<Input
 					id="discount-code"
 					type="text"
-					placeholder={disabled ? "Enter email first" : "Enter code"}
+					placeholder="Enter code"
 					bind:value={code}
-					disabled={loading || disabled}
+					disabled={loading}
 					error={validationResult?.success === false}
 					class="flex-1"
 					aria-label="Discount code"
@@ -597,13 +607,19 @@
 				<Button
 					variant="outline"
 					onclick={validateCode}
-					disabled={loading || !code.trim() || disabled}
+					disabled={loading || !code.trim()}
 				>
 					Apply
 				</Button>
 			</div>
-			{#if disabled}
-				<p class="text-xs text-[#C85C35]">Please enter a valid email address first</p>
+			{#if needsEmail && !isEmailValid}
+				<!-- Perceptual prompt: Email needed -->
+				<div class="bg-[#fef3c7] border border-[#f59e0b]/30 rounded px-3 py-2 text-sm text-[#92400e] flex items-center gap-2">
+					<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<span>Enter your email below to apply this code</span>
+				</div>
 			{/if}
 		{:else}
 			<!-- Applied state -->

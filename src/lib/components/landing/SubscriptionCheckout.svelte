@@ -53,26 +53,38 @@
 	// Email validation regex
 	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-	// Derived: email is valid
+	// Derived: email is valid (or empty when not using discount)
 	let isEmailValid = $derived(emailRegex.test(customerEmail.trim()));
+	let isEmailEmpty = $derived(customerEmail.trim() === '');
+
+	// Email is required only when using a discount code
+	let emailRequired = $derived(reservationId !== undefined);
 
 	// Derived: buttons unlocked when agreement is checked
-	let unlocked = $derived(agreed && !loading);
+	// If using discount, email must also be valid
+	let unlocked = $derived(agreed && !loading && (!emailRequired || isEmailValid));
 
 	// Derived: final price to display
 	let finalPrice = $derived(discountedPrice ?? originalPrice);
 	let hasDiscount = $derived(discountedPrice !== undefined && discountedPrice !== originalPrice);
 
 	/**
-	 * Validate email
+	 * Validate email - only required when using discount code
 	 */
 	function validateEmail() {
 		const trimmed = customerEmail.trim();
-		if (!trimmed) {
-			emailError = 'Email is required';
+		// If empty and not required, no error
+		if (!trimmed && !emailRequired) {
+			emailError = null;
+			return true;
+		}
+		// If empty and required (discount code), show error
+		if (!trimmed && emailRequired) {
+			emailError = 'Email required for discount codes';
 			return false;
 		}
-		if (!emailRegex.test(trimmed)) {
+		// If provided, validate format
+		if (trimmed && !emailRegex.test(trimmed)) {
 			emailError = 'Please enter a valid email address';
 			return false;
 		}
@@ -107,6 +119,21 @@
 	 */
 	function handleCheckout() {
 		onPayPalCheckout(reservationId);
+	}
+
+	/**
+	 * Handle email required callback from discount code input
+	 * Focuses the email field and triggers validation display
+	 */
+	function handleEmailRequired() {
+		// Focus the email input
+		const emailInput = document.getElementById('customer-email');
+		if (emailInput) {
+			emailInput.focus();
+			emailInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		}
+		// Trigger validation to show any errors
+		validateEmail();
 	}
 </script>
 
@@ -197,10 +224,29 @@
 			</li>
 		</ul>
 
-		<!-- Email Input Section -->
+		<!-- Discount Code Section -->
 		<div class="mb-5 pt-3 border-t-2 border-[#E8E6E1]">
+			<DiscountCodeInput
+				planPrice={originalPrice}
+				onDiscountApplied={handleDiscountApplied}
+				onDiscountRemoved={handleDiscountRemoved}
+				email={customerEmail}
+				onEmailRequired={handleEmailRequired}
+			/>
+		</div>
+
+		<!-- Email Input Section - Contextual visibility based on discount code -->
+		<!-- Perceptual design: Email field emphasizes when discount requires it -->
+		<div
+			class="mb-5 pt-3 border-t-2 transition-all duration-300 {emailRequired ? 'border-emerald-300 bg-emerald-50 p-4 rounded-md -mx-2' : 'border-[#E8E6E1]'}"
+		>
 			<label for="customer-email" class="text-sm font-medium text-[#1A1816] block mb-2">
-				Email Address <span class="text-[#C85C35]">*</span>
+				Email Address
+				{#if emailRequired}
+					<span class="text-[#059669] font-normal">(required for discount)</span>
+				{:else}
+					<span class="text-[#8E8C87] font-normal">(optional)</span>
+				{/if}
 			</label>
 			<Input
 				id="customer-email"
@@ -211,23 +257,16 @@
 				onblur={validateEmail}
 				class="w-full"
 				aria-label="Email address"
-				required
+				required={emailRequired}
 			/>
 			{#if emailError}
 				<p class="text-xs text-[#C85C35] mt-1">{emailError}</p>
 			{/if}
-			<p class="text-xs text-[#5C5A56] mt-1">Required for discount codes and order confirmation</p>
-		</div>
-
-		<!-- Discount Code Section -->
-		<div class="mb-5 pt-3 border-t-2 border-[#E8E6E1]">
-			<DiscountCodeInput
-				planPrice={originalPrice}
-				onDiscountApplied={handleDiscountApplied}
-				onDiscountRemoved={handleDiscountRemoved}
-				email={customerEmail}
-				disabled={!isEmailValid}
-			/>
+			{#if emailRequired}
+				<p class="text-xs text-[#059669] mt-1">Your discount code is tied to this email</p>
+			{:else}
+				<p class="text-xs text-[#5C5A56] mt-1">We'll send your receipt and Telegram link here</p>
+			{/if}
 		</div>
 
 		<!-- Agreement Checkbox (The Threshold) -->
