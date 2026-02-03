@@ -308,7 +308,13 @@ export const POST: RequestHandler = async (event) => {
 
 		return json({ approvalUrl });
 	} catch (error) {
-		console.error('[PayPal] Error creating subscription:', error);
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		console.error('[PayPal] Error creating subscription:', {
+			error: errorMessage,
+			stack: error instanceof Error ? error.stack : undefined,
+			reservation_id,
+			has_email: !!email
+		});
 
 		// Clean up reservation on PayPal failure
 		if (reservation_id) {
@@ -327,6 +333,10 @@ export const POST: RequestHandler = async (event) => {
 			}
 		}
 
-		return json({ error: 'Failed to create subscription' }, { status: 500 });
+		// Return more specific error for debugging
+		return json({
+			error: 'Failed to create subscription',
+			details: errorMessage
+		}, { status: 500 });
 	}
 };

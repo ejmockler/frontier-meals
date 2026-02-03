@@ -62,7 +62,9 @@
       if (data.approvalUrl) {
         window.location.href = data.approvalUrl;
       } else {
-        error = data.error || 'Failed to create subscription';
+        // Show detailed error if available for debugging
+        error = data.details ? `${data.error}: ${data.details}` : (data.error || 'Failed to create subscription');
+        console.error('[Checkout] Error:', data);
       }
     } catch (err) {
       error = 'An error occurred. Please try again.';
