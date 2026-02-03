@@ -192,13 +192,17 @@ export const POST: RequestHandler = async (event) => {
 				}, { status: 500 });
 			}
 
-			// Log for audit trail
+			// Log for audit trail - include all PayPal plan IDs for debugging
 			console.log('[PayPal Checkout] Discount code checkout:', {
 				reservation_id,
 				code: discountCodes?.code,
 				plan_id: subscriptionPlans?.id,
 				plan_name: subscriptionPlans?.business_name,
-				plan_price: planPrice
+				plan_price: planPrice,
+				paypal_plan_id_live: subscriptionPlans?.paypal_plan_id_live || 'NOT SET',
+				paypal_plan_id_sandbox: subscriptionPlans?.paypal_plan_id_sandbox || 'NOT SET',
+				environment: env.PAYPAL_MODE,
+				is_sandbox: isSandbox
 			});
 
 			// Select the correct plan ID based on environment
@@ -210,7 +214,11 @@ export const POST: RequestHandler = async (event) => {
 				console.error('[PayPal Checkout] No PayPal plan ID found for environment:', {
 					reservation_id,
 					environment: env.PAYPAL_MODE,
-					column: planIdColumn
+					column: planIdColumn,
+					available_plan_ids: {
+						live: subscriptionPlans?.paypal_plan_id_live || 'NOT SET',
+						sandbox: subscriptionPlans?.paypal_plan_id_sandbox || 'NOT SET'
+					}
 				});
 				return json(
 					{ error: `Plan not configured for ${env.PAYPAL_MODE} environment` },
