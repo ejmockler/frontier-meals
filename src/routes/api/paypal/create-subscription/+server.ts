@@ -113,7 +113,7 @@ export const POST: RequestHandler = async (event) => {
 					discount_codes!inner(
 						code,
 						plan_id,
-						subscription_plans!inner(
+						subscription_plans(
 							id,
 							business_name,
 							price_amount,
@@ -125,6 +125,9 @@ export const POST: RequestHandler = async (event) => {
 				.eq('id', reservation_id)
 				.is('redeemed_at', null)
 				.single();
+
+			// Debug: Log the raw reservation data
+			console.log('[PayPal Checkout] Raw reservation data:', JSON.stringify(reservation, null, 2));
 
 			if (reservationError || !reservation) {
 				console.error('[PayPal Checkout] Invalid or expired reservation:', {
