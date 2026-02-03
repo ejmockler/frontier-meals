@@ -1,7 +1,8 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { browser } from '$app/environment';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import { invalidateAll } from '$app/navigation';
   import Card from '$lib/components/ui/card.svelte';
 
   let { data } = $props();
@@ -17,6 +18,40 @@
   let isAlreadyMember = $derived(membershipStatus === 'already_member');
   let isProcessing = $derived(membershipStatus === 'processing');
   let membership = $derived(data.membership);
+
+  // Polling for processing state
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+  let pollCount = $state(0);
+  const MAX_POLLS = 30; // Stop after 30 attempts (60 seconds)
+
+  $effect(() => {
+    if (browser && isProcessing && !pollInterval) {
+      // Start polling every 2 seconds when in processing state
+      pollInterval = setInterval(async () => {
+        pollCount++;
+        if (pollCount >= MAX_POLLS) {
+          // Stop polling after max attempts
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+          return;
+        }
+        // Revalidate server data
+        await invalidateAll();
+      }, 2000);
+    } else if (!isProcessing && pollInterval) {
+      // Stop polling when no longer processing
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  });
+
+  onDestroy(() => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+    }
+  });
 
   // Discount information
   let discountInfo = $state<{
