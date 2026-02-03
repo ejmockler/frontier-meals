@@ -93,7 +93,8 @@ export const POST: RequestHandler = async (event) => {
 		});
 
 		// Determine which PayPal Plan ID column to use based on environment
-		const isSandbox = env.PAYPAL_MODE === 'sandbox';
+		// Normalize mode to lowercase to handle case variations (SANDBOX, Sandbox, sandbox)
+		const isSandbox = env.PAYPAL_MODE?.toLowerCase() === 'sandbox';
 		const planIdColumn = isSandbox ? 'paypal_plan_id_sandbox' : 'paypal_plan_id_live';
 
 		// Determine which PayPal Plan ID to use
