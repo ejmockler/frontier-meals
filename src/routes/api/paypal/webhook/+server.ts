@@ -804,10 +804,11 @@ async function handleSubscriptionActivated(
 	});
 
 	// Find and activate the token created during checkout
+	// NOTE: Query by token_hash (what we store), not paypal_custom_id (which stores the same hash but is for audit linking)
 	const { data: existingToken, error: findTokenError } = await supabase
 		.from('telegram_deep_link_tokens')
 		.select('*')
-		.eq('paypal_custom_id', tokenHash)
+		.eq('token_hash', tokenHash)
 		.eq('used', false)
 		.maybeSingle();
 
