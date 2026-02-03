@@ -114,7 +114,7 @@ export const POST: RequestHandler = async (event) => {
 					discount_codes!inner(
 						code,
 						plan_id,
-						subscription_plans(
+						subscription_plans!plan_id(
 							id,
 							business_name,
 							price_amount,
