@@ -379,6 +379,97 @@ async function handleSubscriptionActivated(
 		})
 	);
 
+	// ============================================================================
+	// DUPLICATE SUBSCRIPTION PREVENTION
+	// ============================================================================
+	// Check if this PayPal payer already has an ACTIVE subscription.
+	// If so, we should:
+	// 1. Cancel the NEW subscription in PayPal (the one being activated)
+	// 2. Keep the existing subscription active
+	// 3. Log for admin visibility
+	// 4. NOT create a duplicate subscription record
+	//
+	// This handles the case where a user tries to subscribe again when they're
+	// already a member. The UX outcome is: user is recognized as existing member.
+	// ============================================================================
+
+	const { data: existingCustomer } = await supabase
+		.from('customers')
+		.select(`
+			id,
+			email,
+			telegram_user_id,
+			subscriptions!inner(
+				id,
+				status,
+				paypal_subscription_id,
+				current_period_end
+			)
+		`)
+		.eq('paypal_payer_id', paypalPayerId)
+		.eq('subscriptions.status', 'active')
+		.single();
+
+	if (existingCustomer && existingCustomer.subscriptions) {
+		const existingSub = Array.isArray(existingCustomer.subscriptions)
+			? existingCustomer.subscriptions[0]
+			: existingCustomer.subscriptions;
+
+		// Only block if the existing subscription is DIFFERENT from this one
+		// (same subscription ID means this is a webhook retry, not a duplicate)
+		if (existingSub.paypal_subscription_id !== paypalSubscriptionId) {
+			console.warn('[PayPal Webhook] DUPLICATE SUBSCRIPTION DETECTED:', {
+				existing_customer_id: existingCustomer.id,
+				existing_subscription_id: existingSub.paypal_subscription_id,
+				new_subscription_id: paypalSubscriptionId,
+				customer_email: redactPII({ email: existingCustomer.email }).email,
+				has_telegram: !!existingCustomer.telegram_user_id
+			});
+
+			// Cancel the NEW subscription in PayPal to prevent double billing
+			try {
+				const paypalEnv: PayPalEnv = {
+					PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID!,
+					PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET!,
+					PAYPAL_WEBHOOK_ID: env.PAYPAL_WEBHOOK_ID!,
+					PAYPAL_PLAN_ID: env.PAYPAL_PLAN_ID || '',
+					PAYPAL_MODE: env.PAYPAL_MODE || 'sandbox'
+				};
+
+				const { cancelPayPalSubscription } = await import('$lib/integrations/paypal');
+				await cancelPayPalSubscription(paypalEnv, paypalSubscriptionId, 'Duplicate subscription - customer already has active membership');
+
+				console.log('[PayPal Webhook] Cancelled duplicate subscription in PayPal:', paypalSubscriptionId);
+			} catch (cancelError) {
+				// Log but don't fail - the important thing is we don't create a DB record
+				console.error('[PayPal Webhook] Failed to cancel duplicate subscription in PayPal:', {
+					subscription_id: paypalSubscriptionId,
+					error: cancelError instanceof Error ? cancelError.message : String(cancelError)
+				});
+			}
+
+			// Audit log for visibility
+			await supabase.from('audit_log').insert({
+				actor: 'system',
+				action: 'duplicate_subscription_blocked',
+				subject: `customer:${existingCustomer.id}`,
+				metadata: {
+					payment_provider: 'paypal',
+					existing_subscription_id: existingSub.paypal_subscription_id,
+					blocked_subscription_id: paypalSubscriptionId,
+					existing_period_end: existingSub.current_period_end,
+					customer_has_telegram: !!existingCustomer.telegram_user_id,
+					note: 'Customer attempted to create duplicate subscription - new subscription was cancelled'
+				}
+			});
+
+			// Return early - don't create duplicate subscription record
+			// The user will be shown "You're already a member" on the success page
+			console.log('[PayPal Webhook] Duplicate subscription blocked - customer already has active membership');
+			return;
+		}
+	}
+
 	// C2 FIX: Use UPSERT to prevent race condition between concurrent webhooks
 	// Two simultaneous BILLING.SUBSCRIPTION.ACTIVATED webhooks could both find no customer
 	// and both attempt INSERT, causing one to fail with unique constraint violation.
