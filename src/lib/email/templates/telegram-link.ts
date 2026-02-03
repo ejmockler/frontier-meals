@@ -11,95 +11,83 @@ import {
 } from './base';
 import { escapeHtml } from './utils';
 
+/**
+ * Perceptual Engineering Principles Applied:
+ * - Single focal point: The Telegram button is the ONE thing to do
+ * - Causality clear: Payment confirmed → connect Telegram → meals start
+ * - Recognition > recall: Button is obvious, no memorization needed
+ * - Reduced anxiety: Expiry info is present but not alarming
+ * - Working memory: 3 steps max, chunked into clear sequence
+ */
 export function getTelegramLinkEmail(data: {
   customer_name: string;
-  telegram_handle: string;
+  telegram_handle?: string; // Optional - not shown in welcome email
   deep_link: string;
 }) {
-  const subject = 'Welcome to Frontier Meals - Connect on Telegram';
+  const subject = `${escapeHtml(data.customer_name.split(' ')[0])}, your Frontier Meals subscription is ready`;
   const scheme = brandColors.teal;
 
   const headerContent = `
-    <div style="font-size: 48px; margin-bottom: 12px;">🍽️</div>
-    <h1>Welcome to Frontier Meals!</h1>
-    <p>Let's get you set up on Telegram</p>
+    <div style="font-size: 48px; margin-bottom: 12px;">✓</div>
+    <h1>Payment Confirmed</h1>
+    <p>One step left to start your meals</p>
   `;
 
   // Step number badge style
   const stepBadge = `background: ${scheme.primary}; color: ${scheme.onPrimary}; width: 28px; height: 28px; border-radius: 50%; text-align: center; font-weight: 700; font-size: ${tokens.fontSize.sm}; line-height: 28px;`;
+  const stepBadgeComplete = `background: ${tokens.text.muted}; color: white; width: 28px; height: 28px; border-radius: 50%; text-align: center; font-weight: 700; font-size: ${tokens.fontSize.sm}; line-height: 28px;`;
 
   const bodyContent = `
-    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name)},</p>
+    <p style="${styles.pLead}">Hi ${escapeHtml(data.customer_name.split(' ')[0])},</p>
 
-    <p style="${styles.p}">Your subscription is active! To complete your setup and manage your meals, connect with our Telegram bot.</p>
+    <p style="${styles.p}">Your subscription is confirmed. Connect your Telegram account to start receiving daily meal QR codes.</p>
 
-    <!-- CTA Button -->
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: ${tokens.spacing.lg} 0;">
+    <!-- Primary CTA - THE focal point -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: ${tokens.spacing.xl} 0;">
       <tr>
         <td align="center">
-          <a href="${data.deep_link}" style="${buttonStyle(scheme)}">
-            📱 Connect on Telegram
+          <a href="${data.deep_link}" style="${buttonStyle(scheme)}; font-size: 18px; padding: 16px 32px;">
+            Connect Telegram →
           </a>
         </td>
       </tr>
     </table>
 
-    <!-- Steps -->
+    <!-- Progress indicator - shows where they are -->
     <div style="background: ${tokens.bg.subtle}; padding: ${tokens.spacing.lg}; border-radius: ${tokens.radius.lg}; margin: ${tokens.spacing.xl} 0;">
-      <h2 style="${styles.h3}">What happens next:</h2>
-
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
         <tr>
-          <td style="padding: 12px 0; vertical-align: top; width: 40px;">
-            <div style="${stepBadge}">1</div>
+          <td style="padding: 8px 0; vertical-align: top; width: 40px;">
+            <div style="${stepBadgeComplete}">✓</div>
           </td>
-          <td style="padding: 12px 0 12px 12px; vertical-align: top;">
-            <strong style="display: block; color: ${tokens.text.primary}; margin-bottom: 4px;">Connect on Telegram</strong>
-            <span style="color: ${tokens.text.muted}; font-size: ${tokens.fontSize.sm};">Click the button above to open our bot</span>
+          <td style="padding: 8px 0 8px 12px; vertical-align: middle;">
+            <span style="color: ${tokens.text.muted}; text-decoration: line-through;">Subscribe</span>
           </td>
         </tr>
         <tr>
-          <td style="padding: 12px 0; vertical-align: top; width: 40px;">
+          <td style="padding: 8px 0; vertical-align: top; width: 40px;">
             <div style="${stepBadge}">2</div>
           </td>
-          <td style="padding: 12px 0 12px 12px; vertical-align: top;">
-            <strong style="display: block; color: ${tokens.text.primary}; margin-bottom: 4px;">Set your preferences</strong>
-            <span style="color: ${tokens.text.muted}; font-size: ${tokens.fontSize.sm};">Tell us your diet and any allergies</span>
+          <td style="padding: 8px 0 8px 12px; vertical-align: middle;">
+            <strong style="color: ${tokens.text.primary};">Connect Telegram</strong>
+            <span style="color: ${tokens.text.muted}; font-size: ${tokens.fontSize.sm};"> ← you are here</span>
           </td>
         </tr>
         <tr>
-          <td style="padding: 12px 0; vertical-align: top; width: 40px;">
-            <div style="${stepBadge}">3</div>
+          <td style="padding: 8px 0; vertical-align: top; width: 40px;">
+            <div style="${stepBadgeComplete}; background: ${tokens.bg.card}; color: ${tokens.text.muted}; border: 2px solid ${tokens.text.muted};">3</div>
           </td>
-          <td style="padding: 12px 0 12px 12px; vertical-align: top;">
-            <strong style="display: block; color: ${tokens.text.primary}; margin-bottom: 4px;">Get your daily QR code</strong>
-            <span style="color: ${tokens.text.muted}; font-size: ${tokens.fontSize.sm};">Every day at 12 PM PT via email</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 12px 0; vertical-align: top; width: 40px;">
-            <div style="${stepBadge}">4</div>
-          </td>
-          <td style="padding: 12px 0 12px 12px; vertical-align: top;">
-            <strong style="display: block; color: ${tokens.text.primary}; margin-bottom: 4px;">Pick up your meal</strong>
-            <span style="color: ${tokens.text.muted}; font-size: ${tokens.fontSize.sm};">Scan your QR at any kiosk before 11:59 PM PT</span>
+          <td style="padding: 8px 0 8px 12px; vertical-align: middle;">
+            <span style="color: ${tokens.text.muted};">Receive daily QR codes at noon</span>
           </td>
         </tr>
       </table>
     </div>
 
-    <!-- Handle Display -->
-    <div style="background: ${tokens.bg.code}; padding: ${tokens.spacing.md}; border-radius: ${tokens.radius.md}; margin: ${tokens.spacing.lg} 0;">
-      <p style="margin: 0; color: ${tokens.text.primary};">
-        <strong>Your Telegram Handle:</strong> <code style="${styles.code}; background: ${tokens.bg.card};">${escapeHtml(data.telegram_handle)}</code>
-      </p>
-    </div>
-
-    <!-- Warning Notice -->
-    <div style="${infoBoxStyle('warning')}">
-      <p style="${infoBoxTitleStyle('warning')}">⚠️ Important</p>
-      <p style="${infoBoxTextStyle('warning')}">This link expires in 7 days. Connect on Telegram to start receiving your daily QR codes.</p>
-    </div>
+    <!-- Link expires - low anxiety framing -->
+    <p style="${styles.p}; color: ${tokens.text.muted}; font-size: ${tokens.fontSize.sm};">
+      This link is valid for 7 days. After connecting, you'll receive your first QR code at the next noon delivery.
+    </p>
   `;
 
   const html = buildEmailHTML({

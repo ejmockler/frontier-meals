@@ -921,13 +921,11 @@ async function handleSubscriptionActivated(
 	if (emailToken !== 'EMAIL_ALREADY_SENT') {
 		const deepLink = `https://t.me/frontiermealsbot?start=${emailToken}`;
 
-		// Note: telegram_handle is null for PayPal customers - they'll set it via bot
 		try {
 			const emailTemplate = await renderTemplate(
 				'telegram_link',
 				{
 					customer_name: name,
-					telegram_handle: '(set up in Telegram)', // Placeholder - resolved by bot
 					deep_link: deepLink
 				},
 				env.SUPABASE_SERVICE_ROLE_KEY

@@ -395,7 +395,6 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripe:
       'telegram_link',
       {
         customer_name: name,
-        telegram_handle: telegramHandle || 'Not provided',
         deep_link: deepLink
       },
       env.SUPABASE_SERVICE_ROLE_KEY
