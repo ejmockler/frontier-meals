@@ -154,6 +154,7 @@
 
       {:else if isProcessing}
         <!-- Processing State -->
+        <!-- Perceptual Engineering: Accurate temporal framing + causal explanation -->
         <div class="w-16 h-16 bg-[#3b82f6] border-2 border-[#3b82f6]/70 rounded-sm flex items-center justify-center mx-auto shadow-lg animate-pulse">
           <svg class="w-8 h-8 text-white animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -162,15 +163,27 @@
         </div>
 
         <div>
-          <h1 class="text-3xl font-extrabold tracking-tight text-[#1A1816] mb-2">Setting up your subscription...</h1>
-          <p class="text-[#5C5A56]">This usually takes just a few seconds.</p>
+          <h1 class="text-3xl font-extrabold tracking-tight text-[#1A1816] mb-2">Confirming your payment...</h1>
+          <p class="text-[#5C5A56]">PayPal is verifying your subscription.</p>
         </div>
 
-        <div class="bg-[#fef3c7] border-2 border-[#f59e0b]/30 rounded-sm p-4">
-          <p class="text-sm text-[#92400e]">
-            If this takes more than a minute, check your email or contact <a href="https://t.me/noahchonlee" class="underline font-medium">@noahchonlee</a>.
-          </p>
+        <!-- Progress indicator: shows causal chain, reduces perceived wait -->
+        <div class="flex items-center justify-center gap-2 text-sm text-[#5C5A56]">
+          <span class="w-2 h-2 bg-[#52A675] rounded-full"></span>
+          <span>Payment received</span>
+          <span class="text-[#D9D7D2]">→</span>
+          <span class="w-2 h-2 bg-[#3b82f6] rounded-full animate-pulse"></span>
+          <span class="text-[#3b82f6] font-medium">Activating account</span>
         </div>
+
+        <!-- Only show fallback help after extended wait (pollCount tracks this) -->
+        {#if pollCount > 30}
+          <div class="bg-[#fef3c7] border-2 border-[#f59e0b]/30 rounded-sm p-4 mt-4">
+            <p class="text-sm text-[#92400e]">
+              Taking longer than usual. Contact <a href="https://t.me/noahchonlee" class="underline font-medium">@noahchonlee</a> for help.
+            </p>
+          </div>
+        {/if}
 
       {:else}
         <!-- New Member State (default) -->
