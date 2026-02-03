@@ -99,7 +99,8 @@ export const POST: RequestHandler = async (event) => {
 
 		// Determine which PayPal Plan ID to use
 		let planId: string;
-		let customIdData: { token: string; reservation_id?: string; email?: string };
+		// Use short keys (t=token, r=reservation_id) to stay under PayPal's 127 char limit
+		let customIdData: { t: string; r?: string };
 
 		if (reservation_id) {
 			// Fetch reservation to get the discounted plan's paypal_plan_id
@@ -231,10 +232,11 @@ export const POST: RequestHandler = async (event) => {
 			}
 
 			planId = envPlanId;
+			// Use short keys to stay under PayPal's 127 char limit:
+			// {"t":"<64>","r":"<36>"} = 10 + 64 + 8 + 36 + 2 = 120 chars ✓
 			customIdData = {
-				token: deepLinkTokenHash,
-				reservation_id,
-				email: providedEmail // Use validated email
+				t: deepLinkTokenHash,
+				r: reservation_id
 			};
 
 			console.log('[PayPal Checkout] Using discounted plan:', {
@@ -266,11 +268,8 @@ export const POST: RequestHandler = async (event) => {
 				environment: env.PAYPAL_MODE
 			});
 
-			customIdData = { token: deepLinkTokenHash };
-
-			if (email) {
-				customIdData.email = email;
-			}
+			// Use short key (t=token) for consistency with discount code path
+			customIdData = { t: deepLinkTokenHash };
 		}
 
 		const paypalEnv: PayPalEnv = {

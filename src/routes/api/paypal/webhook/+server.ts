@@ -709,16 +709,18 @@ async function handleSubscriptionActivated(
 		throw new Error('Missing custom_id in PayPal subscription');
 	}
 
-	// Parse custom_id - it may be JSON (with reservation_id) or plain SHA-256 hash
-	// C2/C6 FIX: Proper validation of parsed JSON and token field
-	let customData: { token: string; reservation_id?: string; email?: string };
+	// Parse custom_id - supports multiple formats:
+	// 1. Short keys JSON (new): {"t":"<hash>","r":"<uuid>"} - under 127 char limit
+	// 2. Long keys JSON (legacy): {"token":"<hash>","reservation_id":"<uuid>"}
+	// 3. Plain SHA-256 hash (oldest legacy)
+	let customData: { token: string; reservation_id?: string };
 	const SHA256_REGEX = /^[a-f0-9]{64}$/i;
 
 	try {
-		// Try parsing as JSON first (new format with discount codes)
+		// Try parsing as JSON first
 		const parsed = JSON.parse(paypalCustomId);
 
-		// C2/C6 FIX: Validate that parsed object is actually an object (not null, array, or primitive)
+		// Validate that parsed object is actually an object (not null, array, or primitive)
 		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
 			console.error('[PayPal Webhook] Parsed custom_id is not a valid object:', {
 				type: typeof parsed,
@@ -728,42 +730,47 @@ async function handleSubscriptionActivated(
 			throw new Error('custom_id JSON must be an object');
 		}
 
-		// C2/C6 FIX: Validate that token field exists and is a non-empty string
-		if (typeof parsed.token !== 'string' || parsed.token.length === 0) {
+		// Support both short keys (t, r) and long keys (token, reservation_id)
+		const token = parsed.t || parsed.token;
+		const reservationId = parsed.r || parsed.reservation_id;
+
+		// Validate that token field exists and is a non-empty string
+		if (typeof token !== 'string' || token.length === 0) {
 			console.error('[PayPal Webhook] Parsed custom_id missing or invalid token field:', {
-				hasToken: 'token' in parsed,
-				tokenType: typeof parsed.token,
-				tokenLength: typeof parsed.token === 'string' ? parsed.token.length : 'N/A'
+				hasShortKey: 't' in parsed,
+				hasLongKey: 'token' in parsed,
+				tokenType: typeof token,
+				tokenLength: typeof token === 'string' ? token.length : 'N/A'
 			});
 			throw new Error('custom_id JSON must contain a non-empty token string');
 		}
 
-		// C2/C6 FIX: Validate token is a valid SHA-256 hash
-		if (!SHA256_REGEX.test(parsed.token)) {
+		// Validate token is a valid SHA-256 hash
+		if (!SHA256_REGEX.test(token)) {
 			console.error('[PayPal Webhook] Token in custom_id JSON is not a valid SHA-256 hash:', {
-				length: parsed.token.length,
-				prefix: parsed.token.slice(0, 8)
+				length: token.length,
+				prefix: token.slice(0, 8)
 			});
 			throw new Error('token in custom_id must be a valid SHA-256 hash');
 		}
 
 		// Validate reservation_id if present (must be string if provided)
-		if (parsed.reservation_id !== undefined && typeof parsed.reservation_id !== 'string') {
+		if (reservationId !== undefined && typeof reservationId !== 'string') {
 			console.error('[PayPal Webhook] Invalid reservation_id type in custom_id:', {
-				type: typeof parsed.reservation_id
+				type: typeof reservationId
 			});
 			throw new Error('reservation_id in custom_id must be a string');
 		}
 
 		customData = {
-			token: parsed.token,
-			reservation_id: parsed.reservation_id,
-			email: typeof parsed.email === 'string' ? parsed.email : undefined
+			token: token,
+			reservation_id: reservationId
 		};
 
 		console.log('[PayPal Webhook] Parsed custom_id as JSON:', {
 			has_token: true,
-			has_reservation: !!customData.reservation_id
+			has_reservation: !!customData.reservation_id,
+			format: parsed.t ? 'short_keys' : 'long_keys'
 		});
 	} catch (parseError) {
 		// Check if this was a validation error (our thrown errors) vs JSON parse error
