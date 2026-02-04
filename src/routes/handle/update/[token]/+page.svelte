@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { PUBLIC_TELEGRAM_BOT_USERNAME } from '$env/static/public';
 	import type { PageData } from './$types';
 
 	export let data: PageData;
@@ -210,14 +211,14 @@
 								<strong>Next steps:</strong>
 							</p>
 							<ol class="text-sm text-blue-800 space-y-1 list-decimal list-inside text-left">
-								<li>Open Telegram and search for <strong>@frontiermealsbot</strong></li>
+								<li>Open Telegram and search for <strong>@{PUBLIC_TELEGRAM_BOT_USERNAME}</strong></li>
 								<li>Click "Start" to connect your account</li>
 								<li>You'll receive your meal QR codes daily</li>
 							</ol>
 						</div>
 
 						<a
-							href="https://t.me/frontiermealsbot"
+							href="https://t.me/{PUBLIC_TELEGRAM_BOT_USERNAME}"
 							target="_blank"
 							rel="noopener noreferrer"
 							class="inline-flex items-center justify-center w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold py-3 px-4 rounded-lg hover:from-blue-700 hover:to-cyan-700 focus:ring-4 focus:ring-blue-200 transition-all"

@@ -7,6 +7,7 @@ import { randomUUID, sha256 } from '$lib/utils/crypto';
 import { verifyPayPalWebhook, getPayPalSubscription, type PayPalEnv } from '$lib/integrations/paypal';
 import { redactPII } from '$lib/utils/logging';
 import { sendAdminAlert, alertEmailFailure } from '$lib/utils/alerts';
+import { PUBLIC_TELEGRAM_BOT_USERNAME } from '$env/static/public';
 import { checkRateLimit, RateLimitKeys } from '$lib/utils/rate-limit';
 
 // PayPal webhook event types
@@ -919,7 +920,7 @@ async function handleSubscriptionActivated(
 
 	// Send telegram_link email with email token (if not already sent)
 	if (emailToken !== 'EMAIL_ALREADY_SENT') {
-		const deepLink = `https://t.me/frontiermealsbot?start=${emailToken}`;
+		const deepLink = `https://t.me/${PUBLIC_TELEGRAM_BOT_USERNAME}?start=${emailToken}`;
 
 		try {
 			const emailTemplate = await renderTemplate(

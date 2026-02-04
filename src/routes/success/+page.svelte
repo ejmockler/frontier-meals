@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { browser } from '$app/environment';
+  import { PUBLIC_TELEGRAM_BOT_USERNAME } from '$env/static/public';
   import { onMount, onDestroy } from 'svelte';
   import { invalidateAll } from '$app/navigation';
   import Card from '$lib/components/ui/card.svelte';
@@ -9,7 +10,7 @@
 
   // Extract deep link token from URL
   let deepLinkToken = $derived($page.url.searchParams.get('t'));
-  let deepLink = $derived(deepLinkToken ? `https://t.me/frontiermealsbot?start=${deepLinkToken}` : '');
+  let deepLink = $derived(deepLinkToken ? `https://t.me/${PUBLIC_TELEGRAM_BOT_USERNAME}?start=${deepLinkToken}` : '');
 
   let copied = $state(false);
 
@@ -139,7 +140,7 @@
         <div class="bg-[#E8E6E1] border-2 border-[#D9D7D2] rounded-sm p-6 text-left space-y-3">
           <h2 class="font-bold tracking-tight text-[#1A1816]">What would you like to do?</h2>
           <div class="space-y-2">
-            <a href="https://t.me/frontiermealsbot" target="_blank" rel="noopener noreferrer"
+            <a href="https://t.me/{PUBLIC_TELEGRAM_BOT_USERNAME}" target="_blank" rel="noopener noreferrer"
                class="flex items-center gap-3 p-3 bg-white rounded-sm border border-[#D9D7D2] hover:border-[#3b82f6] transition-colors">
               <span class="text-xl">💬</span>
               <span class="font-medium text-[#1A1816]">Open Telegram Bot</span>

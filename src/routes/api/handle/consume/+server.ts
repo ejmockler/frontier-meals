@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createClient } from '@supabase/supabase-js';
-import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+import { PUBLIC_SUPABASE_URL, PUBLIC_TELEGRAM_BOT_USERNAME } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
 
@@ -87,7 +87,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const deepLinkToken = randomUUID();
 		const deepLinkTokenHash = await sha256(deepLinkToken);
 		const deepLinkExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-		const deepLink = `https://t.me/frontiermealsbot?start=${deepLinkToken}`;
+		const deepLink = `https://t.me/${PUBLIC_TELEGRAM_BOT_USERNAME}?start=${deepLinkToken}`;
 
 		console.log('[Handle Consume] Generated new deep link token for customer:', handleToken.customer_id);
 

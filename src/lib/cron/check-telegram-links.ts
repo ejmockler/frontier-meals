@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { PUBLIC_TELEGRAM_BOT_USERNAME } from '$env/static/public';
 import { sendEmail } from '$lib/email/send';
 import { randomUUID, sha256 } from '$lib/utils/crypto';
 import { renderTemplate } from '$lib/email/templates';
@@ -72,7 +73,7 @@ export async function checkTelegramLinks(config: {
       const deepLinkToken = randomUUID();
       const deepLinkTokenHash = await sha256(deepLinkToken);
       const deepLinkExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-      const newDeepLink = `https://t.me/frontiermealsbot?start=${deepLinkToken}`;
+      const newDeepLink = `https://t.me/${PUBLIC_TELEGRAM_BOT_USERNAME}?start=${deepLinkToken}`;
 
       // Store hashed deep link token
       await supabase.from('telegram_deep_link_tokens').insert({
