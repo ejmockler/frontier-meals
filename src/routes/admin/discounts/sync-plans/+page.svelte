@@ -14,7 +14,6 @@
 	let extractedPlanIdLive = '';
 	let extractedPlanIdSandbox = '';
 	let businessName = '';
-	let priceAmount = '';
 	let billingCycle = 'monthly';
 	let isDefault = false;
 
@@ -51,7 +50,6 @@
 		extractedPlanIdLive = '';
 		extractedPlanIdSandbox = '';
 		businessName = '';
-		priceAmount = '';
 		billingCycle = 'monthly';
 		isDefault = false;
 		editingPlan = null;
@@ -65,7 +63,6 @@
 		extractedPlanIdLive = plan.paypal_plan_id_live;
 		extractedPlanIdSandbox = plan.paypal_plan_id_sandbox || '';
 		businessName = plan.business_name;
-		priceAmount = plan.price_amount.toString();
 		billingCycle = plan.billing_cycle;
 		isDefault = plan.is_default;
 		window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -243,43 +240,56 @@
 				/>
 			</div>
 
-			<!-- Price and Billing Cycle -->
-			<div class="grid grid-cols-2 gap-4">
-				<div>
-					<label for="price_amount" class="block text-sm font-bold text-[#1A1816] mb-2">
-						Price:
-					</label>
-					<div class="relative">
-						<span class="absolute left-3 top-2 text-[#5C5A56] font-bold">$</span>
-						<input
-							id="price_amount"
-							type="number"
-							name="price_amount"
-							bind:value={priceAmount}
-							placeholder="29.00"
-							step="0.01"
-							min="0"
-							required
-							class="w-full pl-8 pr-4 py-2 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none font-medium text-[#1A1816] bg-white"
-						/>
+			<!-- Auto-Detected Pricing Info -->
+			{#if !editingPlan}
+				<div class="p-4 bg-[#2D9B9B]/5 border-2 border-[#2D9B9B]/30 rounded-sm">
+					<div class="flex items-center gap-2 mb-1">
+						<svg class="w-5 h-5 text-[#2D9B9B]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<span class="text-sm font-bold text-[#1A1816]">Pricing Auto-Detected from PayPal</span>
+					</div>
+					<p class="text-xs text-[#5C5A56]">
+						Price and trial period will be extracted from the PayPal plan's billing cycles on submit.
+					</p>
+				</div>
+			{:else}
+				<div class="p-4 bg-[#E8E6E1]/50 border-2 border-[#D9D7D2] rounded-sm">
+					<div class="flex items-center gap-2 mb-1">
+						<svg class="w-4 h-4 text-[#5C5A56]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+						</svg>
+						<span class="text-sm font-bold text-[#5C5A56]">Pricing is read-only</span>
+					</div>
+					<p class="text-xs text-[#5C5A56]">
+						Pricing is tied to the PayPal plan. To use different pricing, create a new plan.
+					</p>
+					<div class="mt-2 text-sm font-medium text-[#1A1816]">
+						{#if editingPlan.trial_price_amount !== null && editingPlan.trial_duration_months !== null}
+							${editingPlan.trial_price_amount.toFixed(2)}/mo for {editingPlan.trial_duration_months} {editingPlan.trial_duration_months === 1 ? 'month' : 'months'},
+							then ${editingPlan.price_amount.toFixed(2)}/mo
+						{:else}
+							${editingPlan.price_amount.toFixed(2)}/mo
+						{/if}
 					</div>
 				</div>
+			{/if}
 
-				<div>
-					<label for="billing_cycle" class="block text-sm font-bold text-[#1A1816] mb-2">
-						Billing Cycle:
-					</label>
-					<select
-						id="billing_cycle"
-						name="billing_cycle"
-						bind:value={billingCycle}
-						required
-						class="w-full px-4 py-2 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none font-medium text-[#1A1816] bg-white"
-					>
-						<option value="monthly">Monthly</option>
-						<option value="annual">Annual</option>
-					</select>
-				</div>
+			<!-- Billing Cycle -->
+			<div>
+				<label for="billing_cycle" class="block text-sm font-bold text-[#1A1816] mb-2">
+					Billing Cycle:
+				</label>
+				<select
+					id="billing_cycle"
+					name="billing_cycle"
+					bind:value={billingCycle}
+					required
+					class="w-full px-4 py-2 border-2 border-[#B8B6B1] rounded-sm focus:ring-2 focus:ring-[#E67E50] focus:border-[#E67E50] outline-none font-medium text-[#1A1816] bg-white"
+				>
+					<option value="monthly">Monthly</option>
+					<option value="annual">Annual</option>
+				</select>
 			</div>
 
 			<!-- Default Plan Checkbox -->
@@ -318,7 +328,7 @@
 				{/if}
 				<button
 					type="submit"
-					disabled={!extractedPlanIdLive || !businessName || !priceAmount}
+					disabled={!extractedPlanIdLive || !businessName}
 					class="px-6 py-2 text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] hover:shadow-xl shadow-lg rounded-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					{editingPlan ? 'Update Plan' : 'Add Plan'}
@@ -370,11 +380,25 @@
 									{/if}
 								</div>
 
-								<!-- Price -->
+								<!-- Price with Trial Info -->
 								<div class="text-sm text-[#5C5A56] mb-3">
-									<span class="font-medium">
-										${plan.price_amount.toFixed(2)} / {plan.billing_cycle}
-									</span>
+									{#if plan.trial_price_amount !== null && plan.trial_duration_months !== null}
+										<div class="font-medium text-[#1A1816]">
+											<span class="text-[#2D9B9B]">
+												${plan.trial_price_amount.toFixed(2)} / {plan.billing_cycle}
+											</span>
+											<span class="text-xs text-[#5C5A56]">
+												for {plan.trial_duration_months} {plan.trial_duration_months === 1 ? 'month' : 'months'}
+											</span>
+										</div>
+										<div class="text-xs text-[#5C5A56] mt-1">
+											Then ${plan.price_amount.toFixed(2)} / {plan.billing_cycle}
+										</div>
+									{:else}
+										<span class="font-medium">
+											${plan.price_amount.toFixed(2)} / {plan.billing_cycle}
+										</span>
+									{/if}
 								</div>
 
 								<!-- Environment Plan IDs -->

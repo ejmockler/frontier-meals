@@ -6,10 +6,10 @@ import type { PageServerLoad } from './$types';
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 export const load: PageServerLoad = async () => {
-	// Load default plan for pricing display
+	// Load default plan for pricing display (including trial period info)
 	const { data: defaultPlan, error } = await supabase
 		.from('subscription_plans')
-		.select('price_amount, billing_cycle')
+		.select('price_amount, billing_cycle, trial_price_amount, trial_duration_months')
 		.eq('is_default', true)
 		.eq('is_active', true)
 		.single();
@@ -20,6 +20,8 @@ export const load: PageServerLoad = async () => {
 
 	return {
 		defaultPlanPrice: defaultPlan?.price_amount ?? 500,
-		billingCycle: defaultPlan?.billing_cycle ?? 'month'
+		billingCycle: defaultPlan?.billing_cycle ?? 'month',
+		trialPrice: defaultPlan?.trial_price_amount ?? null,
+		trialDurationMonths: defaultPlan?.trial_duration_months ?? null
 	};
 };

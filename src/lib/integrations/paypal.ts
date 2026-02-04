@@ -111,6 +111,45 @@ export interface PayPalSubscription {
 	links: Array<{ href: string; rel: string; method: string }>;
 }
 
+/**
+ * PayPal Billing Cycle (from Plan API response)
+ */
+export interface PayPalBillingCycle {
+	frequency: {
+		interval_unit: 'DAY' | 'WEEK' | 'MONTH' | 'YEAR';
+		interval_count: number;
+	};
+	tenure_type: 'TRIAL' | 'REGULAR';
+	sequence: number;
+	total_cycles: number;
+	pricing_scheme?: {
+		fixed_price: {
+			value: string;
+			currency_code: string;
+		};
+	};
+}
+
+/**
+ * PayPal Plan Details (from GET /v1/billing/plans/{planId})
+ */
+export interface PayPalPlanDetails {
+	id: string;
+	product_id: string;
+	name: string;
+	status: string;
+	billing_cycles: PayPalBillingCycle[];
+}
+
+/**
+ * Parsed trial info extracted from PayPal billing cycles
+ */
+export interface ParsedTrialInfo {
+	trialPriceAmount: number | null;
+	trialDurationMonths: number | null;
+	regularPrice: number;
+}
+
 export async function createPayPalSubscription(
 	env: PayPalEnv,
 	options: CreateSubscriptionOptions
@@ -429,4 +468,121 @@ export async function validatePayPalPlanExists(
 		console.error('[PayPal] Error validating plan:', error);
 		return { exists: false, error: 'Failed to connect to PayPal' };
 	}
+}
+
+/**
+ * Fetch full PayPal Plan details including billing cycles
+ * Used during admin plan sync to auto-extract pricing and trial info
+ */
+export async function getPayPalPlanDetails(
+	env: PayPalEnv,
+	planId: string
+): Promise<{ success: boolean; plan?: PayPalPlanDetails; error?: string }> {
+	try {
+		const accessToken = await getPayPalAccessToken(env);
+		const baseUrl = getPayPalBaseUrl(env.PAYPAL_MODE);
+
+		const response = await withTimeout(
+			fetch(`${baseUrl}/v1/billing/plans/${planId}`, {
+				method: 'GET',
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					'Content-Type': 'application/json'
+				}
+			}),
+			PAYPAL_API_TIMEOUT_MS,
+			'PayPal plan details fetch'
+		);
+
+		if (response.ok) {
+			const plan = (await response.json()) as PayPalPlanDetails;
+			return { success: true, plan };
+		}
+
+		if (response.status === 404) {
+			return { success: false, error: 'Plan not found in PayPal' };
+		}
+
+		const errorBody = await response.text();
+		console.error('[PayPal] Plan details fetch failed:', { status: response.status, errorBody });
+		return { success: false, error: `PayPal API error: ${response.status}` };
+	} catch (error) {
+		console.error('[PayPal] Error fetching plan details:', error);
+		return { success: false, error: 'Failed to connect to PayPal' };
+	}
+}
+
+/**
+ * Convert PayPal billing interval to months
+ */
+function convertToMonths(unit: string, intervalCount: number, totalCycles: number): number {
+	const totalIntervals = intervalCount * totalCycles;
+
+	switch (unit) {
+		case 'DAY':
+			return Math.round((totalIntervals / 30) * 10) / 10;
+		case 'WEEK':
+			return Math.round((totalIntervals / 4.33) * 10) / 10;
+		case 'MONTH':
+			return totalIntervals;
+		case 'YEAR':
+			return totalIntervals * 12;
+		default:
+			return totalIntervals;
+	}
+}
+
+/**
+ * Parse PayPal billing cycles to extract trial and regular pricing
+ *
+ * PayPal rules:
+ * - Max 2 TRIAL cycles, 1 REGULAR cycle per plan
+ * - TRIAL cycles have finite total_cycles (1-999)
+ * - REGULAR cycle can have total_cycles=0 (infinite)
+ * - Free trials omit pricing_scheme
+ * - Sequence determines execution order (TRIAL before REGULAR)
+ */
+export function parseBillingCycles(billingCycles: PayPalBillingCycle[]): ParsedTrialInfo {
+	const sorted = [...billingCycles].sort((a, b) => a.sequence - b.sequence);
+
+	const trialCycles = sorted.filter((c) => c.tenure_type === 'TRIAL');
+	const regularCycle = sorted.find((c) => c.tenure_type === 'REGULAR');
+
+	if (!regularCycle) {
+		throw new Error('PayPal plan missing REGULAR billing cycle');
+	}
+
+	const regularPrice = regularCycle.pricing_scheme
+		? parseFloat(regularCycle.pricing_scheme.fixed_price.value)
+		: 0;
+
+	if (trialCycles.length === 0) {
+		return {
+			trialPriceAmount: null,
+			trialDurationMonths: null,
+			regularPrice
+		};
+	}
+
+	// Sum trial duration across all trial cycles, use last trial's price
+	let totalTrialMonths = 0;
+	let trialPrice = 0;
+
+	for (const cycle of trialCycles) {
+		trialPrice = cycle.pricing_scheme
+			? parseFloat(cycle.pricing_scheme.fixed_price.value)
+			: 0;
+
+		totalTrialMonths += convertToMonths(
+			cycle.frequency.interval_unit,
+			cycle.frequency.interval_count,
+			cycle.total_cycles
+		);
+	}
+
+	return {
+		trialPriceAmount: trialPrice,
+		trialDurationMonths: Math.round(totalTrialMonths),
+		regularPrice
+	};
 }

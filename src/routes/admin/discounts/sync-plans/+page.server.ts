@@ -6,7 +6,13 @@ import { fail } from '@sveltejs/kit';
 import { validateCSRFFromFormData } from '$lib/auth/csrf';
 import { getAdminSession } from '$lib/auth/session';
 import type { SubscriptionPlan } from '$lib/types/discount';
-import { validatePayPalPlanExists, type PayPalEnv } from '$lib/integrations/paypal';
+import {
+	validatePayPalPlanExists,
+	getPayPalPlanDetails,
+	parseBillingCycles,
+	type PayPalEnv,
+	type ParsedTrialInfo
+} from '$lib/integrations/paypal';
 import { getEnv } from '$lib/server/env';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -41,13 +47,14 @@ export const actions: Actions = {
 		const paypalPlanIdLive = formData.get('paypal_plan_id_live') as string;
 		const paypalPlanIdSandbox = (formData.get('paypal_plan_id_sandbox') as string) || null;
 		const businessName = formData.get('business_name') as string;
-		const priceAmount = formData.get('price_amount') as string;
 		const billingCycle = formData.get('billing_cycle') as string;
 		const isDefault = formData.get('is_default') === 'true';
 
-		// Validate required fields (live plan ID is required, sandbox is optional)
-		if (!paypalPlanIdLive || !businessName || !priceAmount || !billingCycle) {
-			return fail(400, { error: 'All fields are required (sandbox plan ID is optional)' });
+		// Validate required fields (price is auto-fetched from PayPal)
+		if (!paypalPlanIdLive || !businessName || !billingCycle) {
+			return fail(400, {
+				error: 'PayPal Plan ID, business name, and billing cycle are required'
+			});
 		}
 
 		// Validate PayPal Plan ID format (live)
@@ -60,12 +67,6 @@ export const actions: Actions = {
 			return fail(400, { error: 'Invalid Sandbox PayPal Plan ID format' });
 		}
 
-		// Validate price
-		const price = parseFloat(priceAmount);
-		if (isNaN(price) || price <= 0) {
-			return fail(400, { error: 'Price must be a positive number' });
-		}
-
 		// Validate billing cycle
 		if (!['monthly', 'annual'].includes(billingCycle)) {
 			return fail(400, { error: 'Invalid billing cycle' });
@@ -74,7 +75,7 @@ export const actions: Actions = {
 		// Get environment variables for PayPal API access
 		const env = await getEnv({ platform, cookies, request } as any);
 
-		// Validate plan exists in PayPal (for live plan ID)
+		// Fetch full plan details from PayPal (live) to extract pricing and trial info
 		const paypalEnvLive: PayPalEnv = {
 			PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID_LIVE || '',
 			PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET_LIVE || '',
@@ -83,14 +84,26 @@ export const actions: Actions = {
 			PAYPAL_MODE: 'live'
 		};
 
-		const liveValidation = await validatePayPalPlanExists(paypalEnvLive, paypalPlanIdLive);
-		if (!liveValidation.exists) {
+		const liveDetails = await getPayPalPlanDetails(paypalEnvLive, paypalPlanIdLive);
+		if (!liveDetails.success || !liveDetails.plan) {
 			return fail(400, {
-				error: `Live Plan ID not found in PayPal: ${liveValidation.error}`
+				error: `Failed to fetch Live plan from PayPal: ${liveDetails.error}`
 			});
 		}
 
-		// If sandbox plan ID provided, validate it too
+		// Parse billing cycles to extract pricing and trial info
+		let parsedInfo: ParsedTrialInfo;
+		try {
+			parsedInfo = parseBillingCycles(liveDetails.plan.billing_cycles);
+		} catch (err) {
+			console.error('[Admin] Error parsing billing cycles:', err);
+			return fail(400, {
+				error:
+					'Invalid PayPal plan structure: missing REGULAR billing cycle. Ensure the plan has a regular billing cycle configured.'
+			});
+		}
+
+		// If sandbox plan ID provided, validate it exists
 		if (paypalPlanIdSandbox) {
 			const paypalEnvSandbox: PayPalEnv = {
 				PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID_SANDBOX || '',
@@ -144,14 +157,16 @@ export const actions: Actions = {
 					.eq('is_default', true);
 			}
 
-			// Insert new plan
+			// Insert new plan with auto-fetched pricing and trial info
 			const { error: insertError } = await supabase.from('subscription_plans').insert({
 				paypal_plan_id_live: paypalPlanIdLive,
 				paypal_plan_id_sandbox: paypalPlanIdSandbox,
 				business_name: businessName,
-				price_amount: price,
+				price_amount: parsedInfo.regularPrice,
 				price_currency: 'USD',
 				billing_cycle: billingCycle,
+				trial_price_amount: parsedInfo.trialPriceAmount,
+				trial_duration_months: parsedInfo.trialDurationMonths,
 				is_default: isDefault,
 				is_active: true,
 				sort_order: 0
@@ -162,7 +177,14 @@ export const actions: Actions = {
 				return fail(500, { error: 'Failed to create plan' });
 			}
 
-			return { success: true, message: 'Plan created successfully' };
+			// Build descriptive success message
+			const trialMsg =
+				parsedInfo.trialPriceAmount !== null && parsedInfo.trialDurationMonths !== null
+					? `$${parsedInfo.trialPriceAmount}/mo for ${parsedInfo.trialDurationMonths} months, then `
+					: '';
+			const message = `Plan created: ${trialMsg}$${parsedInfo.regularPrice}/mo`;
+
+			return { success: true, message };
 		} catch (error) {
 			console.error('[Admin] Error creating plan:', error);
 			return fail(500, { error: 'Failed to create plan' });
@@ -181,24 +203,17 @@ export const actions: Actions = {
 		const planId = formData.get('plan_id') as string;
 		const paypalPlanIdSandbox = (formData.get('paypal_plan_id_sandbox') as string) || null;
 		const businessName = formData.get('business_name') as string;
-		const priceAmount = formData.get('price_amount') as string;
 		const billingCycle = formData.get('billing_cycle') as string;
 		const isDefault = formData.get('is_default') === 'true';
 
-		// Validate required fields
-		if (!planId || !businessName || !priceAmount || !billingCycle) {
-			return fail(400, { error: 'All fields are required' });
+		// Validate required fields (price and trial are immutable — tied to PayPal plan)
+		if (!planId || !businessName || !billingCycle) {
+			return fail(400, { error: 'Plan ID, business name, and billing cycle are required' });
 		}
 
 		// Validate PayPal Plan ID format (sandbox, if provided)
 		if (paypalPlanIdSandbox && !/^P-[A-Z0-9]{20,}$/.test(paypalPlanIdSandbox)) {
 			return fail(400, { error: 'Invalid Sandbox PayPal Plan ID format' });
-		}
-
-		// Validate price
-		const price = parseFloat(priceAmount);
-		if (isNaN(price) || price <= 0) {
-			return fail(400, { error: 'Price must be a positive number' });
 		}
 
 		// Validate billing cycle
@@ -254,13 +269,12 @@ export const actions: Actions = {
 					.neq('id', planId);
 			}
 
-			// Update plan (live plan ID is immutable after creation)
+			// Update plan (live plan ID, price, and trial fields are immutable after creation)
 			const { error: updateError } = await supabase
 				.from('subscription_plans')
 				.update({
 					paypal_plan_id_sandbox: paypalPlanIdSandbox,
 					business_name: businessName,
-					price_amount: price,
 					billing_cycle: billingCycle,
 					is_default: isDefault,
 					updated_at: new Date().toISOString()

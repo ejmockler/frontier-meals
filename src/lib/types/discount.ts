@@ -56,6 +56,12 @@ export interface SubscriptionPlan {
 	/** PayPal Plan ID for SANDBOX environment (nullable if not testing this plan) */
 	paypal_plan_id_sandbox: string | null;
 
+	/** Monthly price during trial period (can be 0 for free trial). NULL if no trial. */
+	trial_price_amount: number | null;
+
+	/** Number of months the trial lasts. NULL if no trial. */
+	trial_duration_months: number | null;
+
 	/** Whether this is the default plan when no discount code is used */
 	is_default: boolean;
 
@@ -282,6 +288,12 @@ export interface DiscountValidationResult {
 
 		/** Billing cycle */
 		billing_cycle: string;
+
+		/** Trial price if plan has trial period (null if no trial) */
+		trial_price?: number | null;
+
+		/** Trial duration in months if plan has trial period (null if no trial) */
+		trial_duration_months?: number | null;
 	};
 
 	/** Default plan price for strikethrough display (only if success=true) */

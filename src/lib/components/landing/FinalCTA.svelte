@@ -8,9 +8,18 @@
     onContact: () => void;
     loading?: boolean;
     price?: string;
+    trialPrice?: number | null;
+    trialDurationMonths?: number | null;
   }
 
-  let { onCheckout, onContact, loading = false, price = '$500/month' }: Props = $props();
+  let {
+    onCheckout,
+    onContact,
+    loading = false,
+    price = '$500/month',
+    trialPrice = null,
+    trialDurationMonths = null
+  }: Props = $props();
 </script>
 
 <Section background="recessed" spacing="compact">
@@ -32,6 +41,8 @@
         onPayPalCheckout={onCheckout}
         {loading}
         {price}
+        {trialPrice}
+        {trialDurationMonths}
       />
     </div>
 

@@ -29,7 +29,7 @@
 		/** Current plan price (for calculating discounted price) */
 		planPrice: number;
 		/** Callback when discount is successfully applied */
-		onDiscountApplied?: (reservationId: string, discountedPrice: number) => void;
+		onDiscountApplied?: (reservationId: string, discountedPrice: number, trialPrice?: number | null, trialDurationMonths?: number | null) => void;
 		/** Callback when discount is removed */
 		onDiscountRemoved?: () => void;
 		/** Optional customer email (for reservation) */
@@ -106,10 +106,15 @@
 				// Start countdown timer
 				startCountdown();
 
-				// Notify parent component with the discounted price (plan.price)
+				// Notify parent component with the discounted price and trial info
 				const discountedPrice = reservation.plan?.price;
 				if (onDiscountApplied && reservation.reservation_id && discountedPrice !== undefined) {
-					onDiscountApplied(reservation.reservation_id, discountedPrice);
+					onDiscountApplied(
+						reservation.reservation_id,
+						discountedPrice,
+						reservation.plan?.trial_price ?? null,
+						reservation.plan?.trial_duration_months ?? null
+					);
 				}
 			} else {
 				// Expired - show message instead of silently clearing
@@ -234,10 +239,15 @@
 				// Start countdown timer
 				startCountdown();
 
-				// Notify parent component with the discounted price (plan.price)
+				// Notify parent component with the discounted price and trial info
 				const discountedPrice = result.plan?.price;
 				if (onDiscountApplied && result.reservation_id && discountedPrice !== undefined) {
-					onDiscountApplied(result.reservation_id, discountedPrice);
+					onDiscountApplied(
+						result.reservation_id,
+						discountedPrice,
+						result.plan?.trial_price ?? null,
+						result.plan?.trial_duration_months ?? null
+					);
 				}
 			}
 		} catch (error) {

@@ -131,6 +131,8 @@
       onContact={handleContact}
       {loading}
       price={priceString}
+      trialPrice={data.trialPrice}
+      trialDurationMonths={data.trialDurationMonths}
     />
   </main>
 

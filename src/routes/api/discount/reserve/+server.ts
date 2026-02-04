@@ -254,6 +254,12 @@ export const POST: RequestHandler = async (event) => {
 			savings_percent: savingsPercent
 		});
 
+		// Extract trial fields from DB function result
+		const trialPrice = result.plan_trial_price !== null && result.plan_trial_price !== undefined
+			? Math.round(parseFloat(result.plan_trial_price) * 100) / 100
+			: null;
+		const trialDurationMonths = result.plan_trial_duration_months ?? null;
+
 		return json(
 			{
 				success: true,
@@ -262,7 +268,9 @@ export const POST: RequestHandler = async (event) => {
 					id: result.plan_id,
 					name: result.plan_name || 'Discounted Plan',
 					price: Math.round(planPrice * 100) / 100,
-					billing_cycle: result.plan_billing_cycle || 'monthly'
+					billing_cycle: result.plan_billing_cycle || 'monthly',
+					trial_price: trialPrice,
+					trial_duration_months: trialDurationMonths
 				},
 				original_price: Math.round(defaultPlanPrice * 100) / 100,
 				savings: Math.round(savings * 100) / 100,

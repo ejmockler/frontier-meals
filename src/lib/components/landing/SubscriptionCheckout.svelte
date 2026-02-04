@@ -20,13 +20,17 @@
 		loading?: boolean;
 		price?: string;
 		email?: string; // Customer email for discount reservations
+		trialPrice?: number | null;
+		trialDurationMonths?: number | null;
 	}
 
 	let {
 		onPayPalCheckout,
 		loading = false,
 		price = '$500/month',
-		email = ''
+		email = '',
+		trialPrice = null,
+		trialDurationMonths = null
 	}: Props = $props();
 
 	// Commitment threshold state
@@ -41,6 +45,21 @@
 	let discountedPrice = $state<number | undefined>(undefined);
 	let originalPrice = $state<number>(500); // Default price, extracted from price prop
 	let showPriceAnimation = $state(false);
+
+	// Trial state — initialized from props, can be overridden by discount code plan
+	let activeTrialPrice = $state<number | null>(trialPrice);
+	let activeTrialDuration = $state<number | null>(trialDurationMonths);
+
+	// Sync trial state from props
+	$effect(() => {
+		if (reservationId === undefined) {
+			activeTrialPrice = trialPrice;
+			activeTrialDuration = trialDurationMonths;
+		}
+	});
+
+	// Derived: plan has a trial period
+	let hasTrial = $derived(activeTrialPrice !== null && activeTrialDuration !== null);
 
 	// Extract numeric price from price string (e.g., "$500/month" -> 500)
 	$effect(() => {
@@ -93,11 +112,24 @@
 	}
 
 	/**
-	 * Handle discount code applied
+	 * Handle discount code applied (with optional trial info from discount plan)
 	 */
-	function handleDiscountApplied(resId: string, newPrice: number) {
+	function handleDiscountApplied(
+		resId: string,
+		newPrice: number,
+		discountTrialPrice?: number | null,
+		discountTrialDuration?: number | null
+	) {
 		reservationId = resId;
 		discountedPrice = newPrice;
+
+		// Override trial info if the discount plan has its own trial
+		if (discountTrialPrice !== undefined) {
+			activeTrialPrice = discountTrialPrice;
+		}
+		if (discountTrialDuration !== undefined) {
+			activeTrialDuration = discountTrialDuration;
+		}
 
 		// Trigger price animation
 		showPriceAnimation = true;
@@ -107,11 +139,13 @@
 	}
 
 	/**
-	 * Handle discount code removed
+	 * Handle discount code removed — revert to default plan trial info
 	 */
 	function handleDiscountRemoved() {
 		reservationId = undefined;
 		discountedPrice = undefined;
+		activeTrialPrice = trialPrice;
+		activeTrialDuration = trialDurationMonths;
 	}
 
 	/**
@@ -179,18 +213,30 @@
 				<span class="flex-shrink-0 w-6 h-6 bg-[#E67E50]/10 text-[#E67E50] rounded flex items-center justify-center text-sm font-bold">$</span>
 				<div class="flex-1">
 					<div class="font-medium text-[#1A1816]" class:price-updating={showPriceAnimation}>
-						{#if hasDiscount}
+						{#if hasTrial}
+							<span class="text-[#059669] font-semibold">${activeTrialPrice}/mo</span>
+							<span class="text-[#5C5A56] font-normal text-sm">for first {activeTrialDuration} {activeTrialDuration === 1 ? 'month' : 'months'}</span>
+						{:else if hasDiscount}
 							<span class="price-original">${originalPrice}/month</span>
 							<span class="price-discounted ml-2">${finalPrice}/month</span>
 						{:else}
 							{price}, billed monthly
 						{/if}
 					</div>
-					<p class="text-sm text-[#5C5A56]">First charge today</p>
-					{#if hasDiscount}
-						<p class="text-xs text-[#059669] mt-1 savings-badge inline-block">
-							You save: ${(originalPrice - finalPrice).toFixed(2)}
-						</p>
+					{#if hasTrial}
+						<p class="text-sm text-[#5C5A56]">Then ${hasDiscount ? finalPrice : originalPrice}/month, billed monthly</p>
+						{#if activeTrialPrice === 0}
+							<p class="text-xs text-[#059669] mt-1 savings-badge inline-block">Free trial!</p>
+						{:else}
+							<p class="text-xs text-[#059669] mt-1 savings-badge inline-block">Save during trial</p>
+						{/if}
+					{:else}
+						<p class="text-sm text-[#5C5A56]">First charge today</p>
+						{#if hasDiscount}
+							<p class="text-xs text-[#059669] mt-1 savings-badge inline-block">
+								You save: ${(originalPrice - finalPrice).toFixed(2)}
+							</p>
+						{/if}
 					{/if}
 				</div>
 			</li>

@@ -84,7 +84,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
   // ============================================================================
   // 2. Telegram Link - Welcome email with Telegram connection
   // Source: src/lib/email/templates/telegram-link.ts
-  // Variables: customer_name, telegram_handle, deep_link
+  // Variables: customer_name, deep_link
   // ============================================================================
   'telegram_link': {
     settings: {
@@ -134,7 +134,7 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
           {
             id: 'telegram_link-step-3',
             title: 'Get your daily QR code',
-            description: 'Every day at 12 PM PT via email'
+            description: 'Every day at 12 PM PT via Telegram'
           },
           {
             id: 'telegram_link-step-4',
@@ -142,11 +142,6 @@ export const SYSTEM_TEMPLATE_BLOCKS: Record<string, SystemTemplateDefinition> = 
             description: 'Scan your QR at any kiosk before 11:59 PM PT'
           }
         ] as Step[]
-      },
-      {
-        id: 'telegram_link-codeInline-1',
-        type: 'codeInline',
-        text: 'Your Telegram Handle: {{telegram_handle}}'
       },
       {
         id: 'telegram_link-infoBox-1',
