@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { LayoutData } from './$types';
-  import { page } from '$app/stores';
+  import { page, navigating } from '$app/stores';
   import { enhance } from '$app/forms';
   import { toasts } from '$lib/stores/toast';
   import { fly } from 'svelte/transition';
@@ -10,6 +10,13 @@
   // Check if we're on an auth page
   $: isAuthPage = $page.url.pathname.startsWith('/admin/auth');
 </script>
+
+<!-- Global navigation loading indicator -->
+{#if $navigating}
+  <div class="fixed top-0 left-0 right-0 h-1 bg-[#E67E50]/20 z-50 overflow-hidden">
+    <div class="h-full bg-[#E67E50] animate-progress-indeterminate"></div>
+  </div>
+{/if}
 
 {#if isAuthPage}
   <!-- Auth pages: minimal layout -->
@@ -171,5 +178,25 @@
 
   :global(button:disabled) {
     cursor: not-allowed;
+  }
+
+  /* Navigation loading indicator animation */
+  @keyframes progress-indeterminate {
+    0% {
+      transform: translateX(-100%);
+      width: 30%;
+    }
+    50% {
+      transform: translateX(100%);
+      width: 60%;
+    }
+    100% {
+      transform: translateX(300%);
+      width: 30%;
+    }
+  }
+
+  .animate-progress-indeterminate {
+    animation: progress-indeterminate 1.5s ease-in-out infinite;
   }
 </style>
