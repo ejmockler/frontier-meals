@@ -15,9 +15,6 @@ import type { RequestEvent } from '@sveltejs/kit';
 // Type for the secrets we need
 export interface ServerEnv {
 	SUPABASE_SERVICE_ROLE_KEY: string;
-	STRIPE_SECRET_KEY: string;
-	STRIPE_WEBHOOK_SECRET: string;
-	STRIPE_PRICE_ID: string;
 	TELEGRAM_BOT_TOKEN: string;
 	TELEGRAM_SECRET_TOKEN: string;
 	RESEND_API_KEY: string;
@@ -31,14 +28,6 @@ export interface ServerEnv {
 	KIOSK_PUBLIC_KEY: string;
 	SITE_URL: string;
 	DEMO_MODE?: string;
-	// Dual-mode Stripe Config
-	STRIPE_MODE?: 'live' | 'test';
-	STRIPE_SECRET_KEY_LIVE?: string;
-	STRIPE_SECRET_KEY_TEST?: string;
-	STRIPE_WEBHOOK_SECRET_LIVE?: string;
-	STRIPE_WEBHOOK_SECRET_TEST?: string;
-	STRIPE_PRICE_ID_LIVE?: string;
-	STRIPE_PRICE_ID_TEST?: string;
 	// PayPal Config (resolved values)
 	PAYPAL_CLIENT_ID?: string;
 	PAYPAL_CLIENT_SECRET?: string;
@@ -68,21 +57,11 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 	if (event.platform?.env) {
 		const env = event.platform.env as ServerEnv;
 
-		// Apply Stripe Mode Logic for Cloudflare (trim to handle potential whitespace)
-		const stripeMode = env.STRIPE_MODE?.trim().toLowerCase();
-		const isStripeTest = stripeMode === 'test';
-
 		// Apply PayPal Mode Logic for Cloudflare
 		const paypalMode = env.PAYPAL_MODE?.trim().toLowerCase();
 		const isPayPalSandbox = paypalMode === 'sandbox';
 
-		console.log(`[Env] Stripe Mode: ${stripeMode}, isTest: ${isStripeTest}`);
 		console.log(`[Env] PayPal Mode: ${paypalMode}, isSandbox: ${isPayPalSandbox}`);
-
-		const pickStripe = (base: string, test?: string, live?: string) => {
-			if (isStripeTest) return test || base;
-			return live || base;
-		};
 
 		const pickPayPal = (credName: string, sandbox?: string, live?: string) => {
 			if (isPayPalSandbox) {
@@ -99,14 +78,6 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 
 		return {
 			...env,
-			// Stripe resolved values
-			STRIPE_SECRET_KEY: pickStripe(env.STRIPE_SECRET_KEY, env.STRIPE_SECRET_KEY_TEST, env.STRIPE_SECRET_KEY_LIVE),
-			STRIPE_WEBHOOK_SECRET: pickStripe(
-				env.STRIPE_WEBHOOK_SECRET,
-				env.STRIPE_WEBHOOK_SECRET_TEST,
-				env.STRIPE_WEBHOOK_SECRET_LIVE
-			),
-			STRIPE_PRICE_ID: pickStripe(env.STRIPE_PRICE_ID, env.STRIPE_PRICE_ID_TEST, env.STRIPE_PRICE_ID_LIVE),
 			// PayPal resolved values
 			PAYPAL_CLIENT_ID: pickPayPal('PAYPAL_CLIENT_ID', env.PAYPAL_CLIENT_ID_SANDBOX, env.PAYPAL_CLIENT_ID_LIVE),
 			PAYPAL_CLIENT_SECRET: pickPayPal('PAYPAL_CLIENT_SECRET', env.PAYPAL_CLIENT_SECRET_SANDBOX, env.PAYPAL_CLIENT_SECRET_LIVE),
@@ -120,9 +91,6 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 		const privateEnv = await import('$env/static/private');
 		localEnvCache = {
 			SUPABASE_SERVICE_ROLE_KEY: privateEnv.SUPABASE_SERVICE_ROLE_KEY,
-			STRIPE_SECRET_KEY: privateEnv.STRIPE_SECRET_KEY,
-			STRIPE_WEBHOOK_SECRET: privateEnv.STRIPE_WEBHOOK_SECRET,
-			STRIPE_PRICE_ID: privateEnv.STRIPE_PRICE_ID,
 			TELEGRAM_BOT_TOKEN: privateEnv.TELEGRAM_BOT_TOKEN,
 			TELEGRAM_SECRET_TOKEN: privateEnv.TELEGRAM_SECRET_TOKEN,
 			RESEND_API_KEY: privateEnv.RESEND_API_KEY,
@@ -136,13 +104,6 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 			KIOSK_PUBLIC_KEY: privateEnv.KIOSK_PUBLIC_KEY,
 			SITE_URL: privateEnv.SITE_URL,
 			DEMO_MODE: privateEnv.DEMO_MODE,
-			STRIPE_MODE: (privateEnv as any).STRIPE_MODE as 'live' | 'test',
-			STRIPE_SECRET_KEY_LIVE: (privateEnv as any).STRIPE_SECRET_KEY_LIVE,
-			STRIPE_SECRET_KEY_TEST: (privateEnv as any).STRIPE_SECRET_KEY_TEST,
-			STRIPE_WEBHOOK_SECRET_LIVE: (privateEnv as any).STRIPE_WEBHOOK_SECRET_LIVE,
-			STRIPE_WEBHOOK_SECRET_TEST: (privateEnv as any).STRIPE_WEBHOOK_SECRET_TEST,
-			STRIPE_PRICE_ID_LIVE: (privateEnv as any).STRIPE_PRICE_ID_LIVE,
-			STRIPE_PRICE_ID_TEST: (privateEnv as any).STRIPE_PRICE_ID_TEST,
 			// PayPal Config - normalize to lowercase for consistent comparisons
 			PAYPAL_MODE: ((privateEnv as any).PAYPAL_MODE?.toLowerCase() || 'sandbox') as 'sandbox' | 'live',
 			PAYPAL_CLIENT_ID_LIVE: (privateEnv as any).PAYPAL_CLIENT_ID_LIVE,
@@ -156,20 +117,10 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 		};
 	}
 
-	// Apply Stripe Mode Logic
-	const env = localEnvCache as ServerEnv;
-	const stripeMode = env.STRIPE_MODE?.trim().toLowerCase();
-	const isStripeTest = stripeMode === 'test';
-
 	// Apply PayPal Mode Logic
+	const env = localEnvCache as ServerEnv;
 	const paypalMode = env.PAYPAL_MODE?.trim().toLowerCase();
 	const isPayPalSandbox = paypalMode === 'sandbox';
-
-	// Helper to pick key based on mode
-	const pickStripe = (base: string, test?: string, live?: string) => {
-		if (isStripeTest) return test || base;
-		return live || base;
-	};
 
 	const pickPayPal = (credName: string, sandbox?: string, live?: string) => {
 		if (isPayPalSandbox) {
@@ -186,14 +137,6 @@ export async function getEnv(event: RequestEvent): Promise<ServerEnv> {
 
 	return {
 		...env,
-		// Stripe resolved values
-		STRIPE_SECRET_KEY: pickStripe(env.STRIPE_SECRET_KEY, env.STRIPE_SECRET_KEY_TEST, env.STRIPE_SECRET_KEY_LIVE),
-		STRIPE_WEBHOOK_SECRET: pickStripe(
-			env.STRIPE_WEBHOOK_SECRET,
-			env.STRIPE_WEBHOOK_SECRET_TEST,
-			env.STRIPE_WEBHOOK_SECRET_LIVE
-		),
-		STRIPE_PRICE_ID: pickStripe(env.STRIPE_PRICE_ID, env.STRIPE_PRICE_ID_TEST, env.STRIPE_PRICE_ID_LIVE),
 		// PayPal resolved values
 		PAYPAL_CLIENT_ID: pickPayPal('PAYPAL_CLIENT_ID', env.PAYPAL_CLIENT_ID_SANDBOX, env.PAYPAL_CLIENT_ID_LIVE),
 		PAYPAL_CLIENT_SECRET: pickPayPal('PAYPAL_CLIENT_SECRET', env.PAYPAL_CLIENT_SECRET_SANDBOX, env.PAYPAL_CLIENT_SECRET_LIVE),

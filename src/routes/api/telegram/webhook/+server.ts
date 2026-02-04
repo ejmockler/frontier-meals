@@ -5,7 +5,6 @@ import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { todayInPT, isSkipEligibleForReimbursement } from '$lib/utils/timezone';
 import { sha256, timingSafeEqual } from '$lib/utils/crypto';
 import { getEnv, type ServerEnv } from '$lib/server/env';
-import Stripe from 'stripe';
 import { checkRateLimit } from '$lib/utils/rate-limit';
 import { sendEmail } from '$lib/email/send';
 import { renderTemplate } from '$lib/email/templates';
@@ -13,7 +12,6 @@ import { renderTemplate } from '$lib/email/templates';
 // Request-scoped context for clients and env
 interface RequestContext {
   supabase: SupabaseClient;
-  stripe: Stripe;
   env: ServerEnv;
 }
 
@@ -381,11 +379,7 @@ export const POST: RequestHandler = async (event) => {
   // Create request-scoped context with clients
   const ctx: RequestContext = {
     env,
-    supabase: createClient(PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
-    stripe: new Stripe(env.STRIPE_SECRET_KEY, {
-      apiVersion: '2025-12-15.clover',
-      typescript: true
-    })
+    supabase: createClient(PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
   };
 
   const update: TelegramUpdate = await request.json();
@@ -1893,60 +1887,6 @@ async function handleBillingCommand(ctx: RequestContext, chatId: number) {
       subject: `customer:${customer.id}`,
       metadata: { payment_provider: 'paypal' }
     });
-
-    return;
-  }
-
-  if (provider === 'stripe') {
-    // Stripe flow: Generate billing portal session
-    if (!customer.stripe_customer_id) {
-      await sendMessage(
-        ctx,
-        chatId,
-        'Can\'t find your billing account.\n\nSomething\'s off — message @noahchonlee and we\'ll sort it out.'
-      );
-      return;
-    }
-
-    try {
-      // Generate Stripe Customer Portal session (expires in 30 minutes)
-      const portalSession = await ctx.stripe.billingPortal.sessions.create({
-        customer: customer.stripe_customer_id,
-        return_url: 'https://frontier-meals.com'
-      });
-
-      // Send message with inline button
-      await sendMessage(
-        ctx,
-        chatId,
-        '💳 Manage Your Subscription\n\n• Update payment method\n• View billing history\n• Pause or cancel\n\nTap below to open your portal (expires in 30 min):',
-        {
-          inline_keyboard: [
-            [
-              {
-                text: '💳 Open Billing Portal',
-                url: portalSession.url
-              }
-            ]
-          ]
-        }
-      );
-
-      // Log audit event
-      await ctx.supabase.from('audit_log').insert({
-        actor: `customer:${customer.id}`,
-        action: 'billing_portal_accessed',
-        subject: `customer:${customer.id}`,
-        metadata: { portal_session_id: portalSession.id, payment_provider: 'stripe' }
-      });
-    } catch (error) {
-      console.error('[Telegram] Error creating portal session:', error);
-      await sendMessage(
-        ctx,
-        chatId,
-        'Something went wrong.\n\nTry again? If it keeps happening, ping @noahchonlee.'
-      );
-    }
 
     return;
   }

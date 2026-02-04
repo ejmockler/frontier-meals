@@ -33,9 +33,6 @@ declare global {
 		interface Platform {
 			env: {
 				SUPABASE_SERVICE_ROLE_KEY: string;
-				STRIPE_SECRET_KEY: string;
-				STRIPE_WEBHOOK_SECRET: string;
-				STRIPE_PRICE_ID: string;
 				TELEGRAM_BOT_TOKEN: string;
 				TELEGRAM_SECRET_TOKEN: string;
 				RESEND_API_KEY: string;

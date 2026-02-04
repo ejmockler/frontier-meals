@@ -8,7 +8,6 @@ pages_build_output_dir = ".svelte-kit/cloudflare"
 PUBLIC_SITE_URL = "https://frontier-meals.pages.dev"
 PUBLIC_SUPABASE_URL = "https://pfnzaluegtxyfsspjmof.supabase.co"
 PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_rnrAvb3tthXs5WEEgqiPIw_LGVhhXWL"
-PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_51SXVLZLerddLeJrdfyxRaTL6uHayv9q4I0dWumvTs14UfvXIvDDYkZeWHYqGjcmrwIc72NKCvkwhrbW6Z5mVIcsX00XOSw2HqS"
 
 # Runtime secrets (set via: npx wrangler pages secret put <NAME> --project-name frontier-meals)
 #
@@ -29,15 +28,6 @@ PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_51SXVLZLerddLeJrdfyxRaTL6uHayv9q4I0dWum
 # - QR_PUBLIC_KEY
 # - KIOSK_PRIVATE_KEY
 # - KIOSK_PUBLIC_KEY
-#
-# Stripe (toggle via STRIPE_MODE: 'live' | 'test'):
-# - STRIPE_MODE
-# - STRIPE_SECRET_KEY_LIVE
-# - STRIPE_SECRET_KEY_TEST
-# - STRIPE_WEBHOOK_SECRET_LIVE
-# - STRIPE_WEBHOOK_SECRET_TEST
-# - STRIPE_PRICE_ID_LIVE
-# - STRIPE_PRICE_ID_TEST
 #
 # PayPal (toggle via PAYPAL_MODE: 'live' | 'sandbox'):
 # - PAYPAL_MODE
