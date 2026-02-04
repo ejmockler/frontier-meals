@@ -1,14 +1,13 @@
--- Migration: 20260202700000_fix_telegram_link_template.sql
--- Date: 2026-02-02
--- Purpose: Remove telegram_handle from welcome email (it's not set yet at this point)
+-- Migration: Fix telegram_link template (correct slug)
+-- Date: 2026-02-04
 --
--- Problem: The telegram-link template shows "Your Telegram Handle: {{telegram_handle}}"
--- but this email is sent immediately after subscription activation, BEFORE the user
--- connects Telegram. So telegram_handle is always empty/undefined.
+-- Problem: Migration 20260202700000 used wrong slug 'telegram-link' (hyphen)
+-- but the actual template slug is 'telegram_link' (underscore).
+-- This caused the template to not be updated, leaving {{telegram_handle}}
+-- in the welcome email - which is never set at subscription time.
 --
--- Solution: Remove the telegram_handle display section and mark it as not required.
+-- This migration applies the same fix with the correct slug.
 
--- Update the telegram-link template to remove the telegram_handle section
 UPDATE email_templates
 SET
   html_body = '<!DOCTYPE html>
@@ -129,4 +128,4 @@ SET
     {"name": "deep_link", "type": "string", "description": "Telegram bot deep link URL", "required": true}
   ]'::jsonb,
   updated_at = NOW()
-WHERE slug = 'telegram_link' AND version = 1;
+WHERE slug = 'telegram_link';
