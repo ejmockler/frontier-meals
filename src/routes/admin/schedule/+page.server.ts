@@ -32,6 +32,26 @@ function isValidRecurrenceRule(rule: unknown): rule is RecurrenceRule {
 	);
 }
 
+async function fetchHolidays(supabase: any) {
+	const { data: exceptions } = await supabase
+		.from('service_exceptions')
+		.select('*')
+		.eq('type', 'holiday')
+		.order('date', { ascending: true });
+
+	return exceptions || [];
+}
+
+async function fetchSpecialEvents(supabase: any) {
+	const { data: exceptions } = await supabase
+		.from('service_exceptions')
+		.select('*')
+		.eq('type', 'special_event')
+		.order('date', { ascending: true });
+
+	return exceptions || [];
+}
+
 export const load: PageServerLoad = async ({ locals: { supabase }, parent, depends }) => {
 	depends('app:schedule-config');
 	depends('app:schedule-exceptions');
@@ -45,20 +65,10 @@ export const load: PageServerLoad = async ({ locals: { supabase }, parent, depen
 		.select('*')
 		.single();
 
-	// Load all service exceptions
-	const { data: exceptions } = await supabase
-		.from('service_exceptions')
-		.select('*')
-		.order('date', { ascending: true });
-
-	// Separate holidays and special events
-	const holidays = exceptions?.filter((e) => e.type === 'holiday') || [];
-	const specialEvents = exceptions?.filter((e) => e.type === 'special_event') || [];
-
 	return {
 		config: config || { service_days: [1, 2, 3, 4, 5] },
-		holidays,
-		specialEvents,
+		holidays: fetchHolidays(supabase),
+		specialEvents: fetchSpecialEvents(supabase),
 		// Stream this - don't await (only used for display in notification modal)
 		activeCustomerCount: getActiveCustomerCount(supabase)
 	};

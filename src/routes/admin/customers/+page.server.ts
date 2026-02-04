@@ -13,25 +13,24 @@ import { getAdminSession } from '$lib/auth/session';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-export const load: PageServerLoad = async ({ url, depends }) => {
-  depends('app:customers');
-  const search = url.searchParams.get('search') || '';
-  const status = url.searchParams.get('status') || 'all';
-
+// Async function that fetches customers - returns a Promise
+async function fetchCustomers(search: string, status: string) {
   let query = supabase
     .from('customers')
     .select('*, subscriptions(*), telegram_link_status(*)')
     .order('created_at', { ascending: false });
 
   if (search) {
-    query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%,telegram_handle.ilike.%${search}%`);
+    // Escape special characters for safety
+    const escapedSearch = search.replace(/[%_]/g, '\\$&');
+    query = query.or(`email.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,telegram_handle.ilike.%${escapedSearch}%`);
   }
 
   const { data: customers, error } = await query;
 
   if (error) {
     console.error('[Admin] Error fetching customers:', error);
-    return { customers: [] };
+    return [];
   }
 
   // Filter by subscription status if specified
@@ -43,7 +42,20 @@ export const load: PageServerLoad = async ({ url, depends }) => {
     });
   }
 
-  return { customers: filteredCustomers, search, status };
+  return filteredCustomers;
+}
+
+export const load: PageServerLoad = async ({ url, depends }) => {
+  depends('app:customers');
+  const search = url.searchParams.get('search') || '';
+  const status = url.searchParams.get('status') || 'all';
+
+  // Return promise without awaiting - enables streaming/skeleton display
+  return {
+    customers: fetchCustomers(search, status),
+    search,
+    status
+  };
 };
 
 export const actions: Actions = {

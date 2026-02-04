@@ -17,10 +17,7 @@ import { getEnv } from '$lib/server/env';
 
 const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-export const load: PageServerLoad = async ({ depends }) => {
-	depends('app:subscription-plans');
-
-	// Fetch all subscription plans
+async function fetchPlans() {
 	const { data: plans, error } = await supabase
 		.from('subscription_plans')
 		.select('*')
@@ -28,10 +25,16 @@ export const load: PageServerLoad = async ({ depends }) => {
 
 	if (error) {
 		console.error('[Admin] Error fetching subscription plans:', error);
-		return { plans: [] };
+		return [];
 	}
 
-	return { plans: plans as SubscriptionPlan[] };
+	return (plans || []) as SubscriptionPlan[];
+}
+
+export const load: PageServerLoad = async ({ depends }) => {
+	depends('app:subscription-plans');
+
+	return { plans: fetchPlans() };
 };
 
 export const actions: Actions = {
@@ -290,6 +293,96 @@ export const actions: Actions = {
 		} catch (error) {
 			console.error('[Admin] Error updating plan:', error);
 			return fail(500, { error: 'Failed to update plan' });
+		}
+	},
+
+	syncPlan: async ({ request, cookies, platform }) => {
+		const formData = await request.formData();
+
+		// Validate CSRF
+		const session = await getAdminSession(cookies);
+		if (!session || !(await validateCSRFFromFormData(formData, session.sessionId))) {
+			return fail(403, { error: 'Invalid CSRF token' });
+		}
+
+		const planId = formData.get('plan_id') as string;
+		if (!planId) {
+			return fail(400, { error: 'Plan ID is required' });
+		}
+
+		try {
+			// Fetch the plan from database
+			const { data: plan, error: fetchError } = await supabase
+				.from('subscription_plans')
+				.select('*')
+				.eq('id', planId)
+				.single();
+
+			if (fetchError || !plan) {
+				return fail(404, { error: 'Plan not found' });
+			}
+
+			if (!plan.paypal_plan_id_live) {
+				return fail(400, { error: 'Plan has no Live PayPal Plan ID' });
+			}
+
+			// Get environment variables for PayPal API access
+			const env = await getEnv({ platform, cookies, request } as any);
+
+			const paypalEnv: PayPalEnv = {
+				PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID_LIVE || '',
+				PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET_LIVE || '',
+				PAYPAL_WEBHOOK_ID: env.PAYPAL_WEBHOOK_ID_LIVE || '',
+				PAYPAL_PLAN_ID: '',
+				PAYPAL_MODE: 'live'
+			};
+
+			const details = await getPayPalPlanDetails(paypalEnv, plan.paypal_plan_id_live);
+			if (!details.success || !details.plan) {
+				return fail(400, {
+					error: `Failed to fetch plan from PayPal: ${details.error}`
+				});
+			}
+
+			// Parse billing cycles to extract pricing and trial info
+			let parsedInfo: ParsedTrialInfo;
+			try {
+				parsedInfo = parseBillingCycles(details.plan.billing_cycles);
+			} catch (err) {
+				console.error('[Admin] Error parsing billing cycles:', err);
+				return fail(400, {
+					error: 'Invalid PayPal plan structure: missing REGULAR billing cycle.'
+				});
+			}
+
+			// Update the plan with synced pricing and trial info
+			const { error: updateError } = await supabase
+				.from('subscription_plans')
+				.update({
+					price_amount: parsedInfo.regularPrice,
+					trial_price_amount: parsedInfo.trialPriceAmount,
+					trial_duration_months: parsedInfo.trialDurationMonths,
+					updated_at: new Date().toISOString()
+				})
+				.eq('id', planId);
+
+			if (updateError) {
+				console.error('[Admin] Error syncing plan:', updateError);
+				return fail(500, { error: 'Failed to update plan' });
+			}
+
+			const trialMsg =
+				parsedInfo.trialPriceAmount != null && parsedInfo.trialDurationMonths != null
+					? ` | Trial: $${parsedInfo.trialPriceAmount}/mo for ${parsedInfo.trialDurationMonths} months`
+					: ' | No trial period';
+
+			return {
+				success: true,
+				message: `Synced from PayPal: $${parsedInfo.regularPrice}/mo${trialMsg}`
+			};
+		} catch (error) {
+			console.error('[Admin] Error syncing plan:', error);
+			return fail(500, { error: 'Failed to sync plan from PayPal' });
 		}
 	},
 

@@ -57,12 +57,10 @@ async function getStatusCounts(supabase: SupabaseClient) {
   }, {} as Record<string, number>) || {};
 }
 
-export const load: PageServerLoad = async ({ depends }) => {
-  depends('admin:dashboard'); // Mark for selective invalidation
-
+// Helper function to fetch metrics (for streaming)
+async function fetchMetrics() {
   const today = new Date().toISOString().split('T')[0];
 
-  // Fetch only critical metrics (block rendering on these)
   const [
     { count: totalCustomers },
     { count: activeSubscriptions },
@@ -73,14 +71,19 @@ export const load: PageServerLoad = async ({ depends }) => {
     supabase.from('redemptions').select('*', { count: 'exact', head: true }).eq('service_date', today)
   ]);
 
-  // Return critical data immediately, stream secondary data
   return {
-    metrics: {
-      totalCustomers: totalCustomers || 0,
-      activeSubscriptions: activeSubscriptions || 0,
-      todayRedemptions: todayRedemptions || 0
-    },
-    // These will stream - no await
+    totalCustomers: totalCustomers || 0,
+    activeSubscriptions: activeSubscriptions || 0,
+    todayRedemptions: todayRedemptions || 0
+  };
+}
+
+export const load: PageServerLoad = async ({ depends }) => {
+  depends('admin:dashboard'); // Mark for selective invalidation
+
+  // Return all data as streaming promises - enables skeleton loaders
+  return {
+    metrics: fetchMetrics(),
     recentActivity: enrichActivityLog(supabase),
     statusCounts: getStatusCounts(supabase)
   };

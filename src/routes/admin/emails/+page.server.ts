@@ -23,25 +23,27 @@ async function getStaffIdFromSession(email: string): Promise<string | null> {
   return data?.id || null;
 }
 
-export const load: PageServerLoad = async ({ depends }) => {
-  depends('app:email-templates');
-
-  // Get only active templates for the main view
-  // Include blocks_json for Block Editor support
+async function fetchTemplates() {
   const { data: templates } = await supabase
     .from('email_templates')
     .select('id, slug, version, subject, html_body, blocks_json, variables_schema, is_active, is_system, created_at, created_by')
     .eq('is_active', true)
     .order('created_at', { ascending: false });
 
+  return (templates || []).map(t => ({
+    ...t,
+    // Ensure these fields are included
+    is_system: t.is_system ?? false,
+    variables_schema: t.variables_schema ?? {},
+    blocks_json: t.blocks_json ?? null
+  }));
+}
+
+export const load: PageServerLoad = async ({ depends }) => {
+  depends('app:email-templates');
+
   return {
-    templates: (templates || []).map(t => ({
-      ...t,
-      // Ensure these fields are included
-      is_system: t.is_system ?? false,
-      variables_schema: t.variables_schema ?? {},
-      blocks_json: t.blocks_json ?? null
-    }))
+    templates: fetchTemplates()
   };
 };
 
