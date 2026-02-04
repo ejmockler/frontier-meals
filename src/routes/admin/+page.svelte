@@ -149,64 +149,118 @@
   </div>
 
   <!-- Key metrics grid -->
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    <!-- Total customers -->
-    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm font-medium text-[#5C5A56]">Total Customers</p>
-          <p class="text-3xl font-extrabold tracking-tight text-[#1A1816] mt-2">{data.metrics.totalCustomers}</p>
-        </div>
-        <div class="w-12 h-12 bg-[#2D9B9B] border-2 border-[#2D9B9B]/70 rounded-sm flex items-center justify-center">
-          <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
+  {#await data.metrics}
+    <!-- Skeleton loading state for metrics -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <!-- Total customers skeleton -->
+      <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-[#5C5A56]">Total Customers</p>
+            <div class="h-9 w-20 bg-[#E8E6E1] rounded animate-pulse mt-2"></div>
+          </div>
+          <div class="w-12 h-12 bg-[#2D9B9B] border-2 border-[#2D9B9B]/70 rounded-sm flex items-center justify-center">
+            <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Active subscriptions -->
-    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm font-medium text-[#5C5A56]">Active Subscriptions</p>
-          <p class="text-3xl font-extrabold tracking-tight text-[#1A1816] mt-2">{data.metrics.activeSubscriptions}</p>
+      <!-- Active subscriptions skeleton -->
+      <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-[#5C5A56]">Active Subscriptions</p>
+            <div class="h-9 w-16 bg-[#E8E6E1] rounded animate-pulse mt-2"></div>
+          </div>
+          <div class="w-12 h-12 bg-[#52A675] border-2 border-[#52A675]/70 rounded-sm flex items-center justify-center">
+            <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
         </div>
-        <div class="w-12 h-12 bg-[#52A675] border-2 border-[#52A675]/70 rounded-sm flex items-center justify-center">
-          <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+        <div class="mt-4">
+          <div class="h-4 w-32 bg-[#E8E6E1] rounded animate-pulse"></div>
         </div>
       </div>
-      <div class="mt-4 flex items-center text-sm">
-        {#await data.statusCounts}
-          <span class="text-[#8E8C87] animate-pulse">Loading status...</span>
-        {:then statusCounts}
-          <span class="text-[#5C5A56]">
-            {statusCounts.past_due || 0} past due,
-            {statusCounts.canceled || 0} canceled
-          </span>
-        {:catch}
-          <span class="text-[#C85454]">Failed to load</span>
-        {/await}
-      </div>
-    </div>
 
-    <!-- Today's redemptions -->
-    <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm font-medium text-[#5C5A56]">Today's Redemptions</p>
-          <p class="text-3xl font-extrabold tracking-tight text-[#1A1816] mt-2">{data.metrics.todayRedemptions}</p>
-        </div>
-        <div class="w-12 h-12 bg-[#E67E50] border-2 border-[#D97F3E] rounded-sm flex items-center justify-center">
-          <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+      <!-- Today's redemptions skeleton -->
+      <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-[#5C5A56]">Today's Redemptions</p>
+            <div class="h-9 w-12 bg-[#E8E6E1] rounded animate-pulse mt-2"></div>
+          </div>
+          <div class="w-12 h-12 bg-[#E67E50] border-2 border-[#D97F3E] rounded-sm flex items-center justify-center">
+            <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  {:then metrics}
+    <!-- Loaded metrics -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <!-- Total customers -->
+      <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-[#5C5A56]">Total Customers</p>
+            <p class="text-3xl font-extrabold tracking-tight text-[#1A1816] mt-2">{metrics.totalCustomers}</p>
+          </div>
+          <div class="w-12 h-12 bg-[#2D9B9B] border-2 border-[#2D9B9B]/70 rounded-sm flex items-center justify-center">
+            <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active subscriptions -->
+      <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-[#5C5A56]">Active Subscriptions</p>
+            <p class="text-3xl font-extrabold tracking-tight text-[#1A1816] mt-2">{metrics.activeSubscriptions}</p>
+          </div>
+          <div class="w-12 h-12 bg-[#52A675] border-2 border-[#52A675]/70 rounded-sm flex items-center justify-center">
+            <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+        </div>
+        <div class="mt-4 flex items-center text-sm">
+          {#await data.statusCounts}
+            <span class="text-[#8E8C87] animate-pulse">Loading status...</span>
+          {:then statusCounts}
+            <span class="text-[#5C5A56]">
+              {statusCounts.past_due || 0} past due,
+              {statusCounts.canceled || 0} canceled
+            </span>
+          {:catch}
+            <span class="text-[#C85454]">Failed to load</span>
+          {/await}
+        </div>
+      </div>
+
+      <!-- Today's redemptions -->
+      <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-[#5C5A56]">Today's Redemptions</p>
+            <p class="text-3xl font-extrabold tracking-tight text-[#1A1816] mt-2">{metrics.todayRedemptions}</p>
+          </div>
+          <div class="w-12 h-12 bg-[#E67E50] border-2 border-[#D97F3E] rounded-sm flex items-center justify-center">
+            <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/await}
 
   <!-- Quick actions -->
   <div class="bg-[#E67E50] border-2 border-[#D97F3E] rounded-sm p-6 text-white shadow-lg">

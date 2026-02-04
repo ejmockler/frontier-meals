@@ -7,25 +7,25 @@
 	export let form;
 
 	// Form state - initialize from loaded discount
-	let code = data.discount.code;
-	let plan_id = data.discount.plan_id;
-	let max_uses = data.discount.max_uses?.toString() || '';
-	let valid_until = data.discount.valid_until
+	let code = data.discount?.code || '';
+	let plan_id = data.discount?.plan_id || '';
+	let max_uses = data.discount?.max_uses?.toString() || '';
+	let valid_until = data.discount?.valid_until
 		? data.discount.valid_until.split('T')[0]
 		: '';
-	let max_uses_per_customer = data.discount.max_uses_per_customer;
-	let admin_notes = data.discount.admin_notes || '';
-	let is_active = data.discount.is_active;
+	let max_uses_per_customer = data.discount?.max_uses_per_customer || 1;
+	let admin_notes = data.discount?.admin_notes || '';
+	let is_active = data.discount?.is_active ?? true;
 	let showLimits = !!(max_uses || valid_until);
 	let showDeleteConfirm = false;
 	let isSubmitting = false;
 	let isDeleting = false;
 
 	// Selected plan for preview
-	$: selectedPlan = data.plans.find((p) => p.id === plan_id);
+	$: selectedPlan = data.plans?.find((p) => p.id === plan_id);
 
 	// Default plan for calculating savings
-	$: defaultPlan = data.plans.find((p) => p.is_default);
+	$: defaultPlan = data.plans?.find((p) => p.is_default);
 
 	// Calculate savings from price delta
 	$: savings = defaultPlan && selectedPlan ? Math.max(0, defaultPlan.price_amount - selectedPlan.price_amount) : 0;
@@ -55,9 +55,13 @@
 			<h1 class="text-3xl font-extrabold tracking-tight text-[#1A1816]">
 				Edit Discount Code
 			</h1>
-			<p class="text-[#5C5A56] mt-2">
-				Modify settings for code: <strong>{data.discount.code}</strong>
-			</p>
+			{#if !data.discount}
+				<div class="h-5 w-64 bg-[#E8E6E1] rounded animate-pulse mt-2"></div>
+			{:else}
+				<p class="text-[#5C5A56] mt-2">
+					Modify settings for code: <strong>{data.discount.code}</strong>
+				</p>
+			{/if}
 		</div>
 		<button
 			on:click={cancel}
@@ -78,63 +82,154 @@
 
 	<!-- Usage stats banner -->
 	<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-4 shadow-lg">
-		<div class="flex items-center justify-between gap-4">
-			<div class="flex items-center gap-6">
-				<div>
-					<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wide">
-						Total Uses
-					</p>
-					<p class="text-2xl font-extrabold text-[#1A1816]">
-						{data.discount.current_uses}
-						{#if data.discount.max_uses}
-							<span class="text-sm text-[#5C5A56]">
-								/ {data.discount.max_uses}
-							</span>
-						{/if}
-					</p>
+		{#if !data.discount}
+			<div class="flex items-center justify-between gap-4">
+				<div class="flex items-center gap-6">
+					<div>
+						<div class="h-3 w-20 bg-[#E8E6E1] rounded animate-pulse mb-2"></div>
+						<div class="h-8 w-12 bg-[#E8E6E1] rounded animate-pulse"></div>
+					</div>
+					<div>
+						<div class="h-3 w-16 bg-[#E8E6E1] rounded animate-pulse mb-2"></div>
+						<div class="h-8 w-8 bg-[#E8E6E1] rounded animate-pulse"></div>
+					</div>
 				</div>
-				<div>
-					<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wide">
-						Reserved
-					</p>
-					<p class="text-2xl font-extrabold text-[#1A1816]">
-						{data.discount.reserved_uses}
-					</p>
-				</div>
+				<div class="h-9 w-28 bg-[#E8E6E1] rounded animate-pulse"></div>
 			</div>
-			<button
-				type="button"
-				on:click={confirmDelete}
-				class="px-4 py-2 text-sm font-bold text-[#C85454] hover:bg-[#C85454]/10 border-2 border-[#C85454]/30 hover:border-[#C85454] rounded-sm transition-colors"
-			>
-				Delete Code
-			</button>
-		</div>
+		{:else}
+			<div class="flex items-center justify-between gap-4">
+				<div class="flex items-center gap-6">
+					<div>
+						<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wide">
+							Total Uses
+						</p>
+						<p class="text-2xl font-extrabold text-[#1A1816]">
+							{data.discount.current_uses}
+							{#if data.discount.max_uses}
+								<span class="text-sm text-[#5C5A56]">
+									/ {data.discount.max_uses}
+								</span>
+							{/if}
+						</p>
+					</div>
+					<div>
+						<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wide">
+							Reserved
+						</p>
+						<p class="text-2xl font-extrabold text-[#1A1816]">
+							{data.discount.reserved_uses}
+						</p>
+					</div>
+				</div>
+				<button
+					type="button"
+					on:click={confirmDelete}
+					class="px-4 py-2 text-sm font-bold text-[#C85454] hover:bg-[#C85454]/10 border-2 border-[#C85454]/30 hover:border-[#C85454] rounded-sm transition-colors"
+				>
+					Delete Code
+				</button>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Two-column layout -->
-	<form
-		method="POST"
-		action="?/updateDiscount"
-		use:enhance={() => {
-			isSubmitting = true;
-			return async ({ result, update }) => {
-				isSubmitting = false;
-				if (result.type === 'redirect') {
-					goto(`${result.location}`);
-				} else {
-					await update();
-					window.scrollTo({ top: 0, behavior: 'smooth' });
-				}
-			};
-		}}
-		class="grid grid-cols-1 lg:grid-cols-5 gap-6"
-	>
-		<input type="hidden" name="csrf_token" value={data.csrfToken} />
+	{#if !data.discount}
+		<!-- Skeleton loading state -->
+		<div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+			<!-- Left column: Form skeleton (60% = 3 cols) -->
+			<div class="lg:col-span-3 space-y-6">
+				<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+					<div class="h-7 w-48 bg-[#E8E6E1] rounded animate-pulse mb-6"></div>
 
-		<!-- Left column: Form (60% = 3 cols) -->
-		<div class="lg:col-span-3 space-y-6">
-			<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
+					<div class="space-y-4">
+						<!-- Status toggle skeleton -->
+						<div class="flex items-center justify-between p-4 bg-[#FAFAF9] rounded-sm">
+							<div class="flex-1">
+								<div class="h-4 w-32 bg-[#E8E6E1] rounded animate-pulse mb-1"></div>
+								<div class="h-3 w-56 bg-[#E8E6E1] rounded animate-pulse"></div>
+							</div>
+							<div class="w-11 h-6 bg-[#E8E6E1] rounded-full animate-pulse"></div>
+						</div>
+
+						<!-- Code field skeleton -->
+						<div>
+							<div class="h-4 w-28 bg-[#E8E6E1] rounded animate-pulse mb-2"></div>
+							<div class="h-11 w-full bg-[#E8E6E1] rounded animate-pulse"></div>
+						</div>
+
+						<!-- Plan dropdown skeleton -->
+						<div>
+							<div class="h-4 w-32 bg-[#E8E6E1] rounded animate-pulse mb-2"></div>
+							<div class="h-11 w-full bg-[#E8E6E1] rounded animate-pulse"></div>
+						</div>
+
+						<!-- Limits section skeleton -->
+						<div class="pt-4 border-t-2 border-[#D9D7D2]">
+							<div class="h-4 w-28 bg-[#E8E6E1] rounded animate-pulse mb-4"></div>
+						</div>
+
+						<!-- Admin notes skeleton -->
+						<div>
+							<div class="h-4 w-24 bg-[#E8E6E1] rounded animate-pulse mb-2"></div>
+							<div class="h-24 w-full bg-[#E8E6E1] rounded animate-pulse"></div>
+						</div>
+					</div>
+
+					<!-- Form actions skeleton -->
+					<div class="flex gap-3 mt-6 pt-6 border-t-2 border-[#D9D7D2]">
+						<div class="flex-1 h-11 bg-[#E8E6E1] rounded animate-pulse"></div>
+						<div class="flex-1 h-11 bg-[#E8E6E1] rounded animate-pulse"></div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Right column: Preview skeleton (40% = 2 cols) -->
+			<div class="lg:col-span-2">
+				<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg sticky top-24">
+					<div class="h-7 w-44 bg-[#E8E6E1] rounded animate-pulse mb-6"></div>
+
+					<div class="space-y-4">
+						<div class="h-4 w-40 bg-[#E8E6E1] rounded animate-pulse"></div>
+
+						<!-- Preview card skeleton -->
+						<div class="bg-[#FAFAF9] border-2 border-[#D9D7D2] rounded-sm p-4">
+							<div class="flex items-start gap-2 mb-3">
+								<div class="w-5 h-5 bg-[#E8E6E1] rounded animate-pulse flex-shrink-0"></div>
+								<div class="h-5 w-36 bg-[#E8E6E1] rounded animate-pulse"></div>
+							</div>
+							<div class="pl-7 space-y-2">
+								<div class="h-4 w-48 bg-[#E8E6E1] rounded animate-pulse"></div>
+								<div class="h-8 w-32 bg-[#E8E6E1] rounded animate-pulse"></div>
+								<div class="h-4 w-40 bg-[#E8E6E1] rounded animate-pulse"></div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	{:else}
+		<form
+			method="POST"
+			action="?/updateDiscount"
+			use:enhance={() => {
+				isSubmitting = true;
+				return async ({ result, update }) => {
+					isSubmitting = false;
+					if (result.type === 'redirect') {
+						goto(`${result.location}`);
+					} else {
+						await update();
+						window.scrollTo({ top: 0, behavior: 'smooth' });
+					}
+				};
+			}}
+			class="grid grid-cols-1 lg:grid-cols-5 gap-6"
+		>
+			<input type="hidden" name="csrf_token" value={data.csrfToken} />
+
+			<!-- Left column: Form (60% = 3 cols) -->
+			<div class="lg:col-span-3 space-y-6">
+				<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
 				<h2 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-6">
 					Discount Details
 				</h2>
@@ -482,6 +577,7 @@
 			</div>
 		</div>
 	</form>
+	{/if}
 </div>
 
 <!-- Delete Confirmation Modal -->
@@ -521,7 +617,7 @@
 					Are you sure you want to delete <strong class="text-[#1A1816]"
 						>{code}</strong
 					>?
-					{#if data.discount.current_uses > 0}
+					{#if data.discount?.current_uses && data.discount.current_uses > 0}
 						<br />
 						<strong class="text-[#D97F3E]"
 							>This code has {data.discount.current_uses} redemption{data

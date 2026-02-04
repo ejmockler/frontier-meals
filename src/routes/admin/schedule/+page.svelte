@@ -166,11 +166,13 @@
 			<!-- 30-Day Calendar View -->
 			<section class="calendar-section">
 				<h2>Next 30 Days</h2>
-				<CalendarView
-					serviceDays={data.config.service_days}
-					holidays={data.holidays}
-					specialEvents={data.specialEvents}
-				/>
+				{#await Promise.all([data.holidays, data.specialEvents]) then [holidays, specialEvents]}
+					<CalendarView
+						serviceDays={data.config.service_days}
+						{holidays}
+						{specialEvents}
+					/>
+				{/await}
 			</section>
 
 			<!-- Holiday Management -->
@@ -181,20 +183,41 @@
 						+ Add Holiday
 					</button>
 				</div>
-				<HolidayList
-					holidays={data.holidays}
-					on:edit={(e) => openEditException(e.detail)}
-					on:deleted={(e) => {
-						const { exception } = e.detail;
-						handleScheduleChange({
-							type: 'holiday',
-							action: 'deleted',
-							summary: `Holiday "${exception.name}" removed`,
-							affectedDates: [exception.date],
-							exceptionDate: exception.date
-						});
-					}}
-				/>
+				{#await data.holidays}
+					<div class="skeleton-list">
+						{#each Array(3) as _}
+							<div class="skeleton-item">
+								<div class="skeleton-info">
+									<div class="skeleton-row">
+										<div class="skeleton-bar skeleton-title"></div>
+										<div class="skeleton-bar skeleton-badge"></div>
+									</div>
+									<div class="skeleton-bar skeleton-date"></div>
+									<div class="skeleton-bar skeleton-status"></div>
+								</div>
+								<div class="skeleton-actions">
+									<div class="skeleton-bar skeleton-btn"></div>
+									<div class="skeleton-bar skeleton-btn"></div>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{:then holidays}
+					<HolidayList
+						{holidays}
+						on:edit={(e) => openEditException(e.detail)}
+						on:deleted={(e) => {
+							const { exception } = e.detail;
+							handleScheduleChange({
+								type: 'holiday',
+								action: 'deleted',
+								summary: `Holiday "${exception.name}" removed`,
+								affectedDates: [exception.date],
+								exceptionDate: exception.date
+							});
+						}}
+					/>
+				{/await}
 			</section>
 
 			<!-- Special Events -->
@@ -205,20 +228,38 @@
 						+ Add Event
 					</button>
 				</div>
-				<SpecialEventList
-					events={data.specialEvents}
-					on:edit={(e) => openEditException(e.detail)}
-					on:deleted={(e) => {
-						const { exception } = e.detail;
-						handleScheduleChange({
-							type: 'special_event',
-							action: 'deleted',
-							summary: `Special event "${exception.name}" removed`,
-							affectedDates: [exception.date],
-							exceptionDate: exception.date
-						});
-					}}
-				/>
+				{#await data.specialEvents}
+					<div class="skeleton-list">
+						{#each Array(3) as _}
+							<div class="skeleton-item skeleton-event">
+								<div class="skeleton-info">
+									<div class="skeleton-bar skeleton-title"></div>
+									<div class="skeleton-bar skeleton-date"></div>
+									<div class="skeleton-bar skeleton-status"></div>
+								</div>
+								<div class="skeleton-actions">
+									<div class="skeleton-bar skeleton-btn"></div>
+									<div class="skeleton-bar skeleton-btn"></div>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{:then specialEvents}
+					<SpecialEventList
+						events={specialEvents}
+						on:edit={(e) => openEditException(e.detail)}
+						on:deleted={(e) => {
+							const { exception } = e.detail;
+							handleScheduleChange({
+								type: 'special_event',
+								action: 'deleted',
+								summary: `Special event "${exception.name}" removed`,
+								affectedDates: [exception.date],
+								exceptionDate: exception.date
+							});
+						}}
+					/>
+				{/await}
 			</section>
 		</div>
 
@@ -337,5 +378,85 @@
 
 	.btn-add:hover {
 		background: #1d4ed8;
+	}
+
+	/* Skeleton Loaders */
+	.skeleton-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.skeleton-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 1rem;
+		background: #f9fafb;
+		border: 1px solid #e5e7eb;
+		border-radius: 6px;
+	}
+
+	.skeleton-item.skeleton-event {
+		background: #fef3c7;
+		border-color: #fbbf24;
+	}
+
+	.skeleton-info {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.skeleton-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.skeleton-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.skeleton-bar {
+		background: #e8e6e1;
+		border-radius: 4px;
+		animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+	}
+
+	.skeleton-title {
+		height: 0.95rem;
+		width: 8rem;
+	}
+
+	.skeleton-badge {
+		height: 0.75rem;
+		width: 3.5rem;
+	}
+
+	.skeleton-date {
+		height: 0.875rem;
+		width: 10rem;
+	}
+
+	.skeleton-status {
+		height: 1rem;
+		width: 3rem;
+	}
+
+	.skeleton-btn {
+		height: 2rem;
+		width: 3.5rem;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.5;
+		}
 	}
 </style>

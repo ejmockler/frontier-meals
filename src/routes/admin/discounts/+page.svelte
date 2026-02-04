@@ -177,20 +177,28 @@
 	}
 
 	// Get default plan price for delta calculation
-	$: defaultPlanPrice = data.defaultPlanPrice || 29;
+	function getDefaultPlanPrice(defaultPlanPrice: number | Promise<number>): number {
+		return typeof defaultPlanPrice === 'number' ? defaultPlanPrice : 29;
+	}
 
 	// Process discounts with status
-	$: processedDiscounts = data.discounts.map((discount): ProcessedDiscount => ({
-		...discount,
-		status: getStatus(discount),
-		discount_display: getDiscountDisplay(discount, defaultPlanPrice)
-	}));
+	function processDiscounts(discounts: DiscountWithPlan[], defaultPlanPrice: number): ProcessedDiscount[] {
+		return discounts.map((discount): ProcessedDiscount => ({
+			...discount,
+			status: getStatus(discount),
+			discount_display: getDiscountDisplay(discount, defaultPlanPrice)
+		}));
+	}
 
 	// Summary statistics
-	$: totalActive = processedDiscounts.filter((d) => d.status === 'active').length;
-	$: totalUnused = processedDiscounts.filter((d) => d.status === 'unused').length;
-	$: totalExpired = processedDiscounts.filter((d) => d.status === 'expired' || d.status === 'exhausted').length;
-	$: totalRedemptions = processedDiscounts.reduce((sum, d) => sum + d.current_uses, 0);
+	function getSummaryStats(processedDiscounts: ProcessedDiscount[]) {
+		return {
+			totalActive: processedDiscounts.filter((d) => d.status === 'active').length,
+			totalUnused: processedDiscounts.filter((d) => d.status === 'unused').length,
+			totalExpired: processedDiscounts.filter((d) => d.status === 'expired' || d.status === 'exhausted').length,
+			totalRedemptions: processedDiscounts.reduce((sum, d) => sum + d.current_uses, 0)
+		};
+	}
 </script>
 
 <svelte:head>
@@ -267,25 +275,8 @@
 
 	<!-- Discounts table -->
 	<div class="bg-white border-2 border-[#D9D7D2] rounded-sm overflow-hidden shadow-lg">
-		{#if processedDiscounts.length === 0}
-			<div class="p-12 text-center text-[#5C5A56]">
-				<svg
-					class="w-16 h-16 mx-auto mb-4 text-[#D9D7D2]"
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-					/>
-				</svg>
-				<p class="font-bold text-lg">No discount codes yet</p>
-				<p class="text-sm mt-1">Create your first discount code to get started</p>
-			</div>
-		{:else}
+		{#await data.discounts}
+			<!-- Skeleton loader -->
 			<div class="overflow-x-auto">
 				<table class="w-full">
 					<thead class="bg-[#FAFAF9] border-b-2 border-[#D9D7D2]">
@@ -314,7 +305,104 @@
 						</tr>
 					</thead>
 					<tbody class="divide-y-2 divide-[#D9D7D2]">
-						{#each processedDiscounts as discount}
+						{#each Array(6) as _, i}
+							<tr>
+								<!-- Status -->
+								<td class="px-6 py-4 whitespace-nowrap">
+									<div class="h-7 w-20 bg-[#E8E6E1] rounded animate-pulse"></div>
+								</td>
+
+								<!-- Code -->
+								<td class="px-6 py-4 whitespace-nowrap">
+									<div class="h-4 w-28 bg-[#E8E6E1] rounded animate-pulse"></div>
+								</td>
+
+								<!-- Plan -->
+								<td class="px-6 py-4">
+									<div class="space-y-1">
+										<div class="h-4 w-32 bg-[#E8E6E1] rounded animate-pulse"></div>
+										<div class="h-3 w-20 bg-[#E8E6E1] rounded animate-pulse opacity-70"></div>
+									</div>
+								</td>
+
+								<!-- Discount -->
+								<td class="px-6 py-4 whitespace-nowrap">
+									<div class="h-4 w-24 bg-[#E8E6E1] rounded animate-pulse"></div>
+								</td>
+
+								<!-- Uses -->
+								<td class="px-6 py-4 whitespace-nowrap">
+									<div class="h-4 w-16 bg-[#E8E6E1] rounded animate-pulse"></div>
+								</td>
+
+								<!-- Valid Until -->
+								<td class="px-6 py-4 whitespace-nowrap">
+									<div class="h-4 w-24 bg-[#E8E6E1] rounded animate-pulse"></div>
+								</td>
+
+								<!-- Actions -->
+								<td class="px-6 py-4 whitespace-nowrap">
+									<div class="flex items-center gap-2">
+										<div class="h-8 w-14 bg-[#E8E6E1] rounded animate-pulse"></div>
+										<div class="h-8 w-14 bg-[#E8E6E1] rounded animate-pulse"></div>
+									</div>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{:then discounts}
+			{#if discounts.length === 0}
+			<div class="p-12 text-center text-[#5C5A56]">
+				<svg
+					class="w-16 h-16 mx-auto mb-4 text-[#D9D7D2]"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+					/>
+				</svg>
+				<p class="font-bold text-lg">No discount codes yet</p>
+				<p class="text-sm mt-1">Create your first discount code to get started</p>
+			</div>
+			{:else}
+				{#await data.defaultPlanPrice then defaultPlanPrice}
+					{@const processedDiscounts = processDiscounts(discounts, defaultPlanPrice)}
+					<div class="overflow-x-auto">
+						<table class="w-full">
+							<thead class="bg-[#FAFAF9] border-b-2 border-[#D9D7D2]">
+								<tr>
+									<th class="px-6 py-3 text-left text-xs font-bold text-[#1A1816] uppercase tracking-wider">
+										Status
+									</th>
+									<th class="px-6 py-3 text-left text-xs font-bold text-[#1A1816] uppercase tracking-wider">
+										Code
+									</th>
+									<th class="px-6 py-3 text-left text-xs font-bold text-[#1A1816] uppercase tracking-wider">
+										Plan
+									</th>
+									<th class="px-6 py-3 text-left text-xs font-bold text-[#1A1816] uppercase tracking-wider">
+										Discount
+									</th>
+									<th class="px-6 py-3 text-left text-xs font-bold text-[#1A1816] uppercase tracking-wider">
+										Uses
+									</th>
+									<th class="px-6 py-3 text-left text-xs font-bold text-[#1A1816] uppercase tracking-wider">
+										Valid Until
+									</th>
+									<th class="px-6 py-3 text-left text-xs font-bold text-[#1A1816] uppercase tracking-wider">
+										Actions
+									</th>
+								</tr>
+							</thead>
+							<tbody class="divide-y-2 divide-[#D9D7D2]">
+								{#each processedDiscounts as discount}
 							{@const badge = getStatusBadge(discount.status)}
 							<tr class="hover:bg-[#FAFAF9] transition-colors">
 								<!-- Status -->
@@ -383,36 +471,67 @@
 										</a>
 									</div>
 								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		{/if}
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+				{/await}
+			{/if}
+		{/await}
 	</div>
 
 	<!-- Summary statistics -->
-	{#if processedDiscounts.length > 0}
+	{#await data.discounts}
+		<!-- Skeleton summary statistics -->
 		<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
 			<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-4 shadow-lg">
 				<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wider mb-1">Total Codes</p>
-				<p class="text-3xl font-extrabold text-[#1A1816]">{processedDiscounts.length}</p>
+				<div class="h-9 w-16 bg-[#E8E6E1] rounded animate-pulse"></div>
 			</div>
 
 			<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-4 shadow-lg">
 				<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wider mb-1">Active</p>
-				<p class="text-3xl font-extrabold text-[#52A675]">{totalActive}</p>
+				<div class="h-9 w-16 bg-[#E8E6E1] rounded animate-pulse"></div>
 			</div>
 
 			<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-4 shadow-lg">
 				<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wider mb-1">Unused</p>
-				<p class="text-3xl font-extrabold text-[#D97F3E]">{totalUnused}</p>
+				<div class="h-9 w-16 bg-[#E8E6E1] rounded animate-pulse"></div>
 			</div>
 
 			<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-4 shadow-lg">
 				<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wider mb-1">Total Redemptions</p>
-				<p class="text-3xl font-extrabold text-[#2D9B9B]">{totalRedemptions}</p>
+				<div class="h-9 w-16 bg-[#E8E6E1] rounded animate-pulse"></div>
 			</div>
 		</div>
-	{/if}
+	{:then discounts}
+		{#if discounts.length > 0}
+			{#await data.defaultPlanPrice then defaultPlanPrice}
+				{@const processedDiscounts = processDiscounts(discounts, defaultPlanPrice)}
+				{@const stats = getSummaryStats(processedDiscounts)}
+				<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+					<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-4 shadow-lg">
+						<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wider mb-1">Total Codes</p>
+						<p class="text-3xl font-extrabold text-[#1A1816]">{processedDiscounts.length}</p>
+					</div>
+
+					<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-4 shadow-lg">
+						<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wider mb-1">Active</p>
+						<p class="text-3xl font-extrabold text-[#52A675]">{stats.totalActive}</p>
+					</div>
+
+					<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-4 shadow-lg">
+						<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wider mb-1">Unused</p>
+						<p class="text-3xl font-extrabold text-[#D97F3E]">{stats.totalUnused}</p>
+					</div>
+
+					<div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-4 shadow-lg">
+						<p class="text-xs font-bold text-[#5C5A56] uppercase tracking-wider mb-1">Total Redemptions</p>
+						<p class="text-3xl font-extrabold text-[#2D9B9B]">{stats.totalRedemptions}</p>
+					</div>
+				</div>
+			{/await}
+		{/if}
+	{/await}
 </div>

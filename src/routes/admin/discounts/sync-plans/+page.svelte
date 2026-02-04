@@ -8,6 +8,9 @@
 	export let data: PageData;
 	export let form;
 
+	// Check if we're loading data (during invalidation/refresh)
+	$: isLoadingData = isRefreshingData;
+
 	// Form state
 	let embedInputLive = '';
 	let embedInputSandbox = '';
@@ -21,6 +24,12 @@
 	let editingPlan: SubscriptionPlan | null = null;
 	let showDeleteConfirm = false;
 	let planToDelete: SubscriptionPlan | null = null;
+
+	// Loading states
+	let isSubmitting = false;
+	let syncingPlanId: string | null = null;
+	let isDeleting = false;
+	let isRefreshingData = false;
 
 	// Extract PayPal Plan ID from URL or embed code
 	function extractPlanId(input: string): string {
@@ -95,7 +104,14 @@
 	$: if (form?.success) {
 		clearForm();
 		toasts.show(form.message || 'Action completed successfully', 'success');
-		setTimeout(() => invalidate('app:subscription-plans'), 500);
+		isRefreshingData = true;
+		setTimeout(async () => {
+			await invalidate('app:subscription-plans');
+			// Keep skeleton visible for a brief moment to ensure smooth transition
+			setTimeout(() => {
+				isRefreshingData = false;
+			}, 100);
+		}, 500);
 	} else if (form?.error) {
 		toasts.show(form.error, 'error', 5000);
 	}
@@ -142,7 +158,9 @@
 			method="POST"
 			action="?/{editingPlan ? 'updatePlan' : 'createPlan'}"
 			use:enhance={() => {
+				isSubmitting = true;
 				return async ({ result, update }) => {
+					isSubmitting = false;
 					await update();
 				};
 			}}
@@ -265,7 +283,7 @@
 						Pricing is tied to the PayPal plan. To use different pricing, create a new plan.
 					</p>
 					<div class="mt-2 text-sm font-medium text-[#1A1816]">
-						{#if editingPlan.trial_price_amount !== null && editingPlan.trial_duration_months !== null}
+						{#if editingPlan.trial_price_amount != null && editingPlan.trial_duration_months != null}
 							${editingPlan.trial_price_amount.toFixed(2)}/mo for {editingPlan.trial_duration_months} {editingPlan.trial_duration_months === 1 ? 'month' : 'months'},
 							then ${editingPlan.price_amount.toFixed(2)}/mo
 						{:else}
@@ -328,10 +346,18 @@
 				{/if}
 				<button
 					type="submit"
-					disabled={!extractedPlanIdLive || !businessName}
-					class="px-6 py-2 text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] hover:shadow-xl shadow-lg rounded-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+					disabled={!extractedPlanIdLive || !businessName || isSubmitting}
+					class="px-6 py-2 text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] hover:shadow-xl shadow-lg rounded-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
 				>
-					{editingPlan ? 'Update Plan' : 'Add Plan'}
+					{#if isSubmitting}
+						<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+							<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25" />
+							<path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+						</svg>
+						{editingPlan ? 'Updating...' : 'Creating...'}
+					{:else}
+						{editingPlan ? 'Update Plan' : 'Add Plan'}
+					{/if}
 				</button>
 			</div>
 		</form>
@@ -343,7 +369,86 @@
 			<h2 class="text-xl font-extrabold tracking-tight text-[#1A1816]">Your Plans</h2>
 		</div>
 
-		{#if data.plans.length === 0}
+		{#await data.plans}
+			<!-- Skeleton while loading -->
+			<div class="divide-y-2 divide-[#D9D7D2]">
+				{#each Array(2) as _}
+					<div class="p-6">
+						<div class="flex items-start justify-between gap-4">
+							<div class="flex-1 space-y-3">
+								<!-- Name + badge -->
+								<div class="flex items-center gap-3">
+									<div class="h-5 w-48 bg-[#E8E6E1] rounded animate-pulse"></div>
+									<div class="h-6 w-16 bg-[#E8E6E1] rounded animate-pulse"></div>
+								</div>
+								<!-- Price lines -->
+								<div class="space-y-1">
+									<div class="h-4 w-40 bg-[#E8E6E1] rounded animate-pulse"></div>
+									<div class="h-3 w-32 bg-[#E8E6E1] rounded animate-pulse opacity-70"></div>
+								</div>
+								<!-- Environment IDs -->
+								<div class="flex gap-3">
+									<div class="flex items-center gap-1.5">
+										<div class="h-5 w-10 bg-[#52A675] rounded opacity-50"></div>
+										<div class="h-4 w-24 bg-[#E8E6E1] rounded animate-pulse"></div>
+									</div>
+									<div class="flex items-center gap-1.5">
+										<div class="h-5 w-14 bg-[#E67E50] rounded opacity-50"></div>
+										<div class="h-4 w-24 bg-[#E8E6E1] rounded animate-pulse"></div>
+									</div>
+								</div>
+							</div>
+							<!-- Action buttons skeleton -->
+							<div class="flex gap-2">
+								<div class="h-10 w-14 bg-[#E8E6E1] rounded animate-pulse"></div>
+								<div class="h-10 w-12 bg-[#E8E6E1] rounded animate-pulse"></div>
+								<div class="h-10 w-16 bg-[#E8E6E1] rounded animate-pulse"></div>
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		{:then plans}
+			{#if isLoadingData}
+				<!-- Skeleton while loading -->
+				<div class="divide-y-2 divide-[#D9D7D2]">
+					{#each Array(2) as _}
+						<div class="p-6">
+							<div class="flex items-start justify-between gap-4">
+								<div class="flex-1 space-y-3">
+									<!-- Name + badge -->
+									<div class="flex items-center gap-3">
+										<div class="h-5 w-48 bg-[#E8E6E1] rounded animate-pulse"></div>
+										<div class="h-6 w-16 bg-[#E8E6E1] rounded animate-pulse"></div>
+									</div>
+									<!-- Price lines -->
+									<div class="space-y-1">
+										<div class="h-4 w-40 bg-[#E8E6E1] rounded animate-pulse"></div>
+										<div class="h-3 w-32 bg-[#E8E6E1] rounded animate-pulse opacity-70"></div>
+									</div>
+									<!-- Environment IDs -->
+									<div class="flex gap-3">
+										<div class="flex items-center gap-1.5">
+											<div class="h-5 w-10 bg-[#52A675] rounded opacity-50"></div>
+											<div class="h-4 w-24 bg-[#E8E6E1] rounded animate-pulse"></div>
+										</div>
+										<div class="flex items-center gap-1.5">
+											<div class="h-5 w-14 bg-[#E67E50] rounded opacity-50"></div>
+											<div class="h-4 w-24 bg-[#E8E6E1] rounded animate-pulse"></div>
+										</div>
+									</div>
+								</div>
+								<!-- Action buttons skeleton -->
+								<div class="flex gap-2">
+									<div class="h-10 w-14 bg-[#E8E6E1] rounded animate-pulse"></div>
+									<div class="h-10 w-12 bg-[#E8E6E1] rounded animate-pulse"></div>
+									<div class="h-10 w-16 bg-[#E8E6E1] rounded animate-pulse"></div>
+								</div>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{:else if plans.length === 0}
 			<div class="p-12 text-center text-[#5C5A56]">
 				<svg
 					class="w-16 h-16 mx-auto mb-4 text-[#D9D7D2]"
@@ -361,9 +466,9 @@
 				<p class="font-bold text-lg">No plans yet</p>
 				<p class="text-sm mt-1">Add your first PayPal subscription plan above</p>
 			</div>
-		{:else}
-			<div class="divide-y-2 divide-[#D9D7D2]">
-				{#each data.plans as plan}
+			{:else}
+				<div class="divide-y-2 divide-[#D9D7D2]">
+					{#each plans as plan}
 					<div class="p-6 hover:bg-gray-50 transition-colors">
 						<div class="flex items-start justify-between gap-4">
 							<div class="flex-1">
@@ -382,7 +487,7 @@
 
 								<!-- Price with Trial Info -->
 								<div class="text-sm text-[#5C5A56] mb-3">
-									{#if plan.trial_price_amount !== null && plan.trial_duration_months !== null}
+									{#if plan.trial_price_amount != null && plan.trial_duration_months != null}
 										<div class="font-medium text-[#1A1816]">
 											<span class="text-[#2D9B9B]">
 												${plan.trial_price_amount.toFixed(2)} / {plan.billing_cycle}
@@ -421,6 +526,46 @@
 							</div>
 
 							<div class="flex gap-2">
+								<form
+									method="POST"
+									action="?/syncPlan"
+									use:enhance={() => {
+										syncingPlanId = plan.id;
+										return async ({ result, update }) => {
+											syncingPlanId = null;
+											await update();
+											if (result.type === 'success') {
+												isRefreshingData = true;
+												setTimeout(async () => {
+													await invalidate('app:subscription-plans');
+													setTimeout(() => {
+														isRefreshingData = false;
+													}, 100);
+												}, 500);
+											}
+										};
+									}}
+								>
+									{#if data.csrfToken}
+										<input type="hidden" name="csrf_token" value={data.csrfToken} />
+									{/if}
+									<input type="hidden" name="plan_id" value={plan.id} />
+									<button
+										type="submit"
+										disabled={syncingPlanId === plan.id}
+										class="px-4 py-2 text-sm font-bold text-white bg-[#6366f1] border-2 border-[#6366f1]/70 hover:bg-[#6366f1]/80 hover:shadow-lg rounded-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+									>
+										{#if syncingPlanId === plan.id}
+											<svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+												<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25" />
+												<path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+											</svg>
+											Syncing...
+										{:else}
+											Sync
+										{/if}
+									</button>
+								</form>
 								<button
 									on:click={() => startEdit(plan)}
 									class="px-4 py-2 text-sm font-bold text-white bg-[#2D9B9B] border-2 border-[#2D9B9B]/70 hover:bg-[#2D9B9B]/80 hover:shadow-lg rounded-sm transition-all"
@@ -436,9 +581,10 @@
 							</div>
 						</div>
 					</div>
-				{/each}
-			</div>
-		{/if}
+					{/each}
+				</div>
+			{/if}
+		{/await}
 	</div>
 </div>
 
@@ -484,8 +630,10 @@
 				method="POST"
 				action="?/deletePlan"
 				use:enhance={() => {
-					closeDeleteModal();
+					isDeleting = true;
 					return async ({ result, update }) => {
+						isDeleting = false;
+						closeDeleteModal();
 						await update();
 					};
 				}}
@@ -505,9 +653,18 @@
 					</button>
 					<button
 						type="submit"
-						class="flex-1 px-4 py-2 text-white bg-[#D97F3E] border-2 border-[#D97F3E]/70 hover:bg-[#D97F3E]/80 hover:shadow-xl shadow-lg rounded-sm font-bold transition-colors"
+						disabled={isDeleting}
+						class="flex-1 px-4 py-2 text-white bg-[#D97F3E] border-2 border-[#D97F3E]/70 hover:bg-[#D97F3E]/80 hover:shadow-xl shadow-lg rounded-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
 					>
-						Delete Plan
+						{#if isDeleting}
+							<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+								<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25" />
+								<path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+							</svg>
+							Deleting...
+						{:else}
+							Delete Plan
+						{/if}
 					</button>
 				</div>
 			</form>

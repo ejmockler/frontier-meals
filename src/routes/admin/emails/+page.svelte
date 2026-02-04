@@ -52,6 +52,12 @@
   let variables = '';
   let testEmail = '';
 
+  // Loading states
+  let isSaving = false;
+  let isSendingTest = false;
+  let restoringSlug: string | null = null;
+  let deletingId: string | null = null;
+
   // ============================================
   // SNAPSHOT: Preserve state across navigation
   // ============================================
@@ -75,7 +81,7 @@
       variables,
       testEmail
     }),
-    restore: (value) => {
+    restore: async (value) => {
       mode = value.mode;
       editorMode = value.editorMode;
       slug = value.slug;
@@ -86,7 +92,8 @@
 
       // If restoring to edit mode, try to find and set the selected template
       if (mode === 'edit' && slug) {
-        const template = data.templates.find(t => t.slug === slug);
+        const templates = await data.templates;
+        const template = templates.find(t => t.slug === slug);
         if (template) {
           selectedTemplate = template;
           // Reload blocks if in block editor mode
@@ -118,34 +125,37 @@
     const state = $page.state as PageState;
     if (state?.editing) {
       // User navigated back/forward to an editing state
-      const template = data.templates.find(t => t.slug === state.editing) as any;
-      if (template && (mode !== 'edit' || slug !== state.editing)) {
-        // Restore the editing state without pushing new history
-        selectedTemplate = template;
-        slug = template.slug;
-        subject = template.subject;
-        htmlBody = template.html_body;
-        variables = template.variables ? JSON.stringify(template.variables, null, 2) : '';
-        mode = 'edit';
+      // Restore from templates after they load
+      data.templates.then(templates => {
+        const template = templates.find(t => t.slug === state.editing) as any;
+        if (template && (mode !== 'edit' || slug !== state.editing)) {
+          // Restore the editing state without pushing new history
+          selectedTemplate = template;
+          slug = template.slug;
+          subject = template.subject;
+          htmlBody = template.html_body;
+          variables = template.variables ? JSON.stringify(template.variables, null, 2) : '';
+          mode = 'edit';
 
-        if (state.editorMode) {
-          editorMode = state.editorMode;
-        }
+          if (state.editorMode) {
+            editorMode = state.editorMode;
+          }
 
-        // Load blocks if needed
-        if (editorMode === 'blocks') {
-          if (template.blocks_json) {
-            loadBlocksIntoEditor(template.blocks_json);
-          } else if (template.is_system && SYSTEM_TEMPLATE_BLOCKS[template.slug]) {
-            const systemDef = SYSTEM_TEMPLATE_BLOCKS[template.slug];
-            editorState.set({
-              settings: systemDef.settings,
-              blocks: systemDef.blocks,
-              variables: {}
-            });
+          // Load blocks if needed
+          if (editorMode === 'blocks') {
+            if (template.blocks_json) {
+              loadBlocksIntoEditor(template.blocks_json);
+            } else if (template.is_system && SYSTEM_TEMPLATE_BLOCKS[template.slug]) {
+              const systemDef = SYSTEM_TEMPLATE_BLOCKS[template.slug];
+              editorState.set({
+                settings: systemDef.settings,
+                blocks: systemDef.blocks,
+                variables: {}
+              });
+            }
           }
         }
-      }
+      });
     } else if (state && 'editing' in state && state.editing === undefined) {
       // User navigated back to list state (editing was explicitly set to undefined)
       if (mode !== 'list') {
@@ -423,113 +433,186 @@
   </div>
 
   {#if mode === 'list'}
-    <!-- Templates Grid -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {#each data.templates as template}
-        {@const registryInfo = EMAIL_TEMPLATES.find(t => t.slug === template.slug)}
-        {@const visuals = getTemplateVisuals(template.slug)}
-        <div class="group bg-white border-2 border-[#D9D7D2] hover:border-[#B8B6B1] rounded-sm overflow-hidden transition-all hover:shadow-lg">
-          <!-- Template Info (Top) -->
-          <div class="p-4">
-            <div class="flex items-start justify-between gap-2 mb-1">
-              <h3 class="font-bold text-[#1A1816] text-base leading-tight">
-                {registryInfo?.name || template.slug}
-              </h3>
-              {#if template.is_system}
-                <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5C5A56] bg-[#E8E6E1] rounded flex-shrink-0">
-                  System
-                </span>
-              {/if}
+    {#await data.templates}
+      <!-- Skeleton grid while loading -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {#each Array(6) as _}
+          <div class="bg-white border-2 border-[#D9D7D2] rounded-sm overflow-hidden">
+            <!-- Info section -->
+            <div class="p-4">
+              <div class="flex items-start justify-between gap-2 mb-1">
+                <div class="h-5 w-36 bg-[#E8E6E1] rounded animate-pulse"></div>
+                <div class="h-4 w-12 bg-[#E8E6E1] rounded animate-pulse"></div>
+              </div>
+              <div class="h-4 w-44 bg-[#E8E6E1] rounded animate-pulse mb-3"></div>
+              <!-- Action buttons -->
+              <div class="flex items-center gap-2">
+                <div class="flex-1 h-9 bg-[#E8E6E1] rounded animate-pulse"></div>
+                <div class="flex-1 h-9 bg-[#E8E6E1] rounded animate-pulse"></div>
+              </div>
             </div>
-            <p class="text-sm text-[#5C5A56] truncate mb-3">{template.subject}</p>
-
-            <!-- Actions -->
-            <div class="flex items-center gap-2">
-              <button
-                onclick={() => editTemplate(template)}
-                class="flex-1 px-3 py-2 text-sm font-bold text-[#E67E50] hover:bg-[#E67E50]/10 border-2 border-[#E67E50]/30 hover:border-[#E67E50] rounded transition-colors"
-              >
-                Edit
-              </button>
-              {#if template.is_system}
-                <form method="POST" action="?/restoreOriginal" use:enhance class="flex-1">
-                  <input type="hidden" name="slug" value={template.slug} />
-                  <input type="hidden" name="csrf_token" value={data.csrfToken} />
-                  <button
-                    type="submit"
-                    class="w-full px-3 py-2 text-sm font-bold text-[#52A675] hover:bg-[#52A675]/10 border-2 border-[#52A675]/30 hover:border-[#52A675] rounded transition-colors"
-                    onclick={(e) => !confirm('Restore to original? This will create a new version.') && e.preventDefault()}
-                  >
-                    Restore
-                  </button>
-                </form>
-              {:else}
-                <form method="POST" action="?/deleteTemplate" use:enhance class="flex-1">
-                  <input type="hidden" name="id" value={template.id} />
-                  <input type="hidden" name="csrf_token" value={data.csrfToken} />
-                  <button
-                    type="submit"
-                    class="w-full px-3 py-2 text-sm font-bold text-[#C85454] hover:bg-[#C85454]/10 border-2 border-[#C85454]/30 hover:border-[#C85454] rounded transition-colors"
-                    onclick={(e) => !confirm('Delete this template?') && e.preventDefault()}
-                  >
-                    Delete
-                  </button>
-                </form>
-              {/if}
+            <!-- Thumbnail section -->
+            <div class="bg-[#F5F5F4] p-2 border-t border-[#E8E6E1]">
+              <div class="bg-white rounded shadow-sm overflow-hidden max-w-[140px] mx-auto" style="aspect-ratio: 3/4;">
+                <!-- Header bar skeleton -->
+                <div class="h-5 bg-[#E8E6E1] animate-pulse"></div>
+                <!-- Content skeleton -->
+                <div class="p-1.5 space-y-1">
+                  <div class="h-1 w-3/4 mx-auto bg-[#E8E6E1] rounded-full animate-pulse"></div>
+                  <div class="h-0.5 w-1/2 mx-auto bg-[#E8E6E1] rounded-full animate-pulse"></div>
+                  <div class="pt-0.5 space-y-0.5">
+                    <div class="h-0.5 w-full bg-[#E8E6E1] rounded-full animate-pulse"></div>
+                    <div class="h-0.5 w-5/6 bg-[#E8E6E1] rounded-full animate-pulse"></div>
+                  </div>
+                  <div class="pt-0.5 flex justify-center">
+                    <div class="h-2 w-10 bg-[#E8E6E1] rounded-sm animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-
-          <!-- Thumbnail Preview (Bottom) -->
-          <button
-            type="button"
-            onclick={() => editTemplate(template)}
-            class="w-full text-left focus:outline-none focus:ring-2 focus:ring-[#E67E50] focus:ring-inset"
-          >
-            <div class="relative bg-[#F5F5F4] p-2 border-t border-[#E8E6E1]">
-              <!-- Miniature Email Frame -->
-              <div class="bg-white rounded shadow-sm overflow-hidden max-w-[140px] mx-auto" style="aspect-ratio: 3/4;">
-                <!-- Header bar with color -->
-                <div class="h-5 flex items-center justify-center" style="background-color: {visuals.color};">
-                  <span class="text-white text-xs">{visuals.emoji}</span>
-                </div>
-                <!-- Content preview -->
-                <div class="p-1.5 space-y-1">
-                  <!-- Title placeholder -->
-                  <div class="h-1 rounded-full bg-[#1A1816] w-3/4 mx-auto"></div>
-                  <div class="h-0.5 rounded-full bg-[#D9D7D2] w-1/2 mx-auto"></div>
-                  <!-- Content lines -->
-                  <div class="pt-0.5 space-y-0.5">
-                    <div class="h-0.5 rounded-full bg-[#E8E6E1] w-full"></div>
-                    <div class="h-0.5 rounded-full bg-[#E8E6E1] w-5/6"></div>
-                    <div class="h-0.5 rounded-full bg-[#E8E6E1] w-4/5"></div>
-                  </div>
-                  <!-- Button placeholder -->
-                  <div class="pt-0.5 flex justify-center">
-                    <div class="h-2 w-10 rounded-sm" style="background-color: {visuals.color};"></div>
-                  </div>
-                </div>
+        {/each}
+      </div>
+    {:then templates}
+      {#if templates.length === 0}
+      <!-- Empty state -->
+      <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-12 text-center">
+        <svg class="w-16 h-16 mx-auto mb-4 text-[#D9D7D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+        <p class="font-bold text-[#1A1816] mb-1">No templates yet</p>
+        <p class="text-sm text-[#5C5A56]">Create your first email template to get started</p>
+      </div>
+      {:else}
+        <!-- Templates Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {#each templates as template}
+          {@const registryInfo = EMAIL_TEMPLATES.find(t => t.slug === template.slug)}
+          {@const visuals = getTemplateVisuals(template.slug)}
+          <div class="group bg-white border-2 border-[#D9D7D2] hover:border-[#B8B6B1] rounded-sm overflow-hidden transition-all hover:shadow-lg">
+            <!-- Template Info (Top) -->
+            <div class="p-4">
+              <div class="flex items-start justify-between gap-2 mb-1">
+                <h3 class="font-bold text-[#1A1816] text-base leading-tight">
+                  {registryInfo?.name || template.slug}
+                </h3>
+                {#if template.is_system}
+                  <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5C5A56] bg-[#E8E6E1] rounded flex-shrink-0">
+                    System
+                  </span>
+                {/if}
               </div>
-              <!-- Hover overlay -->
-              <div class="absolute inset-0 bg-[#1A1816]/0 group-hover:bg-[#1A1816]/5 transition-colors flex items-center justify-center">
-                <span class="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 px-2 py-1 rounded text-xs font-bold text-[#1A1816] shadow">
+              <p class="text-sm text-[#5C5A56] truncate mb-3">{template.subject}</p>
+
+              <!-- Actions -->
+              <div class="flex items-center gap-2">
+                <button
+                  onclick={() => editTemplate(template)}
+                  class="flex-1 px-3 py-2 text-sm font-bold text-[#E67E50] hover:bg-[#E67E50]/10 border-2 border-[#E67E50]/30 hover:border-[#E67E50] rounded transition-colors"
+                >
                   Edit
-                </span>
+                </button>
+                {#if template.is_system}
+                  <form method="POST" action="?/restoreOriginal" use:enhance={() => {
+                    restoringSlug = template.slug;
+                    return async ({ update }) => {
+                      restoringSlug = null;
+                      await update();
+                    };
+                  }} class="flex-1">
+                    <input type="hidden" name="slug" value={template.slug} />
+                    <input type="hidden" name="csrf_token" value={data.csrfToken} />
+                    <button
+                      type="submit"
+                      disabled={restoringSlug === template.slug}
+                      class="w-full px-3 py-2 text-sm font-bold text-[#52A675] hover:bg-[#52A675]/10 border-2 border-[#52A675]/30 hover:border-[#52A675] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1"
+                      onclick={(e) => !confirm('Restore to original? This will create a new version.') && e.preventDefault()}
+                    >
+                      {#if restoringSlug === template.slug}
+                        <svg class="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+                        </svg>
+                        Restoring...
+                      {:else}
+                        Restore
+                      {/if}
+                    </button>
+                  </form>
+                {:else}
+                  <form method="POST" action="?/deleteTemplate" use:enhance={() => {
+                    deletingId = template.id;
+                    return async ({ update }) => {
+                      deletingId = null;
+                      await update();
+                    };
+                  }} class="flex-1">
+                    <input type="hidden" name="id" value={template.id} />
+                    <input type="hidden" name="csrf_token" value={data.csrfToken} />
+                    <button
+                      type="submit"
+                      disabled={deletingId === template.id}
+                      class="w-full px-3 py-2 text-sm font-bold text-[#C85454] hover:bg-[#C85454]/10 border-2 border-[#C85454]/30 hover:border-[#C85454] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1"
+                      onclick={(e) => !confirm('Delete this template?') && e.preventDefault()}
+                    >
+                      {#if deletingId === template.id}
+                        <svg class="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+                        </svg>
+                        Deleting...
+                      {:else}
+                        Delete
+                      {/if}
+                    </button>
+                  </form>
+                {/if}
               </div>
             </div>
-          </button>
-        </div>
-      {/each}
 
-      {#if data.templates.length === 0}
-        <div class="col-span-full bg-white border-2 border-[#D9D7D2] rounded-sm p-12 text-center">
-          <svg class="w-16 h-16 mx-auto mb-4 text-[#D9D7D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-          <p class="font-bold text-[#1A1816] mb-1">No templates yet</p>
-          <p class="text-sm text-[#5C5A56]">Create your first email template to get started</p>
+            <!-- Thumbnail Preview (Bottom) -->
+            <button
+              type="button"
+              onclick={() => editTemplate(template)}
+              class="w-full text-left focus:outline-none focus:ring-2 focus:ring-[#E67E50] focus:ring-inset"
+            >
+              <div class="relative bg-[#F5F5F4] p-2 border-t border-[#E8E6E1]">
+                <!-- Miniature Email Frame -->
+                <div class="bg-white rounded shadow-sm overflow-hidden max-w-[140px] mx-auto" style="aspect-ratio: 3/4;">
+                  <!-- Header bar with color -->
+                  <div class="h-5 flex items-center justify-center" style="background-color: {visuals.color};">
+                    <span class="text-white text-xs">{visuals.emoji}</span>
+                  </div>
+                  <!-- Content preview -->
+                  <div class="p-1.5 space-y-1">
+                    <!-- Title placeholder -->
+                    <div class="h-1 rounded-full bg-[#1A1816] w-3/4 mx-auto"></div>
+                    <div class="h-0.5 rounded-full bg-[#D9D7D2] w-1/2 mx-auto"></div>
+                    <!-- Content lines -->
+                    <div class="pt-0.5 space-y-0.5">
+                      <div class="h-0.5 rounded-full bg-[#E8E6E1] w-full"></div>
+                      <div class="h-0.5 rounded-full bg-[#E8E6E1] w-5/6"></div>
+                      <div class="h-0.5 rounded-full bg-[#E8E6E1] w-4/5"></div>
+                    </div>
+                    <!-- Button placeholder -->
+                    <div class="pt-0.5 flex justify-center">
+                      <div class="h-2 w-10 rounded-sm" style="background-color: {visuals.color};"></div>
+                    </div>
+                  </div>
+                </div>
+                <!-- Hover overlay -->
+                <div class="absolute inset-0 bg-[#1A1816]/0 group-hover:bg-[#1A1816]/5 transition-colors flex items-center justify-center">
+                  <span class="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 px-2 py-1 rounded text-xs font-bold text-[#1A1816] shadow">
+                    Edit
+                  </span>
+                </div>
+              </div>
+            </button>
+          </div>
+          {/each}
         </div>
       {/if}
-    </div>
+    {/await}
   {:else}
     <!-- Editor Mode Toggle -->
     <div class="flex items-center gap-4 mb-6">
@@ -573,12 +656,14 @@
     {#if editorMode === 'blocks'}
       <!-- Block Editor -->
       <form method="POST" action="?/updateTemplate" use:enhance={() => {
+        isSaving = true;
         // Serialize blocks right before submission
         const blocksJsonInput = document.querySelector('input[name="blocksJson"]') as HTMLInputElement;
         if (blocksJsonInput) {
           blocksJsonInput.value = getBlocksJson() || '';
         }
         return async ({ update }) => {
+          isSaving = false;
           await update();
         };
       }}>
@@ -608,9 +693,18 @@
                 </button>
                 <button
                   type="submit"
-                  class="px-4 py-2 text-sm text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] font-bold rounded-sm transition-colors"
+                  disabled={isSaving}
+                  class="px-4 py-2 text-sm text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] font-bold rounded-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                 >
-                  Save Template
+                  {#if isSaving}
+                    <svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+                    </svg>
+                    Saving...
+                  {:else}
+                    Save Template
+                  {/if}
                 </button>
               </div>
             </div>
@@ -620,7 +714,13 @@
       </form>
     {:else}
       <!-- Raw HTML Editor (original) -->
-      <form method="POST" action="?/updateTemplate" use:enhance class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <form method="POST" action="?/updateTemplate" use:enhance={() => {
+        isSaving = true;
+        return async ({ update }) => {
+          isSaving = false;
+          await update();
+        };
+      }} class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Left column: Editor -->
         <div class="space-y-6">
           <div class="bg-white border-2 border-[#D9D7D2] rounded-sm p-6 shadow-lg">
@@ -682,9 +782,18 @@
             <div class="flex gap-3 mt-6">
               <button
                 type="submit"
-                class="flex-1 px-6 py-3 bg-[#E67E50] border-2 border-[#D97F3E] text-white font-bold rounded-sm hover:bg-[#D97F3E] hover:shadow-xl shadow-lg transition-all"
+                disabled={isSaving}
+                class="flex-1 px-6 py-3 bg-[#E67E50] border-2 border-[#D97F3E] text-white font-bold rounded-sm hover:bg-[#D97F3E] hover:shadow-xl shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
               >
-                Save Changes
+                {#if isSaving}
+                  <svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+                  </svg>
+                  Saving...
+                {:else}
+                  Save Changes
+                {/if}
               </button>
               <button
                 type="button"
@@ -760,7 +869,13 @@
     <div class="bg-white border-2 border-[#D9D7D2] rounded-sm shadow-2xl max-w-md w-full p-6" onclick={(e) => e.stopPropagation()}>
       <h3 class="text-xl font-extrabold tracking-tight text-[#1A1816] mb-4">Send Test Email</h3>
 
-      <form method="POST" action="?/sendTest" use:enhance>
+      <form method="POST" action="?/sendTest" use:enhance={() => {
+        isSendingTest = true;
+        return async ({ update }) => {
+          isSendingTest = false;
+          await update();
+        };
+      }}>
         <input type="hidden" name="subject" value={editorMode === 'blocks' ? $editorState.settings.title : subject} />
         <input type="hidden" name="htmlBody" value={editorMode === 'blocks' ? $previewHTML : previewHtml} />
         <input type="hidden" name="csrf_token" value={data.csrfToken} />
@@ -790,9 +905,18 @@
           </button>
           <button
             type="submit"
-            class="flex-1 px-4 py-2 text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] hover:shadow-xl shadow-lg rounded-sm font-bold transition-colors"
+            disabled={isSendingTest}
+            class="flex-1 px-4 py-2 text-white bg-[#E67E50] border-2 border-[#D97F3E] hover:bg-[#D97F3E] hover:shadow-xl shadow-lg rounded-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
           >
-            Send Test
+            {#if isSendingTest}
+              <svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+              </svg>
+              Sending...
+            {:else}
+              Send Test
+            {/if}
           </button>
         </div>
       </form>

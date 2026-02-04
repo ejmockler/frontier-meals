@@ -153,14 +153,73 @@
 
   <!-- Results count -->
   <div class="flex items-center justify-between">
-    <p class="text-sm text-[#5C5A56] font-medium">
-      {data.customers.length} {data.customers.length === 1 ? 'customer' : 'customers'} found
-    </p>
+    {#await data.customers}
+      <div class="h-5 w-32 bg-[#E8E6E1] rounded animate-pulse"></div>
+    {:then customers}
+      <p class="text-sm text-[#5C5A56] font-medium">
+        {customers.length} {customers.length === 1 ? 'customer' : 'customers'} found
+      </p>
+    {/await}
   </div>
 
   <!-- Customer list -->
   <div class="bg-white border-2 border-[#D9D7D2] rounded-sm overflow-hidden shadow-lg">
-    {#if data.customers.length === 0}
+    {#await data.customers}
+      <!-- Skeleton loading state -->
+      <div class="divide-y-2 divide-[#D9D7D2]">
+        {#each Array(6) as _, i}
+          <div class="p-6">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex-1">
+                <!-- Name skeleton -->
+                <div class="flex items-center gap-3 mb-2">
+                  <div
+                    class="h-5 w-44 bg-[#E8E6E1] rounded animate-pulse"
+                    style="animation-delay: {i * 50}ms"
+                  ></div>
+                </div>
+
+                <!-- Badges skeleton -->
+                <div class="flex items-center gap-3 mb-2">
+                  <div
+                    class="h-6 w-16 bg-[#E8E6E1] rounded-sm animate-pulse"
+                    style="animation-delay: {i * 50 + 100}ms"
+                  ></div>
+                  <div
+                    class="h-6 w-20 bg-[#E8E6E1] rounded-sm animate-pulse"
+                    style="animation-delay: {i * 50 + 150}ms"
+                  ></div>
+                </div>
+
+                <!-- Email and Telegram skeletons -->
+                <div class="space-y-1">
+                  <div
+                    class="h-4 w-52 bg-[#E8E6E1] rounded animate-pulse"
+                    style="animation-delay: {i * 50 + 200}ms"
+                  ></div>
+                  <div
+                    class="h-4 w-32 bg-[#E8E6E1] rounded animate-pulse"
+                    style="animation-delay: {i * 50 + 250}ms"
+                  ></div>
+                  <!-- ID skeleton -->
+                  <div
+                    class="h-3 w-72 bg-[#E8E6E1] rounded animate-pulse opacity-60"
+                    style="animation-delay: {i * 50 + 300}ms"
+                  ></div>
+                </div>
+              </div>
+
+              <!-- Button skeleton -->
+              <div
+                class="h-10 w-32 bg-[#E8E6E1] rounded-sm animate-pulse"
+                style="animation-delay: {i * 50 + 350}ms"
+              ></div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {:then customers}
+      {#if customers.length === 0}
       <div class="p-12 text-center text-[#5C5A56]">
         <svg class="w-16 h-16 mx-auto mb-4 text-[#D9D7D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -168,9 +227,9 @@
         <p class="font-bold text-lg">No customers found</p>
         <p class="text-sm mt-1">Try adjusting your search or filters</p>
       </div>
-    {:else}
+      {:else}
       <div class="divide-y-2 divide-[#D9D7D2]">
-        {#each data.customers as customer}
+        {#each customers as customer}
           {@const sub = getSubscription(customer)}
           {@const telegramStatus = getTelegramStatus(customer)}
           <div class="p-6 hover:bg-white transition-colors">
@@ -228,7 +287,8 @@
           </div>
         {/each}
       </div>
-    {/if}
+      {/if}
+    {/await}
   </div>
 </div>
 
