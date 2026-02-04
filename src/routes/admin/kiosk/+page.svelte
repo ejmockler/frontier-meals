@@ -9,6 +9,7 @@
   let sessionUrl = $state('');
   let createdKioskId = $state('');
   let createdLocation = $state('');
+  let isCreating = $state(false);
 
   // Generate session URL when form succeeds
   $effect(() => {
@@ -235,7 +236,13 @@
       <div class="h-px bg-[#D9D7D2] my-6"></div>
 
       <!-- Custom configuration -->
-      <form method="POST" action="?/createSession" use:enhance class="space-y-6">
+      <form method="POST" action="?/createSession" use:enhance={() => {
+        isCreating = true;
+        return async ({ update }) => {
+          isCreating = false;
+          await update();
+        };
+      }} class="space-y-6">
         <input type="hidden" name="csrf_token" value={data.csrfToken} />
         <div>
           <label for="kioskId" class="block text-sm font-bold text-[#1A1816] mb-2">
@@ -287,9 +294,18 @@
 
         <button
           type="submit"
-          class="w-full px-6 py-4 bg-[#E67E50] border-2 border-[#D97F3E] text-white font-bold rounded-sm hover:bg-[#D97F3E] hover:shadow-xl shadow-lg transition-all"
+          disabled={isCreating}
+          class="w-full px-6 py-4 bg-[#E67E50] border-2 border-[#D97F3E] text-white font-bold rounded-sm hover:bg-[#D97F3E] hover:shadow-xl shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
         >
-          Create Kiosk Session
+          {#if isCreating}
+            <svg class="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25" />
+              <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+            </svg>
+            Creating Session...
+          {:else}
+            Create Kiosk Session
+          {/if}
         </button>
       </form>
     </div>

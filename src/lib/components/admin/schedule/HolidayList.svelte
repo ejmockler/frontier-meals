@@ -3,6 +3,8 @@
 
 	export let holidays: any[];
 
+	let deletingId: string | null = null;
+
 	const dispatch = createEventDispatcher<{
 		edit: any;
 		deleted: { exception: any };
@@ -29,6 +31,7 @@
 			return;
 		}
 
+		deletingId = holiday.id;
 		const formData = new FormData();
 		formData.append('id', holiday.id);
 
@@ -44,6 +47,8 @@
 			}
 		} catch (error) {
 			console.error('Error deleting holiday:', error);
+		} finally {
+			deletingId = null;
 		}
 	}
 </script>
@@ -75,8 +80,16 @@
 						<button class="btn-edit" on:click={() => dispatch('edit', holiday)}>
 							Edit
 						</button>
-						<button class="btn-delete" on:click={() => deleteHoliday(holiday)}>
-							Delete
+						<button
+							class="btn-delete"
+							on:click={() => deleteHoliday(holiday)}
+							disabled={deletingId === holiday.id}
+						>
+							{#if deletingId === holiday.id}
+								Deleting...
+							{:else}
+								Delete
+							{/if}
 						</button>
 					</div>
 				</div>
@@ -211,7 +224,12 @@
 		color: #dc2626;
 	}
 
-	.btn-delete:hover {
+	.btn-delete:hover:not(:disabled) {
 		background: #fee2e2;
+	}
+
+	.btn-delete:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 </style>
